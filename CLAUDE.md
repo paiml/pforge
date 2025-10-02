@@ -258,17 +258,17 @@ All benchmarks in `benches/` directory:
 
 ## Pre-Commit Workflow
 
-Pre-commit hooks (via `.pmat/quality-gates.yaml`) automatically run:
+Pre-commit hooks automatically run:
+0. `scripts/validate_markdown_links.sh` - Validate all markdown links
 1. `cargo fmt --check` - Code formatting
 2. `cargo clippy -- -D warnings` - Linting
 3. `cargo test --all` - All tests
-4. `cargo tarpaulin` - Coverage check (≥80%)
-5. `pmat analyze complexity` - Complexity check (≤20)
-6. `pmat analyze satd` - No technical debt comments
+4. `pmat analyze complexity` - Complexity check (≤20)
+5. `pmat analyze satd` - No technical debt comments
+6. `cargo tarpaulin` - Coverage check (≥80%)
 7. `pmat analyze tdg` - Technical Debt Grade (≥0.75)
-8. `cargo audit` - Security audit
 
-Commits are **blocked** if any gate fails.
+Commits are **blocked** if any gate fails. This includes broken documentation links.
 
 ## CI/CD Pipeline
 
