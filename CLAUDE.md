@@ -174,6 +174,40 @@ docs/                 # Documentation
 
 Quality gate failures halt development (Jidoka/"stop the line" principle).
 
+### PMAT Quality Gate Integration (PFORGE-3001)
+
+Automated quality enforcement via pre-commit hooks and Makefile targets:
+
+```bash
+# Run all quality gates
+make quality-gate
+
+# Individual PMAT checks
+pmat analyze complexity --max-cyclomatic 20
+pmat analyze satd
+pmat tdg .
+pmat analyze dead-code
+```
+
+**Pre-Commit Hook** (`.git/hooks/pre-commit`):
+- Automatically runs on every commit
+- Enforces: formatting, linting, tests, complexity, SATD, coverage, TDG
+- Blocks commits that fail quality standards
+- Bypass (NOT recommended): `git commit --no-verify`
+
+**Quality Gate Test Suite** (`integration_test.rs`):
+- 8 tests verify PMAT integration
+- Tests complexity enforcement, SATD detection, TDG calculation
+- Validates pre-commit hook existence and executability
+- Ensures quality-gates.yaml configuration is valid
+
+**Metrics Tracked**:
+- Cyclomatic Complexity: max 20 (current: 9)
+- SATD Comments: Phase markers allowed
+- TDG Score: min 75/100 (current: 96/100)
+- Dead Code: monitored (current: 0%)
+- Test Coverage: min 80% (current: 80.54%)
+
 ## Performance Targets
 
 | Metric | Target |

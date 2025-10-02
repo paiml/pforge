@@ -19,15 +19,13 @@ pub fn generate_param_struct(tool_name: &str, params: &ParamSchema) -> Result<St
     let mut output = String::new();
 
     // Generate struct
-    output.push_str(&format!("#[derive(Debug, Deserialize, JsonSchema)]\n"));
+    output.push_str("#[derive(Debug, Deserialize, JsonSchema)]\n");
     output.push_str(&format!("pub struct {} {{\n", struct_name));
 
     for (field_name, param_type) in &params.fields {
         // Generate field
         let (ty, required, description) = match param_type {
-            ParamType::Simple(simple_ty) => {
-                (rust_type_from_simple(simple_ty), true, None)
-            }
+            ParamType::Simple(simple_ty) => (rust_type_from_simple(simple_ty), true, None),
             ParamType::Complex {
                 ty,
                 required,
@@ -75,7 +73,7 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 command,
                 args,
                 cwd,
-                env,
+                env: _,
                 stream,
                 description: _,
             } => {
@@ -87,17 +85,12 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 output.push_str(&format!("        vec![{}],\n", format_string_vec(args)));
 
                 if let Some(cwd_val) = cwd {
-                    output.push_str(&format!(
-                        "        Some(\"{}\".to_string()),\n",
-                        cwd_val
-                    ));
+                    output.push_str(&format!("        Some(\"{}\".to_string()),\n", cwd_val));
                 } else {
                     output.push_str("        None,\n");
                 }
 
-                output.push_str(&format!(
-                    "        HashMap::new(), // env\n"
-                ));
+                output.push_str("        HashMap::new(), // env\n");
                 output.push_str("        None, // timeout\n");
                 output.push_str(&format!("        {},\n", stream));
                 output.push_str("    ));\n");
@@ -106,8 +99,8 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 name,
                 endpoint,
                 method,
-                headers,
-                auth,
+                headers: _,
+                auth: _,
                 description: _,
             } => {
                 output.push_str(&format!(
@@ -120,7 +113,11 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 output.push_str("        None, // auth\n");
                 output.push_str("    ));\n");
             }
-            pforge_config::ToolDef::Pipeline { name, steps, description: _ } => {
+            pforge_config::ToolDef::Pipeline {
+                name: _,
+                steps: _,
+                description: _,
+            } => {
                 output.push_str("    // Pipeline handler TBD\n");
             }
         }
@@ -159,4 +156,176 @@ fn format_string_vec(vec: &[String]) -> String {
         .map(|s| format!("\"{}\".to_string()", s))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pforge_config::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_to_pascal_case() {
+        assert_eq!(to_pascal_case("hello_world"), "HelloWorld");
+        assert_eq!(to_pascal_case("test"), "Test");
+        assert_eq!(to_pascal_case("foo_bar_baz"), "FooBarBaz");
+    }
+
+    #[test]
+    fn test_rust_type_from_simple() {
+        assert_eq!(rust_type_from_simple(&SimpleType::String), "String");
+        assert_eq!(rust_type_from_simple(&SimpleType::Integer), "i64");
+        assert_eq!(rust_type_from_simple(&SimpleType::Float), "f64");
+        assert_eq!(rust_type_from_simple(&SimpleType::Boolean), "bool");
+        assert_eq!(
+            rust_type_from_simple(&SimpleType::Array),
+            "Vec<serde_json::Value>"
+        );
+        assert_eq!(
+            rust_type_from_simple(&SimpleType::Object),
+            "serde_json::Value"
+        );
+    }
+
+    #[test]
+    fn test_format_string_vec() {
+        assert_eq!(
+            format_string_vec(&["foo".to_string(), "bar".to_string()]),
+            "\"foo\".to_string(), \"bar\".to_string()"
+        );
+        assert_eq!(format_string_vec(&[]), "");
+    }
+
+    #[test]
+    fn test_generate_param_struct_simple() {
+        let mut fields = HashMap::new();
+        fields.insert("name".to_string(), ParamType::Simple(SimpleType::String));
+        fields.insert("age".to_string(), ParamType::Simple(SimpleType::Integer));
+
+        let params = ParamSchema { fields };
+        let result = generate_param_struct("test_tool", &params);
+
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("pub struct TestToolParams"));
+        assert!(code.contains("pub name: String"));
+        assert!(code.contains("pub age: i64"));
+    }
+
+    #[test]
+    fn test_generate_param_struct_complex() {
+        let mut fields = HashMap::new();
+        fields.insert(
+            "optional_field".to_string(),
+            ParamType::Complex {
+                ty: SimpleType::String,
+                required: false,
+                description: Some("An optional field".to_string()),
+                default: None,
+                validation: None,
+            },
+        );
+
+        let params = ParamSchema { fields };
+        let result = generate_param_struct("my_tool", &params);
+
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("/// An optional field"));
+        assert!(code.contains("pub optional_field: Option<String>"));
+    }
+
+    #[test]
+    fn test_generate_handler_registration_native() {
+        let config = ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: OptimizationLevel::Debug,
+            },
+            tools: vec![ToolDef::Native {
+                name: "test_tool".to_string(),
+                description: "Test".to_string(),
+                handler: HandlerRef {
+                    path: "handlers::test_handler".to_string(),
+                    inline: None,
+                },
+                params: ParamSchema {
+                    fields: HashMap::new(),
+                },
+                timeout_ms: None,
+            }],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = generate_handler_registration(&config);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("pub fn register_handlers"));
+        assert!(code.contains("registry.register(\"test_tool\", handlers::test_handler)"));
+    }
+
+    #[test]
+    fn test_generate_handler_registration_cli() {
+        let config = ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: OptimizationLevel::Debug,
+            },
+            tools: vec![ToolDef::Cli {
+                name: "cli_tool".to_string(),
+                description: "CLI Test".to_string(),
+                command: "echo".to_string(),
+                args: vec!["hello".to_string()],
+                cwd: None,
+                env: HashMap::new(),
+                stream: false,
+            }],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = generate_handler_registration(&config);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("CliHandler::new"));
+        assert!(code.contains("\"echo\""));
+        assert!(code.contains("\"hello\""));
+    }
+
+    #[test]
+    fn test_generate_handler_registration_http() {
+        let config = ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: OptimizationLevel::Debug,
+            },
+            tools: vec![ToolDef::Http {
+                name: "http_tool".to_string(),
+                description: "HTTP Test".to_string(),
+                endpoint: "https://api.example.com".to_string(),
+                method: HttpMethod::Get,
+                headers: HashMap::new(),
+                auth: None,
+            }],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = generate_handler_registration(&config);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("HttpHandler::new"));
+        assert!(code.contains("https://api.example.com"));
+        assert!(code.contains("HttpMethod::Get"));
+    }
 }

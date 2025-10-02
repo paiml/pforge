@@ -8,8 +8,8 @@ use tokio::sync::RwLock;
 /// Circuit breaker states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CircuitState {
-    Closed,  // Normal operation
-    Open,    // Failing, reject requests
+    Closed,   // Normal operation
+    Open,     // Failing, reject requests
     HalfOpen, // Testing if service recovered
 }
 
@@ -66,20 +66,17 @@ impl CircuitBreaker {
         // Check if we should attempt the operation
         let current_state = self.get_state().await;
 
-        match current_state {
-            CircuitState::Open => {
-                // Check if timeout has elapsed
-                if let Some(last_failure) = *self.last_failure_time.read().await {
-                    if last_failure.elapsed() >= self.config.timeout {
-                        // Transition to half-open
-                        *self.state.write().await = CircuitState::HalfOpen;
-                        self.success_count.store(0, Ordering::SeqCst);
-                    } else {
-                        return Err(Error::Handler("Circuit breaker is OPEN".to_string()));
-                    }
+        if current_state == CircuitState::Open {
+            // Check if timeout has elapsed
+            if let Some(last_failure) = *self.last_failure_time.read().await {
+                if last_failure.elapsed() >= self.config.timeout {
+                    // Transition to half-open
+                    *self.state.write().await = CircuitState::HalfOpen;
+                    self.success_count.store(0, Ordering::SeqCst);
+                } else {
+                    return Err(Error::Handler("Circuit breaker is OPEN".to_string()));
                 }
             }
-            _ => {}
         }
 
         // Attempt the operation
@@ -130,7 +127,8 @@ impl CircuitBreaker {
                 // Any failure in half-open state immediately opens circuit
                 *self.state.write().await = CircuitState::Open;
                 *self.last_failure_time.write().await = Some(Instant::now());
-                self.failure_count.store(self.config.failure_threshold, Ordering::SeqCst);
+                self.failure_count
+                    .store(self.config.failure_threshold, Ordering::SeqCst);
             }
             _ => {}
         }
@@ -271,7 +269,9 @@ impl Middleware for RecoveryMiddleware {
         if let Some(cb) = &self.circuit_breaker {
             let state = cb.get_state().await;
             if state == CircuitState::Open {
-                return Err(Error::Handler("Circuit breaker is OPEN - service unavailable".to_string()));
+                return Err(Error::Handler(
+                    "Circuit breaker is OPEN - service unavailable".to_string(),
+                ));
             }
         }
         Ok(request)
@@ -298,7 +298,6 @@ impl Middleware for RecoveryMiddleware {
         Ok(response)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -376,7 +375,10 @@ mod tests {
         // Should reject immediately
         let result = cb.call(|| async { Ok::<_, Error>(42) }).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Circuit breaker is OPEN"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Circuit breaker is OPEN"));
     }
 
     #[tokio::test]
@@ -384,10 +386,18 @@ mod tests {
         let tracker = ErrorTracker::new();
 
         // Track different errors
-        tracker.track_error(&Error::Handler("timeout error".to_string())).await;
-        tracker.track_error(&Error::Handler("timeout error".to_string())).await;
-        tracker.track_error(&Error::Handler("connection error".to_string())).await;
-        tracker.track_error(&Error::Handler("other error".to_string())).await;
+        tracker
+            .track_error(&Error::Handler("timeout error".to_string()))
+            .await;
+        tracker
+            .track_error(&Error::Handler("timeout error".to_string()))
+            .await;
+        tracker
+            .track_error(&Error::Handler("connection error".to_string()))
+            .await;
+        tracker
+            .track_error(&Error::Handler("other error".to_string()))
+            .await;
 
         assert_eq!(tracker.total_errors(), 4);
 

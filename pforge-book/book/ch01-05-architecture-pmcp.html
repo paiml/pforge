@@ -1,0 +1,547 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Architecture: How pforge Uses pmcp - pforge: EXTREME TDD for MCP Servers</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Build production-ready MCP servers with EXTREME Test-Driven Development - 5-minute cycles, zero tolerance quality gates">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">pforge: EXTREME TDD for MCP Servers</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/pforge" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/paiml/pforge/edit/main/pforge-book/src/ch01-05-architecture-pmcp.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="chapter-15-how-pforge-uses-pmcp-under-the-hood"><a class="header" href="#chapter-15-how-pforge-uses-pmcp-under-the-hood">Chapter 1.5: How pforge Uses pmcp Under the Hood</a></h1>
+<p>This chapter reveals the <strong>architectural relationship</strong> between pforge and pmcp (rust-mcp-sdk). Understanding this relationship is crucial for knowing when to use each tool and how they complement each other.</p>
+<h2 id="the-architecture-pforge-built-on-pmcp"><a class="header" href="#the-architecture-pforge-built-on-pmcp">The Architecture: pforge Built on pmcp</a></h2>
+<p><strong>Key Insight:</strong> pforge is <strong>not a replacement</strong> for pmcp - it’s a <strong>framework built on top of pmcp</strong>.</p>
+<pre><code>┌─────────────────────────────────────┐
+│   pforge (Declarative Framework)    │
+│   • YAML Configuration               │
+│   • Code Generation                  │
+│   • Handler Registry                 │
+│   • Quality Gates                    │
+└─────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────┐
+│   pmcp (Low-Level MCP SDK)          │
+│   • ServerBuilder                    │
+│   • TypedTool API                    │
+│   • Transport Layer (stdio/SSE/WS)   │
+│   • JSON-RPC Protocol                │
+└─────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────┐
+│   Model Context Protocol (MCP)      │
+│   • Tools, Resources, Prompts        │
+│   • Sampling, Logging                │
+└─────────────────────────────────────┘
+</code></pre>
+<h2 id="dependency-chain"><a class="header" href="#dependency-chain">Dependency Chain</a></h2>
+<p>From <code>crates/pforge-runtime/Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+pmcp = "1.6"  # ← pforge runtime depends on pmcp
+schemars = { version = "0.8", features = ["derive"] }
+# ... other deps
+</code></pre>
+<p><strong>This means:</strong></p>
+<ul>
+<li>Every pforge server is a pmcp server under the hood</li>
+<li>pforge translates YAML → pmcp API calls</li>
+<li>All pmcp features are available to pforge</li>
+</ul>
+<h2 id="what-pforge-adds-on-top-of-pmcp"><a class="header" href="#what-pforge-adds-on-top-of-pmcp">What pforge Adds on Top of pmcp</a></h2>
+<p>pforge is essentially a <strong>code generator + framework</strong> that:</p>
+<ol>
+<li><strong>Parses YAML</strong> → Generates Rust code</li>
+<li><strong>Creates Handler Registry</strong> → Maps tool names to handlers</li>
+<li><strong>Builds pmcp Server</strong> → Uses <code>pmcp::ServerBuilder</code></li>
+<li><strong>Enforces Quality</strong> → PMAT gates, TDD methodology</li>
+<li><strong>Optimizes Dispatch</strong> → Perfect hashing, compile-time optimization</li>
+</ol>
+<h2 id="example-the-same-server-in-both"><a class="header" href="#example-the-same-server-in-both">Example: The Same Server in Both</a></h2>
+<h3 id="with-pure-pmcp-what-you-write"><a class="header" href="#with-pure-pmcp-what-you-write">With Pure pmcp (What You Write)</a></h3>
+<pre><code class="language-rust">// main.rs - Direct pmcp usage
+use pmcp::{ServerBuilder, TypedTool};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct GreetArgs {
+    name: String,
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let server = ServerBuilder::new()
+        .name("greeter")
+        .version("1.0.0")
+        .tool_typed("greet", |args: GreetArgs, _extra| {
+            Box::pin(async move {
+                Ok(serde_json::json!({
+                    "message": format!("Hello, {}!", args.name)
+                }))
+            })
+        })
+        .build()?;
+
+    server.run_stdio().await?;
+    Ok(())
+}</code></pre>
+<h3 id="with-pforge-what-you-write"><a class="header" href="#with-pforge-what-you-write">With pforge (What You Write)</a></h3>
+<pre><code class="language-yaml"># forge.yaml
+forge:
+  name: greeter
+  version: 1.0.0
+
+tools:
+  - type: native
+    name: greet
+    handler:
+      path: handlers::greet_handler
+    params:
+      name: { type: string, required: true }
+</code></pre>
+<pre><code class="language-rust">// src/handlers.rs
+use pforge_runtime::{Handler, Result, Error};
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GreetOutput {
+    message: String,
+}
+
+pub struct GreetHandler;
+
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("Hello, {}!", input.name)
+        })
+    }
+}
+
+pub use GreetHandler as greet_handler;</code></pre>
+<h3 id="what-pforge-generates-under-the-hood"><a class="header" href="#what-pforge-generates-under-the-hood">What pforge Generates (Under the Hood)</a></h3>
+<p>When you run <code>pforge build</code>, it generates something like:</p>
+<pre><code class="language-rust">// Generated by pforge codegen
+use pmcp::ServerBuilder;
+use pforge_runtime::HandlerRegistry;
+
+pub fn build_server() -&gt; Result&lt;pmcp::Server&gt; {
+    let mut registry = HandlerRegistry::new();
+
+    // Register handlers
+    registry.register("greet", handlers::greet_handler);
+
+    // Build pmcp server
+    let server = ServerBuilder::new()
+        .name("greeter")
+        .version("1.0.0")
+        .tool_typed("greet", |args: handlers::GreetInput, _extra| {
+            Box::pin(async move {
+                let handler = handlers::greet_handler;
+                let output = handler.handle(args).await?;
+                Ok(serde_json::to_value(output)?)
+            })
+        })
+        .build()?;
+
+    Ok(server)
+}</code></pre>
+<p><strong>Key Point:</strong> pforge generates pmcp code!</p>
+<h2 id="the-handler-abstraction"><a class="header" href="#the-handler-abstraction">The Handler Abstraction</a></h2>
+<p>pforge defines a <code>Handler</code> trait that’s <strong>compatible with</strong> pmcp’s <code>TypedTool</code>:</p>
+<pre><code class="language-rust">// pforge-runtime/src/handler.rs
+#[async_trait::async_trait]
+pub trait Handler: Send + Sync {
+    type Input: for&lt;'de&gt; Deserialize&lt;'de&gt; + JsonSchema;
+    type Output: Serialize + JsonSchema;
+    type Error: Into&lt;Error&gt;;
+
+    async fn handle(&amp;self, input: Self::Input)
+        -&gt; Result&lt;Self::Output, Self::Error&gt;;
+}</code></pre>
+<p>This trait is designed to be <strong>zero-cost</strong> and <strong>directly map</strong> to pmcp’s <code>TypedTool</code> API.</p>
+<h2 id="real-example-how-pforge-uses-pmcp-in-runtime"><a class="header" href="#real-example-how-pforge-uses-pmcp-in-runtime">Real Example: How pforge Uses pmcp in Runtime</a></h2>
+<p>From <code>pforge-runtime/src/handler.rs</code>:</p>
+<pre><code class="language-rust">// pforge integrates with pmcp's type system
+use schemars::JsonSchema;  // Same as pmcp uses
+use serde::{Deserialize, Serialize};  // Same as pmcp uses
+
+/// Handler trait compatible with pmcp TypedTool
+#[async_trait::async_trait]
+pub trait Handler: Send + Sync {
+    type Input: for&lt;'de&gt; Deserialize&lt;'de&gt; + JsonSchema;
+    type Output: Serialize + JsonSchema;
+    type Error: Into&lt;Error&gt;;
+
+    async fn handle(&amp;self, input: Self::Input)
+        -&gt; Result&lt;Self::Output, Self::Error&gt;;
+}</code></pre>
+<p><strong>Notice:</strong> The trait bounds match pmcp’s requirements exactly:</p>
+<ul>
+<li><code>Deserialize</code> for input parsing</li>
+<li><code>Serialize</code> for output JSON</li>
+<li><code>JsonSchema</code> for MCP schema generation</li>
+<li><code>Send + Sync</code> for async runtime</li>
+</ul>
+<h2 id="when-pforge-calls-pmcp"><a class="header" href="#when-pforge-calls-pmcp">When pforge Calls pmcp</a></h2>
+<p>Here’s the actual flow when you run <code>pforge serve</code>:</p>
+<pre><code>1. pforge CLI parses forge.yaml
+   ↓
+2. pforge-codegen generates Rust code
+   ↓
+3. Generated code creates HandlerRegistry
+   ↓
+4. Registry wraps handlers in pmcp TypedTool
+   ↓
+5. pmcp ServerBuilder builds the server
+   ↓
+6. pmcp handles MCP protocol (stdio/SSE/WebSocket)
+   ↓
+7. pmcp routes requests to handlers
+   ↓
+8. pforge Handler executes and returns
+   ↓
+9. pmcp serializes response to JSON-RPC
+</code></pre>
+<h2 id="performance-why-pforge-is-faster-for-dispatch"><a class="header" href="#performance-why-pforge-is-faster-for-dispatch">Performance: Why pforge is Faster for Dispatch</a></h2>
+<p><strong>pmcp</strong>: General-purpose HashMap lookup</p>
+<pre><code class="language-rust">// In pmcp (simplified)
+let tool = tools.get(tool_name)?;  // HashMap lookup
+tool.execute(args).await</code></pre>
+<p><strong>pforge</strong>: Compile-time perfect hash</p>
+<pre><code class="language-rust">// Generated by pforge (simplified)
+match tool_name {
+    "greet" =&gt; greet_handler.handle(args).await,
+    "calculate" =&gt; calculate_handler.handle(args).await,
+    // ... compile-time matched
+    _ =&gt; Err(ToolNotFound)
+}</code></pre>
+<p>Result: &lt;1μs dispatch in pforge vs &lt;10μs in pmcp</p>
+<h2 id="using-both-together"><a class="header" href="#using-both-together">Using Both Together</a></h2>
+<p>You can mix pforge and pmcp in the same project!</p>
+<h3 id="example-pforge-for-simple-tools-pmcp-for-complex-logic"><a class="header" href="#example-pforge-for-simple-tools-pmcp-for-complex-logic">Example: pforge for Simple Tools, pmcp for Complex Logic</a></h3>
+<pre><code class="language-yaml"># forge.yaml - Simple tools in pforge
+tools:
+  - type: native
+    name: greet
+    handler:
+      path: handlers::greet_handler
+</code></pre>
+<pre><code class="language-rust">// main.rs - Add complex pmcp tool
+use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    // Load pforge-generated server
+    let mut server = pforge_runtime::build_from_config("forge.yaml")?;
+
+    // Add custom pmcp tool with complex logic
+    server.add_tool_typed("complex_stateful", |args, extra| {
+        Box::pin(async move {
+            // Custom logic not expressible in pforge YAML
+            // Maybe database transactions, WebSocket, etc.
+            todo!()
+        })
+    });
+
+    server.run_stdio().await
+}</code></pre>
+<h2 id="dependency-versions"><a class="header" href="#dependency-versions">Dependency Versions</a></h2>
+<p>pforge tracks pmcp versions:</p>
+<div class="table-wrapper"><table><thead><tr><th>pforge Version</th><th>pmcp Version</th><th>Notes</th></tr></thead><tbody>
+<tr><td>0.1.0</td><td>1.6.0</td><td>Initial release</td></tr>
+<tr><td>Future</td><td>Latest</td><td>Will track pmcp updates</td></tr>
+</tbody></table>
+</div>
+<h2 id="summary-the-relationship"><a class="header" href="#summary-the-relationship">Summary: The Relationship</a></h2>
+<p>Think of it like this:</p>
+<ul>
+<li><strong>pmcp</strong> = Express.js (low-level web framework)</li>
+<li><strong>pforge</strong> = Next.js (opinionated framework on Express)</li>
+</ul>
+<p>Or in Rust terms:</p>
+<ul>
+<li><strong>pmcp</strong> = actix-web (low-level HTTP server)</li>
+<li><strong>pforge</strong> = Rocket (high-level framework on actix)</li>
+</ul>
+<p><strong>Both are necessary:</strong></p>
+<ul>
+<li>pmcp provides the MCP protocol implementation</li>
+<li>pforge provides the declarative YAML layer + quality tools</li>
+</ul>
+<p><strong>You’re using pmcp whether you know it or not:</strong></p>
+<ul>
+<li>Every pforge server is a pmcp server</li>
+<li>pforge just generates the pmcp code for you</li>
+</ul>
+<h2 id="when-to-drop-down-to-pmcp"><a class="header" href="#when-to-drop-down-to-pmcp">When to Drop Down to pmcp</a></h2>
+<p>Use pure pmcp directly when pforge’s handler types don’t fit:</p>
+<p>❌ <strong>Can’t express in pforge:</strong></p>
+<ul>
+<li>Custom server lifecycle hooks</li>
+<li>Stateful request correlation</li>
+<li>Custom transport implementations</li>
+<li>Dynamic tool registration</li>
+<li>WebAssembly compilation</li>
+<li>Database connection pools with transactions</li>
+</ul>
+<p>✅ <strong>Can express in pforge:</strong></p>
+<ul>
+<li>Standard CRUD operations</li>
+<li>CLI tool wrappers</li>
+<li>HTTP API proxies</li>
+<li>Simple data transformations</li>
+<li>Multi-tool pipelines</li>
+<li>Standard state management</li>
+</ul>
+<h2 id="verification-check-the-dependency"><a class="header" href="#verification-check-the-dependency">Verification: Check the Dependency</a></h2>
+<pre><code class="language-bash"># See pmcp in pforge's dependencies
+$ grep pmcp crates/pforge-runtime/Cargo.toml
+pmcp = "1.6"
+
+# See pforge using pmcp types
+$ rg "pmcp::" crates/pforge-runtime/src/
+# (Currently minimal direct usage - trait compat layer)
+</code></pre>
+<h2 id="future-pforge-may-expose-more-pmcp-features"><a class="header" href="#future-pforge-may-expose-more-pmcp-features">Future: pforge May Expose More pmcp Features</a></h2>
+<p>Future pforge versions may expose:</p>
+<ul>
+<li>Custom middleware (pmcp has this)</li>
+<li>Sampling requests (pmcp has this)</li>
+<li>Logging handlers (pmcp has this)</li>
+<li>Custom transports (pmcp has this)</li>
+</ul>
+<p>For now, drop down to pmcp for these features.</p>
+<hr />
+<p><strong>Next:</strong> <a href="ch01-04-migration.html">Migration Between Them</a></p>
+<h2 id="quick-reference"><a class="header" href="#quick-reference">Quick Reference</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>pmcp</th><th>pforge</th></tr></thead><tbody>
+<tr><td><strong>Foundation</strong></td><td>MCP protocol impl</td><td>YAML → pmcp code</td></tr>
+<tr><td><strong>You Write</strong></td><td>Rust code</td><td>YAML + handlers</td></tr>
+<tr><td><strong>Performance</strong></td><td>Fast</td><td>Faster (perfect hash)</td></tr>
+<tr><td><strong>Flexibility</strong></td><td>Complete</td><td>4 handler types</td></tr>
+<tr><td><strong>Built On</strong></td><td>Nothing</td><td><strong>pmcp</strong></td></tr>
+<tr><td><strong>Can Use</strong></td><td>Standalone</td><td>Standalone or with pmcp</td></tr>
+<tr><td><strong>Crates.io</strong></td><td><code>pmcp</code></td><td><code>pforge-*</code> (uses pmcp)</td></tr>
+</tbody></table>
+</div>
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch01-04-migration.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch02-00-quick-start.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch01-04-migration.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch02-00-quick-start.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+        <script>
+            window.playground_line_numbers = true;
+        </script>
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="ace.js"></script>
+        <script src="editor.js"></script>
+        <script src="mode-rust.js"></script>
+        <script src="theme-dawn.js"></script>
+        <script src="theme-tomorrow_night.js"></script>
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

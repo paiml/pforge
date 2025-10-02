@@ -1,0 +1,408 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Introduction - pforge: EXTREME TDD for MCP Servers</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Build production-ready MCP servers with EXTREME Test-Driven Development - 5-minute cycles, zero tolerance quality gates">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">pforge: EXTREME TDD for MCP Servers</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/pforge" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/paiml/pforge/edit/main/pforge-book/src/introduction.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Welcome to <strong>pforge</strong> - a radical approach to building Model Context Protocol (MCP) servers that combines declarative configuration with EXTREME Test-Driven Development.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>Building MCP servers traditionally requires:</p>
+<ul>
+<li>Hundreds of lines of boilerplate code</li>
+<li>Manual type safety management</li>
+<li>Ad-hoc quality processes</li>
+<li>Slow development cycles</li>
+<li>Runtime performance tradeoffs</li>
+</ul>
+<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
+<p>pforge eliminates boilerplate and enforces quality through <strong>three pillars</strong>:</p>
+<h3 id="1-zero-boilerplate-configuration"><a class="header" href="#1-zero-boilerplate-configuration">1. Zero-Boilerplate Configuration</a></h3>
+<p>Define your entire MCP server in &lt;10 lines of YAML:</p>
+<pre><code class="language-yaml">forge:
+  name: my-server
+  version: 0.1.0
+
+tools:
+  - type: native
+    name: greet
+    description: "Greet a person"
+    handler:
+      path: handlers::greet
+    params:
+      name: { type: string, required: true }
+</code></pre>
+<h3 id="2-extreme-test-driven-development"><a class="header" href="#2-extreme-test-driven-development">2. EXTREME Test-Driven Development</a></h3>
+<p><strong>5-minute cycles</strong> with strict enforcement:</p>
+<ol>
+<li><strong>RED</strong> (2 min): Write failing test</li>
+<li><strong>GREEN</strong> (2 min): Minimum code to pass</li>
+<li><strong>REFACTOR</strong> (1 min): Clean up, run quality gates</li>
+<li><strong>COMMIT</strong>: If gates pass</li>
+<li><strong>RESET</strong>: If cycle exceeds 5 minutes</li>
+</ol>
+<p><strong>Quality gates automatically block</strong> commits that violate:</p>
+<ul>
+<li>Code formatting (rustfmt)</li>
+<li>Linting (clippy -D warnings)</li>
+<li>Test failures</li>
+<li>Complexity &gt;20</li>
+<li>Coverage &lt;80%</li>
+<li>TDG score &lt;75</li>
+</ul>
+<h3 id="3-production-performance"><a class="header" href="#3-production-performance">3. Production Performance</a></h3>
+<p>pforge delivers <strong>world-class performance</strong> through compile-time optimization:</p>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Target</th><th>Achieved</th></tr></thead><tbody>
+<tr><td>Tool dispatch</td><td>&lt;1μs</td><td>✅</td></tr>
+<tr><td>Throughput</td><td>&gt;100K req/s</td><td>✅</td></tr>
+<tr><td>Cold start</td><td>&lt;100ms</td><td>✅</td></tr>
+<tr><td>Memory/tool</td><td>&lt;256B</td><td>✅</td></tr>
+</tbody></table>
+</div>
+<h2 id="the-extreme-tdd-philosophy"><a class="header" href="#the-extreme-tdd-philosophy">The EXTREME TDD Philosophy</a></h2>
+<p>Traditional TDD says “write tests first.” EXTREME TDD says:</p>
+<blockquote>
+<p><strong>“Quality gates block bad code. Time limits prevent complexity. Automation enforces discipline.”</strong></p>
+</blockquote>
+<p>Key principles:</p>
+<ul>
+<li><strong>Jidoka (Stop the Line)</strong>: Quality failures halt development immediately</li>
+<li><strong>Kaizen (Continuous Improvement)</strong>: Every cycle improves the system</li>
+<li><strong>Waste Elimination</strong>: Time-boxing prevents gold-plating</li>
+<li><strong>Amplify Learning</strong>: Tight feedback loops accelerate mastery</li>
+</ul>
+<h2 id="what-makes-pforge-different"><a class="header" href="#what-makes-pforge-different">What Makes pforge Different?</a></h2>
+<h3 id="vs-traditional-mcp-sdks"><a class="header" href="#vs-traditional-mcp-sdks">vs. Traditional MCP SDKs</a></h3>
+<ul>
+<li><strong>No boilerplate</strong>: YAML vs hundreds of lines of code</li>
+<li><strong>Compile-time safety</strong>: Rust type system vs runtime checks</li>
+<li><strong>Performance</strong>: &lt;1μs dispatch vs milliseconds</li>
+</ul>
+<h3 id="vs-traditional-tdd"><a class="header" href="#vs-traditional-tdd">vs. Traditional TDD</a></h3>
+<ul>
+<li><strong>Time-boxed</strong>: 5-minute cycles vs indefinite</li>
+<li><strong>Automated gates</strong>: Pre-commit hooks vs manual checks</li>
+<li><strong>Zero tolerance</strong>: Complexity/coverage enforced vs aspirational</li>
+</ul>
+<h3 id="vs-quality-tools"><a class="header" href="#vs-quality-tools">vs. Quality Tools</a></h3>
+<ul>
+<li><strong>Integrated</strong>: PMAT built-in vs separate tools</li>
+<li><strong>Blocking</strong>: Pre-commit enforcement vs reports</li>
+<li><strong>Proactive</strong>: Prevent vs detect</li>
+</ul>
+<h2 id="who-should-read-this-book"><a class="header" href="#who-should-read-this-book">Who Should Read This Book?</a></h2>
+<p>This book is for you if you want to:</p>
+<ul>
+<li>Build MCP servers 10x faster</li>
+<li>Ship production code with confidence</li>
+<li>Master EXTREME TDD methodology</li>
+<li>Achieve &lt;1μs performance targets</li>
+<li>Automate quality enforcement</li>
+</ul>
+<h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h3>
+<ul>
+<li>Basic Rust knowledge (or willingness to learn)</li>
+<li>Familiarity with Test-Driven Development</li>
+<li>Understanding of Model Context Protocol basics</li>
+</ul>
+<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to Read This Book</a></h2>
+<p><strong>Part I (Chapters 1-3)</strong>: Learn the EXTREME TDD philosophy</p>
+<ul>
+<li>Start here if you’re new to disciplined TDD</li>
+<li>Understand the “why” before the “how”</li>
+</ul>
+<p><strong>Part II (Chapters 4-8)</strong>: Build your first MCP server</p>
+<ul>
+<li>Hands-on tutorials with TDD examples</li>
+<li>Each chapter follows RED-GREEN-REFACTOR</li>
+</ul>
+<p><strong>Part III (Chapters 9-12)</strong>: Master advanced features</p>
+<ul>
+<li>State management, fault tolerance, middleware</li>
+<li>Real-world patterns and anti-patterns</li>
+</ul>
+<p><strong>Part IV (Chapters 13-16)</strong>: Quality &amp; testing mastery</p>
+<ul>
+<li>Unit, integration, property, mutation testing</li>
+<li>Achieve 90%+ mutation kill rate</li>
+</ul>
+<p><strong>Part V (Chapters 17-18)</strong>: Performance optimization</p>
+<ul>
+<li>Sub-microsecond dispatch</li>
+<li>Compile-time code generation</li>
+</ul>
+<p><strong>Part VI (Chapters 19-20)</strong>: Production deployment</p>
+<ul>
+<li>CI/CD, multi-language bridges</li>
+<li>Enterprise patterns</li>
+</ul>
+<p><strong>Part VII (Chapters 21-24)</strong>: Real case studies</p>
+<ul>
+<li>PMAT server, data pipelines, GitHub integration</li>
+<li>Learn from production examples</li>
+</ul>
+<h2 id="code-examples"><a class="header" href="#code-examples">Code Examples</a></h2>
+<p>All code in this book is:</p>
+<ul>
+<li>✅ <strong>Tested</strong>: 100% test coverage</li>
+<li>✅ <strong>Working</strong>: Verified in CI/CD</li>
+<li>✅ <strong>Quality-checked</strong>: Passed PMAT gates</li>
+<li>✅ <strong>Performant</strong>: Benchmarked</li>
+</ul>
+<p>Example code follows this format:</p>
+<pre><code class="language-rust">// Filename: src/handlers.rs
+use pforge_runtime::{Handler, Result};
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GreetOutput {
+    message: String,
+}
+
+pub struct GreetHandler;
+
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("Hello, {}!", input.name)
+        })
+    }
+}</code></pre>
+<h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
+<ul>
+<li><strong>Repository</strong>: <a href="https://github.com/paiml/pforge">github.com/paiml/pforge</a></li>
+<li><strong>Issues</strong>: <a href="https://github.com/paiml/pforge/issues">github.com/paiml/pforge/issues</a></li>
+<li><strong>Discussions</strong>: <a href="https://github.com/paiml/pforge/discussions">github.com/paiml/pforge/discussions</a></li>
+<li><strong>Specification</strong>: See <code>docs/specifications/pforge-specification.md</code></li>
+</ul>
+<h2 id="lets-begin"><a class="header" href="#lets-begin">Let’s Begin</a></h2>
+<p>The journey to EXTREME TDD starts with understanding <strong>why</strong> strict discipline produces better results than raw talent. Turn the page to discover the philosophy that powers pforge…</p>
+<hr />
+<blockquote>
+<p>“The only way to go fast is to go well.” - Robert C. Martin (Uncle Bob)</p>
+</blockquote>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="title-page.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch01-00-pforge-vs-pmcp.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="title-page.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch01-00-pforge-vs-pmcp.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+        <script>
+            window.playground_line_numbers = true;
+        </script>
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="ace.js"></script>
+        <script src="editor.js"></script>
+        <script src="mode-rust.js"></script>
+        <script src="theme-dawn.js"></script>
+        <script src="theme-tomorrow_night.js"></script>
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

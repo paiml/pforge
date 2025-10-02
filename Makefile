@@ -2,16 +2,28 @@
 # Pragmatic AI Labs
 # https://paiml.com
 
-.PHONY: all test test-all test-fast build clean install coverage coverage-summary coverage-html quality-gate help
+.PHONY: all test test-all test-fast test-doc test-property build clean install coverage coverage-summary coverage-html quality-gate help
 
 # Default target
 all: test
 
-# Run all tests
-test:
+# Run all tests (unit, integration, doctests)
+test: test-doc
 	@echo "🧪 Running all tests..."
 	@cargo test --all
 	@echo "✅ All tests passed!"
+
+# Run documentation tests
+test-doc:
+	@echo "📚 Running documentation tests..."
+	@cargo test --doc
+	@echo "✅ Doctests passed!"
+
+# Run property-based tests (PFORGE-3002)
+test-property:
+	@echo "🔀 Running property-based tests..."
+	@cargo test --test property --release -- --test-threads=1
+	@echo "✅ Property tests passed!"
 
 # Run all tests including integration tests
 test-all:
@@ -107,13 +119,28 @@ lint:
 	@cargo clippy --all-targets --all-features -- -D warnings
 	@echo "✅ Linting complete!"
 
-# Quality gate (format, lint, test, coverage)
+# Quality gate (format, lint, test, coverage, PMAT)
 quality-gate: format lint test coverage
+	@echo ""
+	@echo "🔬 Running PMAT quality checks..."
+	@echo ""
+	@echo "  1. Complexity Analysis (max: 20)..."
+	@pmat analyze complexity --max-cyclomatic 20 --format summary || (echo "❌ Complexity check failed" && exit 1)
+	@echo ""
+	@echo "  2. SATD Detection (technical debt)..."
+	@pmat analyze satd --format summary || true
+	@echo ""
+	@echo "  3. Technical Debt Grade (TDG)..."
+	@pmat tdg . || (echo "❌ TDG check failed" && exit 1)
+	@echo ""
+	@echo "  4. Dead Code Analysis..."
+	@pmat analyze dead-code --format summary || true
 	@echo ""
 	@echo "✅ All quality gates passed!"
 	@echo ""
-	@echo "📊 Final Coverage:"
+	@echo "📊 Final Metrics:"
 	@$(MAKE) coverage-summary
+	@echo ""
 
 # Development watch mode
 watch:
@@ -125,7 +152,9 @@ help:
 	@echo "pforge Makefile Commands:"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test          - Run all tests"
+	@echo "  make test          - Run all tests (unit + integration + doctests)"
+	@echo "  make test-doc      - Run documentation tests only"
+	@echo "  make test-property - Run property-based tests (Phase 3)"
 	@echo "  make test-all      - Run all tests including integration"
 	@echo "  make test-fast     - Run fast tests without coverage"
 	@echo ""

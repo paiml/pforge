@@ -10,8 +10,14 @@ pforge-config = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = "0.9"
+serde_yml = { workspace = true }
 tokio = { workspace = true }
+proptest = { workspace = true }
 
 [[test]]
 name = "integration"
 path = "integration_test.rs"
+
+[[test]]
+name = "property"
+path = "property_test.rs"

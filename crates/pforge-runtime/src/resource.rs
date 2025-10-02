@@ -1,5 +1,7 @@
 use crate::{Error, Result};
-use pforge_config::{HandlerRef, ResourceDef, ResourceOperation};
+#[cfg(test)]
+use pforge_config::HandlerRef;
+use pforge_config::{ResourceDef, ResourceOperation};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,7 +13,12 @@ pub trait ResourceHandler: Send + Sync {
     async fn read(&self, uri: &str, params: HashMap<String, String>) -> Result<Vec<u8>>;
 
     /// Write resource content (if supported)
-    async fn write(&self, uri: &str, params: HashMap<String, String>, content: Vec<u8>) -> Result<()> {
+    async fn write(
+        &self,
+        uri: &str,
+        params: HashMap<String, String>,
+        content: Vec<u8>,
+    ) -> Result<()> {
         let _ = (uri, params, content);
         Err(Error::Handler("Write operation not supported".to_string()))
     }
@@ -19,7 +26,9 @@ pub trait ResourceHandler: Send + Sync {
     /// Subscribe to resource changes (if supported)
     async fn subscribe(&self, uri: &str, params: HashMap<String, String>) -> Result<()> {
         let _ = (uri, params);
-        Err(Error::Handler("Subscribe operation not supported".to_string()))
+        Err(Error::Handler(
+            "Subscribe operation not supported".to_string(),
+        ))
     }
 }
 
@@ -44,11 +53,7 @@ impl ResourceManager {
     }
 
     /// Register a resource with URI template matching
-    pub fn register(
-        &mut self,
-        def: ResourceDef,
-        handler: Arc<dyn ResourceHandler>,
-    ) -> Result<()> {
+    pub fn register(&mut self, def: ResourceDef, handler: Arc<dyn ResourceHandler>) -> Result<()> {
         let (pattern, param_names) = Self::compile_uri_template(&def.uri_template)?;
 
         self.resources.push(ResourceEntry {
@@ -150,7 +155,9 @@ impl ResourceManager {
                 }
 
                 if param_name.is_empty() {
-                    return Err(Error::Handler("Empty parameter name in URI template".to_string()));
+                    return Err(Error::Handler(
+                        "Empty parameter name in URI template".to_string(),
+                    ));
                 }
 
                 param_names.push(param_name);
@@ -182,7 +189,10 @@ impl ResourceManager {
 
     /// List all registered resource templates
     pub fn list_templates(&self) -> Vec<&str> {
-        self.resources.iter().map(|e| e.uri_template.as_str()).collect()
+        self.resources
+            .iter()
+            .map(|e| e.uri_template.as_str())
+            .collect()
     }
 }
 
@@ -206,7 +216,12 @@ mod tests {
             Ok(self.read_response.clone())
         }
 
-        async fn write(&self, _uri: &str, _params: HashMap<String, String>, _content: Vec<u8>) -> Result<()> {
+        async fn write(
+            &self,
+            _uri: &str,
+            _params: HashMap<String, String>,
+            _content: Vec<u8>,
+        ) -> Result<()> {
             Ok(())
         }
     }
@@ -222,7 +237,8 @@ mod tests {
 
     #[test]
     fn test_uri_template_multiple_params() {
-        let (pattern, params) = ResourceManager::compile_uri_template("api://{service}/{resource}").unwrap();
+        let (pattern, params) =
+            ResourceManager::compile_uri_template("api://{service}/{resource}").unwrap();
         assert_eq!(params, vec!["service", "resource"]);
 
         let captures = pattern.captures("api://users/profile").unwrap();
@@ -298,6 +314,9 @@ mod tests {
 
         let result = manager.write("file:///test.txt", b"data".to_vec()).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not support write"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("does not support write"));
     }
 }

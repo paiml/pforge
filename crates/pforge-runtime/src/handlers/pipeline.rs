@@ -114,7 +114,11 @@ impl PipelineHandler {
         Ok(PipelineOutput { results, variables })
     }
 
-    fn evaluate_condition(&self, condition: &str, variables: &HashMap<String, serde_json::Value>) -> bool {
+    fn evaluate_condition(
+        &self,
+        condition: &str,
+        variables: &HashMap<String, serde_json::Value>,
+    ) -> bool {
         // Simple variable existence check for MVP
         // Format: "variable_name" or "!variable_name"
         if let Some(var_name) = condition.strip_prefix('!') {
@@ -124,6 +128,7 @@ impl PipelineHandler {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn interpolate_variables(
         &self,
         template: &serde_json::Value,

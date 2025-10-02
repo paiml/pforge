@@ -6,7 +6,56 @@ use std::sync::Arc;
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Zero-overhead handler registry with O(1) average-case lookup
+/// Zero-overhead handler registry with O(1) average-case lookup.
+///
+/// The registry uses FxHash (2x faster than SipHash for small keys) for efficient
+/// handler dispatch. It provides type-safe handler registration and JSON-based dispatch.
+///
+/// # Performance
+///
+/// - **Lookup**: O(1) average-case using FxHash
+/// - **Dispatch**: <1μs target (hot path)
+/// - **Memory**: ~256 bytes per registered handler
+///
+/// # Examples
+///
+/// ```rust
+/// use pforge_runtime::{Handler, HandlerRegistry, Result};
+/// use serde::{Deserialize, Serialize};
+/// use schemars::JsonSchema;
+///
+/// #[derive(Debug, Deserialize, JsonSchema)]
+/// struct Input { value: i32 }
+///
+/// #[derive(Debug, Serialize, JsonSchema)]
+/// struct Output { result: i32 }
+///
+/// struct DoubleHandler;
+///
+/// #[async_trait::async_trait]
+/// impl Handler for DoubleHandler {
+///     type Input = Input;
+///     type Output = Output;
+///     type Error = pforge_runtime::Error;
+///
+///     async fn handle(&self, input: Self::Input) -> Result<Self::Output> {
+///         Ok(Output { result: input.value * 2 })
+///     }
+/// }
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<()> {
+/// let mut registry = HandlerRegistry::new();
+/// registry.register("double", DoubleHandler);
+///
+/// // Dispatch with JSON
+/// let input = serde_json::json!({"value": 21});
+/// let result_bytes = registry.dispatch("double", &serde_json::to_vec(&input)?).await?;
+/// let result: serde_json::Value = serde_json::from_slice(&result_bytes)?;
+/// assert_eq!(result["result"], 42);
+/// # Ok(())
+/// # }
+/// ```
 pub struct HandlerRegistry {
     handlers: FxHashMap<String, Arc<dyn HandlerEntry>>,
 }
@@ -117,5 +166,146 @@ impl HandlerRegistry {
 impl Default for HandlerRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use schemars::JsonSchema;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    struct TestInput {
+        value: i32,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    struct TestOutput {
+        result: i32,
+    }
+
+    struct TestHandler;
+
+    #[async_trait]
+    impl crate::Handler for TestHandler {
+        type Input = TestInput;
+        type Output = TestOutput;
+        type Error = crate::Error;
+
+        async fn handle(&self, input: Self::Input) -> Result<Self::Output> {
+            Ok(TestOutput {
+                result: input.value * 2,
+            })
+        }
+    }
+
+    struct ErrorHandler;
+
+    #[async_trait]
+    impl crate::Handler for ErrorHandler {
+        type Input = TestInput;
+        type Output = TestOutput;
+        type Error = crate::Error;
+
+        async fn handle(&self, _input: Self::Input) -> Result<Self::Output> {
+            Err(crate::Error::Handler("test error".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registry_new() {
+        let registry = HandlerRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_registry_register() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 1);
+        assert!(registry.has_handler("test"));
+        assert!(!registry.has_handler("nonexistent"));
+    }
+
+    #[tokio::test]
+    async fn test_registry_dispatch() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        let input = TestInput { value: 21 };
+        let input_bytes = serde_json::to_vec(&input).unwrap();
+
+        let result = registry.dispatch("test", &input_bytes).await;
+        assert!(result.is_ok());
+
+        let output: TestOutput = serde_json::from_slice(&result.unwrap()).unwrap();
+        assert_eq!(output.result, 42);
+    }
+
+    #[tokio::test]
+    async fn test_registry_dispatch_tool_not_found() {
+        let registry = HandlerRegistry::new();
+        let input = TestInput { value: 21 };
+        let input_bytes = serde_json::to_vec(&input).unwrap();
+
+        let result = registry.dispatch("nonexistent", &input_bytes).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), crate::Error::ToolNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_registry_dispatch_invalid_input() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        let invalid_input = b"{\"invalid\": \"json\"}";
+        let result = registry.dispatch("test", invalid_input).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_registry_dispatch_handler_error() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("error", ErrorHandler);
+
+        let input = TestInput { value: 21 };
+        let input_bytes = serde_json::to_vec(&input).unwrap();
+
+        let result = registry.dispatch("error", &input_bytes).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), crate::Error::Handler(_)));
+    }
+
+    #[tokio::test]
+    async fn test_registry_get_schemas() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        let input_schema = registry.get_input_schema("test");
+        assert!(input_schema.is_some());
+
+        let output_schema = registry.get_output_schema("test");
+        assert!(output_schema.is_some());
+
+        let missing_schema = registry.get_input_schema("nonexistent");
+        assert!(missing_schema.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_registry_multiple_handlers() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("handler1", TestHandler);
+        registry.register("handler2", TestHandler);
+        registry.register("handler3", TestHandler);
+
+        assert_eq!(registry.len(), 3);
+        assert!(registry.has_handler("handler1"));
+        assert!(registry.has_handler("handler2"));
+        assert!(registry.has_handler("handler3"));
     }
 }

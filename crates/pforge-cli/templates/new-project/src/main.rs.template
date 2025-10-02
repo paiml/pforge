@@ -1,0 +1,11 @@
+use pforge_runtime::*;
+
+mod handlers;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Server will be auto-generated from pforge.yaml
+    // This is a placeholder - actual implementation in later tickets
+    println!("{{PROJECT_NAME}} MCP server");
+    Ok(())
+}

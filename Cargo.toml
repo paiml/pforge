@@ -7,6 +7,7 @@ members = [
     "crates/pforge-config",
     "crates/pforge-macro",
     "crates/pforge-integration-tests",
+    "examples/calculator",
 ]
 
 [workspace.package]
@@ -15,6 +16,11 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/paiml/pforge"
 authors = ["Pragmatic AI Labs"]
+description = "Zero-boilerplate MCP server framework with EXTREME TDD methodology"
+keywords = ["mcp", "codegen", "tdd", "framework", "declarative"]
+categories = ["development-tools", "web-programming", "command-line-utilities"]
+homepage = "https://github.com/paiml/pforge"
+documentation = "https://docs.rs/pforge-runtime"
 
 [workspace.dependencies]
 # Common dependencies
@@ -27,11 +33,14 @@ anyhow = "1.0"
 tokio = { version = "1.35", features = ["full"] }
 async-trait = "0.1"
 
+# Testing dependencies
+proptest = "1.4"
+
 # Internal crates
-pforge-runtime = { path = "crates/pforge-runtime" }
-pforge-config = { path = "crates/pforge-config" }
-pforge-codegen = { path = "crates/pforge-codegen" }
-pforge-macro = { path = "crates/pforge-macro" }
+pforge-runtime = { path = "crates/pforge-runtime", version = "0.1.0" }
+pforge-config = { path = "crates/pforge-config", version = "0.1.0" }
+pforge-codegen = { path = "crates/pforge-codegen", version = "0.1.0" }
+pforge-macro = { path = "crates/pforge-macro", version = "0.1.0" }
 
 [profile.release]
 opt-level = 3

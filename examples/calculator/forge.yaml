@@ -1,0 +1,25 @@
+forge:
+  name: calculator-server
+  version: 0.1.0
+  transport: stdio
+  optimization: release
+
+tools:
+  - type: native
+    name: calculate
+    description: "Perform arithmetic operations (add, subtract, multiply, divide)"
+    handler:
+      path: handlers::calculate_handler
+    params:
+      operation:
+        type: string
+        required: true
+        description: "The operation to perform: add, subtract, multiply, or divide"
+      a:
+        type: float
+        required: true
+        description: "First operand"
+      b:
+        type: float
+        required: true
+        description: "Second operand"

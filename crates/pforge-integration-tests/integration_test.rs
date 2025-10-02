@@ -1,10 +1,10 @@
 /// Integration tests for pforge framework
 /// Tests end-to-end functionality across multiple crates
-use pforge_config::{ForgeConfig, ForgeMetadata, ToolDef, TransportType};
+use pforge_config::{ForgeConfig, ToolDef, TransportType};
 use pforge_runtime::{
-    CircuitBreaker, CircuitBreakerConfig, ErrorTracker, MiddlewareChain, PromptManager,
-    RecoveryMiddleware, ResourceManager, RetryPolicy, StateManager, MemoryStateManager,
-    retry_with_policy, with_timeout,
+    retry_with_policy, with_timeout, CircuitBreaker, CircuitBreakerConfig, ErrorTracker,
+    MemoryStateManager, MiddlewareChain, PromptManager, RecoveryMiddleware, RetryPolicy,
+    StateManager,
 };
 use serde_json::json;
 use std::time::Duration;
@@ -107,12 +107,11 @@ async fn test_state_management_persistence() {
 async fn test_middleware_chain_with_recovery() {
     let mut chain = MiddlewareChain::new();
 
-    let recovery = RecoveryMiddleware::new()
-        .with_circuit_breaker(CircuitBreakerConfig {
-            failure_threshold: 3,
-            timeout: Duration::from_secs(60),
-            success_threshold: 2,
-        });
+    let recovery = RecoveryMiddleware::new().with_circuit_breaker(CircuitBreakerConfig {
+        failure_threshold: 3,
+        timeout: Duration::from_secs(60),
+        success_threshold: 2,
+    });
 
     let tracker = recovery.error_tracker();
     chain.add(std::sync::Arc::new(recovery));
@@ -173,25 +172,31 @@ async fn test_circuit_breaker_integration() {
     // Cause failures to open circuit
     for _ in 0..2 {
         let _ = cb
-            .call(|| async {
-                Err::<(), _>(pforge_runtime::Error::Handler("failure".to_string()))
-            })
+            .call(|| async { Err::<(), _>(pforge_runtime::Error::Handler("failure".to_string())) })
             .await;
     }
 
     // Circuit should be open
-    let result = cb.call(|| async { Ok::<_, pforge_runtime::Error>(42) }).await;
+    let result = cb
+        .call(|| async { Ok::<_, pforge_runtime::Error>(42) })
+        .await;
     assert!(result.is_err());
 
     // Wait for timeout
     tokio::time::sleep(Duration::from_millis(150)).await;
 
     // Should transition to half-open and eventually close
-    let _ = cb.call(|| async { Ok::<_, pforge_runtime::Error>(1) }).await;
-    let _ = cb.call(|| async { Ok::<_, pforge_runtime::Error>(2) }).await;
+    let _ = cb
+        .call(|| async { Ok::<_, pforge_runtime::Error>(1) })
+        .await;
+    let _ = cb
+        .call(|| async { Ok::<_, pforge_runtime::Error>(2) })
+        .await;
 
     // Now should work
-    let result = cb.call(|| async { Ok::<_, pforge_runtime::Error>(42) }).await;
+    let result = cb
+        .call(|| async { Ok::<_, pforge_runtime::Error>(42) })
+        .await;
     assert!(result.is_ok());
 }
 
@@ -223,9 +228,9 @@ async fn test_resource_manager_uri_matching() {
     use pforge_config::{HandlerRef, ResourceDef, ResourceOperation};
     use pforge_runtime::ResourceManager;
 
-    let mut manager = ResourceManager::new();
+    let manager = ResourceManager::new();
 
-    let resource = ResourceDef {
+    let _resource = ResourceDef {
         uri_template: "file:///{path}".to_string(),
         handler: HandlerRef {
             path: "test::handler".to_string(),
@@ -248,7 +253,9 @@ async fn test_error_tracker_classification() {
         .track_error(&pforge_runtime::Error::Handler("timeout error".to_string()))
         .await;
     tracker
-        .track_error(&pforge_runtime::Error::Handler("connection failed".to_string()))
+        .track_error(&pforge_runtime::Error::Handler(
+            "connection failed".to_string(),
+        ))
         .await;
     tracker
         .track_error(&pforge_runtime::Error::Handler("unknown issue".to_string()))
@@ -338,5 +345,181 @@ tools:
     let result = validate_config(&config);
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Duplicate tool name"));
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Duplicate tool name"));
+}
+
+// ============================================================================
+// Quality Gate Integration Tests (PFORGE-3001)
+// ============================================================================
+
+use std::process::Command;
+
+#[test]
+fn test_pmat_quality_gate_exists() {
+    // Verify PMAT quality gate command is available
+    let output = Command::new("pmat")
+        .arg("quality-gate")
+        .arg("--help")
+        .output()
+        .expect("pmat should be installed");
+
+    assert!(
+        output.status.success(),
+        "pmat quality-gate should be available"
+    );
+}
+
+#[test]
+fn test_complexity_enforcement() {
+    // Verify complexity analysis works
+    let output = Command::new("pmat")
+        .arg("analyze")
+        .arg("complexity")
+        .arg("--max-cyclomatic")
+        .arg("20")
+        .arg("--format")
+        .arg("summary")
+        .current_dir("../../")
+        .output()
+        .expect("pmat analyze complexity should work");
+
+    // Should not fail with violations (our code is under max 20)
+    assert!(
+        output.status.success(),
+        "Complexity should be under 20: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_satd_detection() {
+    // Verify SATD detection works
+    let output = Command::new("pmat")
+        .arg("analyze")
+        .arg("satd")
+        .arg("--format")
+        .arg("summary")
+        .current_dir("../../")
+        .output()
+        .expect("pmat analyze satd should work");
+
+    // SATD detection should run (may find phase markers, which is ok)
+    assert!(
+        output.status.success(),
+        "SATD analysis should complete: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_tdg_score() {
+    // Verify TDG calculation works
+    let output = Command::new("pmat")
+        .arg("tdg")
+        .arg(".")
+        .current_dir("../../")
+        .output()
+        .expect("pmat tdg should work");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // TDG should complete successfully
+    assert!(
+        output.status.success(),
+        "TDG should complete: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Should have a grade in output
+    assert!(
+        stdout.contains("Grade") || stdout.contains("TDG") || stdout.contains("Score"),
+        "TDG output should contain grade information"
+    );
+}
+
+#[test]
+fn test_coverage_tracking() {
+    // Verify coverage tools are available
+    let has_llvm_cov = Command::new("cargo")
+        .arg("llvm-cov")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let has_tarpaulin = Command::new("cargo")
+        .arg("tarpaulin")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    assert!(
+        has_llvm_cov || has_tarpaulin,
+        "At least one coverage tool should be installed (cargo-llvm-cov or cargo-tarpaulin)"
+    );
+}
+
+#[test]
+fn test_pre_commit_hook_exists() {
+    use std::path::Path;
+
+    let hook_path = Path::new("../../.git/hooks/pre-commit");
+    assert!(
+        hook_path.exists(),
+        "Pre-commit hook should exist at .git/hooks/pre-commit"
+    );
+
+    // Verify it's executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(hook_path).expect("Should read hook metadata");
+        let permissions = metadata.permissions();
+        assert!(
+            permissions.mode() & 0o111 != 0,
+            "Pre-commit hook should be executable"
+        );
+    }
+}
+
+#[test]
+fn test_quality_gate_config_exists() {
+    use std::path::Path;
+
+    let config_path = Path::new("../../.pmat/quality-gates.yaml");
+    assert!(
+        config_path.exists(),
+        "PMAT quality gates config should exist at .pmat/quality-gates.yaml"
+    );
+
+    // Verify it's valid YAML
+    let content = std::fs::read_to_string(config_path).expect("Should read config");
+    let _config: serde_yaml::Value =
+        serde_yaml::from_str(&content).expect("quality-gates.yaml should be valid YAML");
+}
+
+#[test]
+fn test_makefile_quality_gate_target() {
+    use std::path::Path;
+
+    let makefile_path = Path::new("../../Makefile");
+    assert!(makefile_path.exists(), "Makefile should exist");
+
+    let content = std::fs::read_to_string(makefile_path).expect("Should read Makefile");
+
+    // Verify quality-gate target exists
+    assert!(
+        content.contains("quality-gate:"),
+        "Makefile should have quality-gate target"
+    );
+
+    // Verify it includes PMAT checks
+    assert!(
+        content.contains("pmat") || content.contains("PMAT"),
+        "quality-gate target should include PMAT checks"
+    );
 }

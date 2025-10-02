@@ -25,7 +25,8 @@ pub struct SledStateManager {
 
 impl SledStateManager {
     pub fn new(path: &str) -> Result<Self> {
-        let db = sled::open(path).map_err(|e| Error::Handler(format!("Sled open failed: {}", e)))?;
+        let db =
+            sled::open(path).map_err(|e| Error::Handler(format!("Sled open failed: {}", e)))?;
         Ok(Self { db })
     }
 }
@@ -110,7 +111,6 @@ impl StateManager for MemoryStateManager {
         Ok(self.store.contains_key(key))
     }
 }
-
 
 #[cfg(test)]
 mod tests {

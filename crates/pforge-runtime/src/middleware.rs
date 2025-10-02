@@ -43,11 +43,7 @@ impl MiddlewareChain {
     }
 
     /// Execute middleware chain around a handler
-    pub async fn execute<F, Fut>(
-        &self,
-        mut request: Value,
-        handler: F,
-    ) -> Result<Value>
+    pub async fn execute<F, Fut>(&self, mut request: Value, handler: F) -> Result<Value>
     where
         F: FnOnce(Value) -> Fut,
         Fut: std::future::Future<Output = Result<Value>>,
@@ -102,12 +98,20 @@ impl LoggingMiddleware {
 #[async_trait::async_trait]
 impl Middleware for LoggingMiddleware {
     async fn before(&self, request: Value) -> Result<Value> {
-        eprintln!("[{}] Request: {}", self.tag, serde_json::to_string(&request).unwrap_or_default());
+        eprintln!(
+            "[{}] Request: {}",
+            self.tag,
+            serde_json::to_string(&request).unwrap_or_default()
+        );
         Ok(request)
     }
 
     async fn after(&self, _request: Value, response: Value) -> Result<Value> {
-        eprintln!("[{}] Response: {}", self.tag, serde_json::to_string(&response).unwrap_or_default());
+        eprintln!(
+            "[{}] Response: {}",
+            self.tag,
+            serde_json::to_string(&response).unwrap_or_default()
+        );
         Ok(response)
     }
 
@@ -134,10 +138,7 @@ impl Middleware for ValidationMiddleware {
         if let Value::Object(obj) = &request {
             for field in &self.required_fields {
                 if !obj.contains_key(field) {
-                    return Err(Error::Handler(format!(
-                        "Missing required field: {}",
-                        field
-                    )));
+                    return Err(Error::Handler(format!("Missing required field: {}", field)));
                 }
             }
         }
@@ -161,7 +162,10 @@ where
     AfterFn: Fn(Value) -> Result<Value> + Send + Sync,
 {
     pub fn new(before_fn: BeforeFn, after_fn: AfterFn) -> Self {
-        Self { before_fn, after_fn }
+        Self {
+            before_fn,
+            after_fn,
+        }
     }
 }
 
@@ -193,20 +197,14 @@ mod tests {
     impl Middleware for TestMiddleware {
         async fn before(&self, mut request: Value) -> Result<Value> {
             if let Value::Object(ref mut obj) = request {
-                obj.insert(
-                    format!("{}_before", self.tag),
-                    Value::Bool(true),
-                );
+                obj.insert(format!("{}_before", self.tag), Value::Bool(true));
             }
             Ok(request)
         }
 
         async fn after(&self, _request: Value, mut response: Value) -> Result<Value> {
             if let Value::Object(ref mut obj) = response {
-                obj.insert(
-                    format!("{}_after", self.tag),
-                    Value::Bool(true),
-                );
+                obj.insert(format!("{}_after", self.tag), Value::Bool(true));
             }
             Ok(response)
         }
@@ -216,8 +214,12 @@ mod tests {
     async fn test_middleware_chain_execution_order() {
         let mut chain = MiddlewareChain::new();
 
-        chain.add(Arc::new(TestMiddleware { tag: "first".to_string() }));
-        chain.add(Arc::new(TestMiddleware { tag: "second".to_string() }));
+        chain.add(Arc::new(TestMiddleware {
+            tag: "first".to_string(),
+        }));
+        chain.add(Arc::new(TestMiddleware {
+            tag: "second".to_string(),
+        }));
 
         let request = json!({});
         let result = chain
@@ -248,7 +250,10 @@ mod tests {
         let invalid_request = json!({"name": "Alice"});
         let result = middleware.before(invalid_request).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Missing required field"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing required field"));
     }
 
     #[tokio::test]
@@ -322,17 +327,22 @@ mod tests {
     async fn test_multiple_middleware_composition() {
         let mut chain = MiddlewareChain::new();
 
-        chain.add(Arc::new(ValidationMiddleware::new(vec!["input".to_string()])));
+        chain.add(Arc::new(ValidationMiddleware::new(vec![
+            "input".to_string()
+        ])));
         chain.add(Arc::new(TransformMiddleware::new(
             |mut req| {
                 if let Value::Object(ref mut obj) = req {
                     if let Some(Value::Number(n)) = obj.get("input") {
-                        obj.insert("doubled".to_string(), Value::Number(serde_json::Number::from(n.as_i64().unwrap() * 2)));
+                        obj.insert(
+                            "doubled".to_string(),
+                            Value::Number(serde_json::Number::from(n.as_i64().unwrap() * 2)),
+                        );
                     }
                 }
                 Ok(req)
             },
-            |resp| Ok(resp),
+            Ok,
         )));
 
         let request = json!({"input": 5});

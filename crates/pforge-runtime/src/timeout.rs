@@ -82,19 +82,17 @@ impl RetryPolicy {
 
     /// Calculate backoff duration for given attempt
     pub fn backoff_duration(&self, attempt: u32) -> Duration {
-        let base_duration = self.initial_backoff.as_millis() as f64
-            * self.backoff_multiplier.powi(attempt as i32);
+        let base_duration =
+            self.initial_backoff.as_millis() as f64 * self.backoff_multiplier.powi(attempt as i32);
 
         let capped = base_duration.min(self.max_backoff.as_millis() as f64);
 
-        let duration = if self.use_jitter {
+        if self.use_jitter {
             let jitter = rand::random::<f64>() * capped * 0.1; // 10% jitter
             Duration::from_millis((capped + jitter) as u64)
         } else {
             Duration::from_millis(capped as u64)
-        };
-
-        duration
+        }
     }
 
     /// Check if error is retryable
@@ -150,10 +148,7 @@ impl Middleware for RetryMiddleware {
 }
 
 /// Retry executor - wraps a future with retry logic
-pub async fn retry_with_policy<F, Fut, T>(
-    policy: &RetryPolicy,
-    mut operation: F,
-) -> Result<T>
+pub async fn retry_with_policy<F, Fut, T>(policy: &RetryPolicy, mut operation: F) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = Result<T>>,

@@ -79,7 +79,10 @@ impl CliHandler {
         // Execute with timeout
         let exec_future = async {
             let output = cmd.output().await.map_err(|e| {
-                Error::Handler(format!("Failed to execute command '{}': {}", self.command, e))
+                Error::Handler(format!(
+                    "Failed to execute command '{}': {}",
+                    self.command, e
+                ))
             })?;
 
             Ok::<_, Error>(CliOutput {
@@ -96,5 +99,146 @@ impl CliHandler {
         } else {
             exec_future.await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_cli_handler_new() {
+        let handler = CliHandler::new(
+            "echo".to_string(),
+            vec!["hello".to_string()],
+            None,
+            HashMap::new(),
+            None,
+            false,
+        );
+
+        assert_eq!(handler.command, "echo");
+        assert_eq!(handler.args.len(), 1);
+        assert_eq!(handler.args[0], "hello");
+        assert!(handler.cwd.is_none());
+        assert!(handler.env.is_empty());
+        assert!(handler.timeout_ms.is_none());
+        assert!(!handler.stream);
+    }
+
+    #[tokio::test]
+    async fn test_cli_handler_execute_simple() {
+        let handler = CliHandler::new(
+            "echo".to_string(),
+            vec!["hello".to_string()],
+            None,
+            HashMap::new(),
+            None,
+            false,
+        );
+
+        let input = CliInput {
+            args: vec![],
+            env: HashMap::new(),
+        };
+
+        let result = handler.execute(input).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.stdout.contains("hello"));
+        assert_eq!(output.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_cli_handler_execute_with_input_args() {
+        let handler = CliHandler::new(
+            "echo".to_string(),
+            vec![],
+            None,
+            HashMap::new(),
+            None,
+            false,
+        );
+
+        let input = CliInput {
+            args: vec!["test".to_string(), "message".to_string()],
+            env: HashMap::new(),
+        };
+
+        let result = handler.execute(input).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.stdout.contains("test"));
+        assert!(output.stdout.contains("message"));
+    }
+
+    #[tokio::test]
+    async fn test_cli_handler_execute_with_timeout() {
+        let handler = CliHandler::new(
+            "sleep".to_string(),
+            vec!["2".to_string()],
+            None,
+            HashMap::new(),
+            Some(100), // 100ms timeout
+            false,
+        );
+
+        let input = CliInput {
+            args: vec![],
+            env: HashMap::new(),
+        };
+
+        let result = handler.execute(input).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Timeout));
+    }
+
+    #[tokio::test]
+    async fn test_cli_handler_execute_invalid_command() {
+        let handler = CliHandler::new(
+            "nonexistent_command_that_should_fail".to_string(),
+            vec![],
+            None,
+            HashMap::new(),
+            None,
+            false,
+        );
+
+        let input = CliInput {
+            args: vec![],
+            env: HashMap::new(),
+        };
+
+        let result = handler.execute(input).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Handler(_)));
+    }
+
+    #[tokio::test]
+    async fn test_cli_handler_with_env() {
+        let mut env = HashMap::new();
+        env.insert("TEST_VAR".to_string(), "test_value".to_string());
+
+        let handler = CliHandler::new(
+            "sh".to_string(),
+            vec!["-c".to_string(), "echo $TEST_VAR".to_string()],
+            None,
+            env,
+            None,
+            false,
+        );
+
+        let input = CliInput {
+            args: vec![],
+            env: HashMap::new(),
+        };
+
+        let result = handler.execute(input).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.stdout.contains("test_value"));
     }
 }

@@ -1,0 +1,58 @@
+# The pforge EXTREME TDD Book Configuration
+# Zero-boilerplate MCP server framework with radical quality enforcement
+
+[book]
+title = "pforge: EXTREME TDD for MCP Servers"
+authors = ["Pragmatic AI Labs"]
+description = "Build production-ready MCP servers with EXTREME Test-Driven Development - 5-minute cycles, zero tolerance quality gates"
+language = "en"
+multilingual = false
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[preprocessor.index]
+
+[preprocessor.links]
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "coal"
+smart-punctuation = true
+mathjax-support = false
+copy-fonts = true
+git-repository-url = "https://github.com/paiml/pforge"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/paiml/pforge/edit/main/pforge-book/{path}"
+
+[output.html.print]
+enable = true
+page-break = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.playground]
+editable = true
+copyable = true
+copy-js = true
+line-numbers = true
+runnable = false  # Rust playground, not for YAML/MCP
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+copy-js = true
+
+[rust]
+edition = "2021"

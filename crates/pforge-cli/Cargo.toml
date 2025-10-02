@@ -5,6 +5,16 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+include = [
+    "src/**/*",
+    "templates/**/*",
+    "Cargo.toml",
+]
 
 [[bin]]
 name = "pforge"

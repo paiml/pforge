@@ -1,59 +1,17 @@
 # pforge
 
-**Declarative MCP Server Framework with Zero Boilerplate**
-
-Build [Model Context Protocol](https://modelcontextprotocol.io) servers using pure YAML configuration - no boilerplate code required.
+A declarative framework for building Model Context Protocol (MCP) servers using YAML configuration.
 
 [![CI](https://github.com/paiml/pforge/workflows/CI/badge.svg)](https://github.com/paiml/pforge/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## ✨ Features
+## What is pforge?
 
-- 🎯 **Zero Boilerplate**: Define MCP servers in YAML, not code
-- 🚀 **Type Safe**: Full Rust type safety with Serde + JsonSchema
-- ⚡ **High Performance**: O(1) handler dispatch, async-first architecture
-- 🔌 **Multiple Handler Types**:
-  - **Native**: Pure Rust handlers with full type safety
-  - **CLI**: Execute shell commands
-  - **HTTP**: Proxy REST APIs with template parameters
-  - **Pipeline**: Chain tools together
-- 💾 **State Management**: Persistent (Sled) and in-memory backends
-- 🔄 **Fault Tolerance**: Circuit breaker, retry, timeout built-in
-- 🎨 **Middleware**: Composable request/response processing
-- 📦 **Resources & Prompts**: URI templates and prompt interpolation
+pforge lets you define MCP servers in YAML instead of writing boilerplate code. It's built on top of [pmcp](https://github.com/paiml/pmcp) (rust-mcp-sdk) and generates optimized Rust code from your configuration.
 
-## 🚀 Quick Start
+**Quick example:**
 
-### Installation
-
-\`\`\`bash
-# From source (recommended for now)
-git clone https://github.com/paiml/pforge
-cd pforge
-cargo install --path crates/pforge-cli
-
-# Coming soon: cargo install pforge-cli
-\`\`\`
-
-### Create Your First Server
-
-\`\`\`bash
-# Create new project
-pforge new my-server
-cd my-server
-
-# Edit pforge.yaml to define your tools
-# (see examples below)
-
-# Run server
-pforge serve
-\`\`\`
-
-## 📝 Configuration Examples
-
-### Native Handler (Rust)
-
-\`\`\`yaml
+```yaml
 forge:
   name: my-server
   version: 0.1.0
@@ -62,62 +20,132 @@ forge:
 tools:
   - type: native
     name: greet
-    description: "Greet a person by name"
+    description: "Greet someone"
     handler:
-      path: handlers::greet::say_hello
+      path: handlers::greet_handler
     params:
-      name:
-        type: string
-        required: true
-\`\`\`
+      name: { type: string, required: true }
+```
 
-### HTTP Handler (No Code!)
+## Installation
 
-\`\`\`yaml
-tools:
-  - type: http
-    name: get_user
-    description: "Get GitHub user info"
-    endpoint: "https://api.github.com/users/{{username}}"
-    method: GET
-    headers:
-      User-Agent: "my-mcp-server"
-\`\`\`
+```bash
+# From crates.io
+cargo install pforge-cli
 
-## 📚 Documentation
+# From source
+git clone https://github.com/paiml/pforge
+cd pforge
+cargo install --path crates/pforge-cli
+```
 
-- **[User Guide](docs/USER_GUIDE.md)** - Complete usage documentation
-- **[Architecture](docs/ARCHITECTURE.md)** - Technical deep-dive
-- **[Examples](examples/)** - Working examples to learn from
+## Quick Start
 
-## 🎯 Examples
+```bash
+# Create new project
+pforge new my-server
+cd my-server
 
-### [Hello World](examples/hello-world/)
-Minimal MCP server with native handler
+# Run the server
+pforge serve
+```
 
-### [REST API Proxy](examples/rest-api-proxy/)
-HTTP handlers for GitHub API - zero code needed
+The scaffolded project includes a working example handler. Edit `pforge.yaml` to add more tools, then implement handlers in `src/handlers/`.
 
-## 📊 Status
+## Handler Types
 
-**Current Version**: 0.1.0  
-**Status**: ✅ Production Ready (Core Features)
+pforge supports four handler types:
 
-- ✅ 55 tests passing (100%)
-- ✅ Full CI/CD automation
-- ✅ Comprehensive documentation
-- ✅ Working examples
+1. **Native** - Rust functions with full type safety
+2. **CLI** - Execute shell commands
+3. **HTTP** - Proxy HTTP endpoints
+4. **Pipeline** - Chain multiple tools together
 
-## 🤝 Contributing
+See the [book](https://paiml.github.io/pforge) for detailed examples of each type.
 
-Contributions welcome! Please read [CLAUDE.md](CLAUDE.md) for development guidelines.
+## Documentation
 
-## 📄 License
+- **[Book](https://paiml.github.io/pforge)** - Complete guide with examples and comparisons
+- **[Architecture](docs/ARCHITECTURE.md)** - Technical design details
+- **[User Guide](docs/USER_GUIDE.md)** - Usage guide
+- **[Implementation Status](docs/IMPLEMENTATION_STATUS.md)** - Current project status
+- **[CLAUDE.md](CLAUDE.md)** - Development workflow for contributors
 
-MIT License - see [LICENSE](LICENSE) file
+## Examples
 
----
+- **[hello-world](examples/hello-world/)** - Minimal native handler example
+- **[calculator](examples/calculator/)** - Math operations with tests
+- **[rest-api-proxy](examples/rest-api-proxy/)** - HTTP handler examples
 
-**Built with ❤️ by Pragmatic AI Labs**
+## Project Status
 
-🤖 *Implemented with [Claude Code](https://claude.com/claude-code)*
+**Version:** 0.1.0
+
+**Published crates:**
+- `pforge-config` - Configuration parsing
+- `pforge-macro` - Procedural macros
+- `pforge-runtime` - Core runtime (depends on pmcp)
+- `pforge-codegen` - Code generation
+- `pforge-cli` - CLI tool (pending rate limit)
+
+**Test results:** 115 tests passing (90 unit/integration, 12 property-based, 8 quality gates, 5 doctests)
+
+See [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for detailed progress (18/40 tickets complete).
+
+## Development
+
+```bash
+# Run tests
+cargo test --all
+
+# Run quality gates
+make quality-gate
+
+# Watch mode
+make watch
+
+# Build release
+make build-release
+```
+
+See [CLAUDE.md](CLAUDE.md) for full development workflow.
+
+## Architecture
+
+pforge is built as a framework on top of pmcp (rust-mcp-sdk):
+
+```
+┌─────────────────────────────────┐
+│   pforge (Framework Layer)      │
+│   - YAML → Rust codegen         │
+│   - Handler registry            │
+│   - State management            │
+└─────────────────────────────────┘
+              ↓
+┌─────────────────────────────────┐
+│   pmcp (Protocol SDK)           │
+│   - MCP protocol implementation │
+│   - Transport handling          │
+└─────────────────────────────────┘
+```
+
+When to use pmcp directly: You need fine-grained control over MCP protocol details or want to avoid code generation.
+
+When to use pforge: You want declarative configuration and rapid MCP server development with less code.
+
+## Contributing
+
+Contributions are welcome. Please:
+
+1. Read [CLAUDE.md](CLAUDE.md) for development standards
+2. Check [ROADMAP.md](ROADMAP.md) for current priorities
+3. Ensure tests pass: `cargo test --all`
+4. Ensure quality gates pass: `make quality-gate`
+
+## License
+
+MIT - see [LICENSE](LICENSE)
+
+## Acknowledgments
+
+Built on [pmcp](https://github.com/paiml/pmcp) by Pragmatic AI Labs.

@@ -53,7 +53,11 @@ fn red_test_all_crates_exist() {
         assert!(path.exists(), "Crate {} should exist", crate_path);
 
         let cargo_toml = path.join("Cargo.toml");
-        assert!(cargo_toml.exists(), "Cargo.toml should exist in {}", crate_path);
+        assert!(
+            cargo_toml.exists(),
+            "Cargo.toml should exist in {}",
+            crate_path
+        );
     }
 }
 
@@ -62,15 +66,18 @@ fn red_test_pmat_configuration_exists() {
     // Expected: ✅ PASS - Already created
     let root = workspace_root();
     let pmat_config = root.join(".pmat/quality-gates.yaml");
-    assert!(pmat_config.exists(), "PMAT quality gates config should exist");
+    assert!(
+        pmat_config.exists(),
+        "PMAT quality gates config should exist"
+    );
 }
 
 #[test]
 fn red_test_workspace_has_correct_members() {
     // Expected: ✅ PASS - Workspace already configured
     let root = workspace_root();
-    let cargo_toml = std::fs::read_to_string(root.join("Cargo.toml"))
-        .expect("Should read root Cargo.toml");
+    let cargo_toml =
+        std::fs::read_to_string(root.join("Cargo.toml")).expect("Should read root Cargo.toml");
 
     assert!(cargo_toml.contains("workspace"));
     assert!(cargo_toml.contains("pforge-cli"));
@@ -88,8 +95,14 @@ fn red_test_runtime_crate_has_pmcp_dependency() {
         .expect("Should read runtime Cargo.toml");
 
     assert!(cargo_toml.contains("pmcp"), "Runtime should depend on pmcp");
-    assert!(cargo_toml.contains("tokio"), "Runtime should depend on tokio");
-    assert!(cargo_toml.contains("async-trait"), "Runtime should depend on async-trait");
+    assert!(
+        cargo_toml.contains("tokio"),
+        "Runtime should depend on tokio"
+    );
+    assert!(
+        cargo_toml.contains("async-trait"),
+        "Runtime should depend on async-trait"
+    );
 }
 
 #[test]
@@ -110,7 +123,10 @@ fn red_test_codegen_crate_has_syn_quote() {
         .expect("Should read codegen Cargo.toml");
 
     assert!(cargo_toml.contains("syn"), "Codegen should depend on syn");
-    assert!(cargo_toml.contains("quote"), "Codegen should depend on quote");
+    assert!(
+        cargo_toml.contains("quote"),
+        "Codegen should depend on quote"
+    );
 }
 
 #[test]
@@ -136,11 +152,12 @@ fn red_test_pre_commit_hook_exists() {
     let hook = root.join("scripts/pre-commit.sh");
     assert!(hook.exists(), "Pre-commit hook should exist");
 
-    let content = std::fs::read_to_string(&hook)
-        .expect("Should read pre-commit hook");
+    let content = std::fs::read_to_string(&hook).expect("Should read pre-commit hook");
 
-    assert!(content.contains("pmat") || content.contains("PMAT") || content.contains("cargo"),
-        "Pre-commit should reference checks");
+    assert!(
+        content.contains("pmat") || content.contains("PMAT") || content.contains("cargo"),
+        "Pre-commit should reference checks"
+    );
 }
 
 #[test]

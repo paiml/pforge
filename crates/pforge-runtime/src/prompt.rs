@@ -70,11 +70,7 @@ impl PromptManager {
     }
 
     /// Validate arguments against schema
-    fn validate_arguments(
-        &self,
-        entry: &PromptEntry,
-        args: &HashMap<String, Value>,
-    ) -> Result<()> {
+    fn validate_arguments(&self, entry: &PromptEntry, args: &HashMap<String, Value>) -> Result<()> {
         // Check required arguments
         for (arg_name, param_type) in &entry.arguments {
             let is_required = match param_type {
@@ -182,7 +178,10 @@ mod tests {
         manager.register(def.clone()).unwrap();
         let result = manager.register(def);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already registered"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already registered"));
     }
 
     #[test]
@@ -234,7 +233,10 @@ mod tests {
         let args = HashMap::new();
         let result = manager.render("greeting", args);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Required argument"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Required argument"));
     }
 
     #[test]
@@ -256,7 +258,10 @@ mod tests {
 
         let result = manager.render("test", args);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unresolved template variables"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unresolved template variables"));
     }
 
     #[test]

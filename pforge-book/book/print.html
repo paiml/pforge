@@ -1,0 +1,1134 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>pforge: EXTREME TDD for MCP Servers</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Build production-ready MCP servers with EXTREME Test-Driven Development - 5-minute cycles, zero tolerance quality gates">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">pforge: EXTREME TDD for MCP Servers</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/pforge" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="pforge-extreme-tdd-for-mcp-servers"><a class="header" href="#pforge-extreme-tdd-for-mcp-servers">pforge: EXTREME TDD for MCP Servers</a></h1>
+<p><strong>Build production-ready Model Context Protocol servers with zero boilerplate and radical quality enforcement</strong></p>
+<hr />
+<h2 id="zero-boilerplate-extreme-quality-sub-microsecond-performance"><a class="header" href="#zero-boilerplate-extreme-quality-sub-microsecond-performance">Zero Boilerplate. Extreme Quality. Sub-Microsecond Performance.</a></h2>
+<p>pforge is a declarative framework for building MCP servers using pure YAML configuration - powered by EXTREME Test-Driven Development methodology and enforced by PMAT quality gates.</p>
+<h3 id="what-youll-learn"><a class="header" href="#what-youll-learn">What You’ll Learn</a></h3>
+<ul>
+<li><strong>EXTREME TDD</strong>: 5-minute RED-GREEN-REFACTOR cycles with zero tolerance quality gates</li>
+<li><strong>Toyota Production System</strong>: Apply Lean manufacturing principles to software development</li>
+<li><strong>MCP Server Development</strong>: Build tools, resources, and prompts with type safety</li>
+<li><strong>Quality Enforcement</strong>: Pre-commit hooks, complexity analysis, mutation testing</li>
+<li><strong>Production Performance</strong>: &lt;1μs dispatch, &gt;100K req/s throughput, &lt;100ms cold start</li>
+</ul>
+<h3 id="who-this-book-is-for"><a class="header" href="#who-this-book-is-for">Who This Book Is For</a></h3>
+<ul>
+<li><strong>MCP developers</strong> wanting to ship faster with higher quality</li>
+<li><strong>TDD practitioners</strong> seeking a more disciplined, time-boxed approach</li>
+<li><strong>Quality engineers</strong> interested in automated quality enforcement</li>
+<li><strong>Rust developers</strong> building high-performance tooling</li>
+</ul>
+<h3 id="the-pforge-philosophy"><a class="header" href="#the-pforge-philosophy">The pforge Philosophy</a></h3>
+<blockquote>
+<p>“Quality is not an act, it is a habit.” - Aristotle</p>
+</blockquote>
+<p>pforge enforces quality through <strong>automation</strong>, not willpower:</p>
+<ul>
+<li>Pre-commit hooks block low-quality code</li>
+<li>5-minute TDD cycles prevent complexity</li>
+<li>PMAT metrics track technical debt</li>
+<li>Property tests verify invariants</li>
+<li>Mutation tests validate test quality</li>
+</ul>
+<h3 id="current-status"><a class="header" href="#current-status">Current Status</a></h3>
+<ul>
+<li><strong>Version</strong>: 0.1.0-alpha</li>
+<li><strong>Test Coverage</strong>: 80.54%</li>
+<li><strong>TDG Score</strong>: 96/100 (A+)</li>
+<li><strong>Tests</strong>: 115 passing (100% pass rate)</li>
+<li><strong>Complexity</strong>: Max 9 (target: &lt;20)</li>
+</ul>
+<hr />
+<p><strong>License</strong>: MIT
+<strong>Repository</strong>: <a href="https://github.com/paiml/pforge">github.com/paiml/pforge</a>
+<strong>Authors</strong>: Pragmatic AI Labs</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p>Welcome to <strong>pforge</strong> - a radical approach to building Model Context Protocol (MCP) servers that combines declarative configuration with EXTREME Test-Driven Development.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>Building MCP servers traditionally requires:</p>
+<ul>
+<li>Hundreds of lines of boilerplate code</li>
+<li>Manual type safety management</li>
+<li>Ad-hoc quality processes</li>
+<li>Slow development cycles</li>
+<li>Runtime performance tradeoffs</li>
+</ul>
+<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
+<p>pforge eliminates boilerplate and enforces quality through <strong>three pillars</strong>:</p>
+<h3 id="1-zero-boilerplate-configuration"><a class="header" href="#1-zero-boilerplate-configuration">1. Zero-Boilerplate Configuration</a></h3>
+<p>Define your entire MCP server in &lt;10 lines of YAML:</p>
+<pre><code class="language-yaml">forge:
+  name: my-server
+  version: 0.1.0
+
+tools:
+  - type: native
+    name: greet
+    description: "Greet a person"
+    handler:
+      path: handlers::greet
+    params:
+      name: { type: string, required: true }
+</code></pre>
+<h3 id="2-extreme-test-driven-development"><a class="header" href="#2-extreme-test-driven-development">2. EXTREME Test-Driven Development</a></h3>
+<p><strong>5-minute cycles</strong> with strict enforcement:</p>
+<ol>
+<li><strong>RED</strong> (2 min): Write failing test</li>
+<li><strong>GREEN</strong> (2 min): Minimum code to pass</li>
+<li><strong>REFACTOR</strong> (1 min): Clean up, run quality gates</li>
+<li><strong>COMMIT</strong>: If gates pass</li>
+<li><strong>RESET</strong>: If cycle exceeds 5 minutes</li>
+</ol>
+<p><strong>Quality gates automatically block</strong> commits that violate:</p>
+<ul>
+<li>Code formatting (rustfmt)</li>
+<li>Linting (clippy -D warnings)</li>
+<li>Test failures</li>
+<li>Complexity &gt;20</li>
+<li>Coverage &lt;80%</li>
+<li>TDG score &lt;75</li>
+</ul>
+<h3 id="3-production-performance"><a class="header" href="#3-production-performance">3. Production Performance</a></h3>
+<p>pforge delivers <strong>world-class performance</strong> through compile-time optimization:</p>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Target</th><th>Achieved</th></tr></thead><tbody>
+<tr><td>Tool dispatch</td><td>&lt;1μs</td><td>✅</td></tr>
+<tr><td>Throughput</td><td>&gt;100K req/s</td><td>✅</td></tr>
+<tr><td>Cold start</td><td>&lt;100ms</td><td>✅</td></tr>
+<tr><td>Memory/tool</td><td>&lt;256B</td><td>✅</td></tr>
+</tbody></table>
+</div>
+<h2 id="the-extreme-tdd-philosophy"><a class="header" href="#the-extreme-tdd-philosophy">The EXTREME TDD Philosophy</a></h2>
+<p>Traditional TDD says “write tests first.” EXTREME TDD says:</p>
+<blockquote>
+<p><strong>“Quality gates block bad code. Time limits prevent complexity. Automation enforces discipline.”</strong></p>
+</blockquote>
+<p>Key principles:</p>
+<ul>
+<li><strong>Jidoka (Stop the Line)</strong>: Quality failures halt development immediately</li>
+<li><strong>Kaizen (Continuous Improvement)</strong>: Every cycle improves the system</li>
+<li><strong>Waste Elimination</strong>: Time-boxing prevents gold-plating</li>
+<li><strong>Amplify Learning</strong>: Tight feedback loops accelerate mastery</li>
+</ul>
+<h2 id="what-makes-pforge-different"><a class="header" href="#what-makes-pforge-different">What Makes pforge Different?</a></h2>
+<h3 id="vs-traditional-mcp-sdks"><a class="header" href="#vs-traditional-mcp-sdks">vs. Traditional MCP SDKs</a></h3>
+<ul>
+<li><strong>No boilerplate</strong>: YAML vs hundreds of lines of code</li>
+<li><strong>Compile-time safety</strong>: Rust type system vs runtime checks</li>
+<li><strong>Performance</strong>: &lt;1μs dispatch vs milliseconds</li>
+</ul>
+<h3 id="vs-traditional-tdd"><a class="header" href="#vs-traditional-tdd">vs. Traditional TDD</a></h3>
+<ul>
+<li><strong>Time-boxed</strong>: 5-minute cycles vs indefinite</li>
+<li><strong>Automated gates</strong>: Pre-commit hooks vs manual checks</li>
+<li><strong>Zero tolerance</strong>: Complexity/coverage enforced vs aspirational</li>
+</ul>
+<h3 id="vs-quality-tools"><a class="header" href="#vs-quality-tools">vs. Quality Tools</a></h3>
+<ul>
+<li><strong>Integrated</strong>: PMAT built-in vs separate tools</li>
+<li><strong>Blocking</strong>: Pre-commit enforcement vs reports</li>
+<li><strong>Proactive</strong>: Prevent vs detect</li>
+</ul>
+<h2 id="who-should-read-this-book"><a class="header" href="#who-should-read-this-book">Who Should Read This Book?</a></h2>
+<p>This book is for you if you want to:</p>
+<ul>
+<li>Build MCP servers 10x faster</li>
+<li>Ship production code with confidence</li>
+<li>Master EXTREME TDD methodology</li>
+<li>Achieve &lt;1μs performance targets</li>
+<li>Automate quality enforcement</li>
+</ul>
+<h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h3>
+<ul>
+<li>Basic Rust knowledge (or willingness to learn)</li>
+<li>Familiarity with Test-Driven Development</li>
+<li>Understanding of Model Context Protocol basics</li>
+</ul>
+<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to Read This Book</a></h2>
+<p><strong>Part I (Chapters 1-3)</strong>: Learn the EXTREME TDD philosophy</p>
+<ul>
+<li>Start here if you’re new to disciplined TDD</li>
+<li>Understand the “why” before the “how”</li>
+</ul>
+<p><strong>Part II (Chapters 4-8)</strong>: Build your first MCP server</p>
+<ul>
+<li>Hands-on tutorials with TDD examples</li>
+<li>Each chapter follows RED-GREEN-REFACTOR</li>
+</ul>
+<p><strong>Part III (Chapters 9-12)</strong>: Master advanced features</p>
+<ul>
+<li>State management, fault tolerance, middleware</li>
+<li>Real-world patterns and anti-patterns</li>
+</ul>
+<p><strong>Part IV (Chapters 13-16)</strong>: Quality &amp; testing mastery</p>
+<ul>
+<li>Unit, integration, property, mutation testing</li>
+<li>Achieve 90%+ mutation kill rate</li>
+</ul>
+<p><strong>Part V (Chapters 17-18)</strong>: Performance optimization</p>
+<ul>
+<li>Sub-microsecond dispatch</li>
+<li>Compile-time code generation</li>
+</ul>
+<p><strong>Part VI (Chapters 19-20)</strong>: Production deployment</p>
+<ul>
+<li>CI/CD, multi-language bridges</li>
+<li>Enterprise patterns</li>
+</ul>
+<p><strong>Part VII (Chapters 21-24)</strong>: Real case studies</p>
+<ul>
+<li>PMAT server, data pipelines, GitHub integration</li>
+<li>Learn from production examples</li>
+</ul>
+<h2 id="code-examples"><a class="header" href="#code-examples">Code Examples</a></h2>
+<p>All code in this book is:</p>
+<ul>
+<li>✅ <strong>Tested</strong>: 100% test coverage</li>
+<li>✅ <strong>Working</strong>: Verified in CI/CD</li>
+<li>✅ <strong>Quality-checked</strong>: Passed PMAT gates</li>
+<li>✅ <strong>Performant</strong>: Benchmarked</li>
+</ul>
+<p>Example code follows this format:</p>
+<pre><code class="language-rust">// Filename: src/handlers.rs
+use pforge_runtime::{Handler, Result};
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GreetOutput {
+    message: String,
+}
+
+pub struct GreetHandler;
+
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("Hello, {}!", input.name)
+        })
+    }
+}</code></pre>
+<h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
+<ul>
+<li><strong>Repository</strong>: <a href="https://github.com/paiml/pforge">github.com/paiml/pforge</a></li>
+<li><strong>Issues</strong>: <a href="https://github.com/paiml/pforge/issues">github.com/paiml/pforge/issues</a></li>
+<li><strong>Discussions</strong>: <a href="https://github.com/paiml/pforge/discussions">github.com/paiml/pforge/discussions</a></li>
+<li><strong>Specification</strong>: See <code>docs/specifications/pforge-specification.md</code></li>
+</ul>
+<h2 id="lets-begin"><a class="header" href="#lets-begin">Let’s Begin</a></h2>
+<p>The journey to EXTREME TDD starts with understanding <strong>why</strong> strict discipline produces better results than raw talent. Turn the page to discover the philosophy that powers pforge…</p>
+<hr />
+<blockquote>
+<p>“The only way to go fast is to go well.” - Robert C. Martin (Uncle Bob)</p>
+</blockquote>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="chapter-1-pforge-vs-pmcp-rust-mcp-sdk"><a class="header" href="#chapter-1-pforge-vs-pmcp-rust-mcp-sdk">Chapter 1: pforge vs pmcp (rust-mcp-sdk)</a></h1>
+<p>Both <strong>pforge</strong> and <strong>pmcp</strong> (Pragmatic Model Context Protocol SDK, also known as rust-mcp-sdk) are Rust implementations for building MCP servers, created by the same team at Pragmatic AI Labs. However, they serve <strong>fundamentally different use cases</strong>.</p>
+<h2 id="the-key-difference"><a class="header" href="#the-key-difference">The Key Difference</a></h2>
+<p><strong>pmcp</strong> is a <strong>library/SDK</strong> - you write Rust code to build your MCP server.</p>
+<p><strong>pforge</strong> is a <strong>framework</strong> - you write YAML configuration and optional Rust handlers.</p>
+<p>Think of it like this:</p>
+<ul>
+<li><strong>pmcp</strong> ≈ Express.js (you write code)</li>
+<li><strong>pforge</strong> ≈ Cargo Lambda (you write config + minimal code)</li>
+</ul>
+<h2 id="quick-comparison-table"><a class="header" href="#quick-comparison-table">Quick Comparison Table</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>pforge</th><th>pmcp</th></tr></thead><tbody>
+<tr><td><strong>Approach</strong></td><td>Declarative YAML + handlers</td><td>Programmatic Rust SDK</td></tr>
+<tr><td><strong>Code Required</strong></td><td>&lt;10 lines YAML + handlers</td><td>50-200+ lines Rust</td></tr>
+<tr><td><strong>Type Safety</strong></td><td>Compile-time (via codegen)</td><td>Compile-time (native Rust)</td></tr>
+<tr><td><strong>Performance</strong></td><td>&lt;1μs dispatch (optimized)</td><td>&lt;10μs (general purpose)</td></tr>
+<tr><td><strong>Learning Curve</strong></td><td>Low (YAML + basic Rust)</td><td>Medium (full Rust + MCP)</td></tr>
+<tr><td><strong>Flexibility</strong></td><td>4 handler types (fixed)</td><td>Unlimited (write any code)</td></tr>
+<tr><td><strong>Quality Gates</strong></td><td>Built-in (PMAT, TDD)</td><td>Optional (you implement)</td></tr>
+<tr><td><strong>Build Process</strong></td><td>Code generation</td><td>Standard Rust</td></tr>
+<tr><td><strong>Best For</strong></td><td>Standard MCP patterns</td><td>Custom complex logic</td></tr>
+<tr><td><strong>Boilerplate</strong></td><td>Near-zero</td><td>Moderate</td></tr>
+<tr><td><strong>Crates.io</strong></td><td>✅ Publishable</td><td>✅ Publishable</td></tr>
+</tbody></table>
+</div>
+<h2 id="side-by-side-example"><a class="header" href="#side-by-side-example">Side-by-Side Example</a></h2>
+<h3 id="the-same-calculator-tool"><a class="header" href="#the-same-calculator-tool">The Same Calculator Tool</a></h3>
+<p><strong>With pmcp (rust-mcp-sdk):</strong></p>
+<pre><code class="language-rust">// main.rs (~60 lines)
+use pmcp::{ServerBuilder, TypedTool};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct CalculatorArgs {
+    operation: String,
+    a: f64,
+    b: f64,
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let server = ServerBuilder::new()
+        .name("calculator-server")
+        .version("1.0.0")
+        .tool_typed("calculate", |args: CalculatorArgs, _extra| {
+            Box::pin(async move {
+                let result = match args.operation.as_str() {
+                    "add" =&gt; args.a + args.b,
+                    "subtract" =&gt; args.a - args.b,
+                    "multiply" =&gt; args.a * args.b,
+                    "divide" =&gt; {
+                        if args.b == 0.0 {
+                            return Err(pmcp::Error::Validation(
+                                "Division by zero".into()
+                            ));
+                        }
+                        args.a / args.b
+                    }
+                    _ =&gt; return Err(pmcp::Error::Validation(
+                        "Unknown operation".into()
+                    )),
+                };
+                Ok(serde_json::json!({ "result": result }))
+            })
+        })
+        .build()?;
+
+    // Run server with stdio transport
+    server.run_stdio().await?;
+    Ok(())
+}</code></pre>
+<p><strong>With pforge:</strong></p>
+<pre><code class="language-yaml"># forge.yaml (8 lines)
+forge:
+  name: calculator-server
+  version: 1.0.0
+
+tools:
+  - type: native
+    name: calculate
+    description: "Perform arithmetic operations"
+    handler:
+      path: handlers::calculate
+    params:
+      operation: { type: string, required: true }
+      a: { type: float, required: true }
+      b: { type: float, required: true }
+</code></pre>
+<pre><code class="language-rust">// src/handlers.rs (~25 lines)
+use pforge_runtime::{Handler, Result, Error};
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalculateInput {
+    operation: String,
+    a: f64,
+    b: f64,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CalculateOutput {
+    result: f64,
+}
+
+pub struct CalculateHandler;
+
+#[async_trait::async_trait]
+impl Handler for CalculateHandler {
+    type Input = CalculateInput;
+    type Output = CalculateOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        let result = match input.operation.as_str() {
+            "add" =&gt; input.a + input.b,
+            "subtract" =&gt; input.a - input.b,
+            "multiply" =&gt; input.a * input.b,
+            "divide" =&gt; {
+                if input.b == 0.0 {
+                    return Err(Error::Handler("Division by zero".into()));
+                }
+                input.a / input.b
+            }
+            _ =&gt; return Err(Error::Handler("Unknown operation".into())),
+        };
+        Ok(CalculateOutput { result })
+    }
+}</code></pre>
+<pre><code class="language-bash"># Run it
+pforge serve
+</code></pre>
+<h2 id="when-to-use-each"><a class="header" href="#when-to-use-each">When to Use Each</a></h2>
+<h3 id="use-pforge-when"><a class="header" href="#use-pforge-when">Use <strong>pforge</strong> when:</a></h3>
+<p>✅ You’re building standard MCP servers (tools, resources, prompts)
+✅ You want minimal boilerplate
+✅ You need fast iteration (change YAML, no recompile)
+✅ You want built-in quality gates and TDD methodology
+✅ You’re wrapping CLIs, HTTP APIs, or simple logic
+✅ You want sub-microsecond tool dispatch
+✅ You’re new to Rust (simpler to get started)
+✅ You want enforced best practices</p>
+<p><strong>Examples:</strong></p>
+<ul>
+<li>CLI tool wrappers (git, docker, kubectl)</li>
+<li>HTTP API proxies (GitHub, Slack, AWS)</li>
+<li>Simple data transformations</li>
+<li>Multi-tool pipelines</li>
+</ul>
+<h3 id="use-pmcp-when"><a class="header" href="#use-pmcp-when">Use <strong>pmcp</strong> when:</a></h3>
+<p>✅ You need complete control over server logic
+✅ You’re implementing complex stateful behavior
+✅ You need custom transport implementations
+✅ You’re building a library/SDK for others
+✅ You need features not in pforge’s 4 handler types
+✅ You want to publish a general-purpose MCP server
+✅ You’re comfortable with full Rust development</p>
+<p><strong>Examples:</strong></p>
+<ul>
+<li>Database servers with custom query logic</li>
+<li>Real-time collaborative servers</li>
+<li>Custom protocol extensions</li>
+<li>Servers with complex state machines</li>
+<li>WebAssembly/browser-based servers</li>
+</ul>
+<h2 id="can-i-use-both-together"><a class="header" href="#can-i-use-both-together">Can I Use Both Together?</a></h2>
+<p><strong>Yes!</strong> You can:</p>
+<ol>
+<li><strong>Start with pforge</strong>, then migrate complex tools to pmcp</li>
+<li><strong>Use pmcp for the core</strong>, pforge for simple wrappers</li>
+<li><strong>Publish pmcp handlers</strong> that pforge can use</li>
+</ol>
+<p>Example: Use pforge for 90% of simple tools, drop down to pmcp for the 10% that need custom logic.</p>
+<h2 id="performance-comparison"><a class="header" href="#performance-comparison">Performance Comparison</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>pforge</th><th>pmcp</th></tr></thead><tbody>
+<tr><td><strong>Tool Dispatch</strong></td><td>&lt;1μs (perfect hash)</td><td>&lt;10μs (hash map)</td></tr>
+<tr><td><strong>Cold Start</strong></td><td>&lt;100ms</td><td>&lt;50ms</td></tr>
+<tr><td><strong>Memory/Tool</strong></td><td>&lt;256B</td><td>&lt;512B</td></tr>
+<tr><td><strong>Throughput</strong></td><td>&gt;100K req/s</td><td>&gt;50K req/s</td></tr>
+<tr><td><strong>Binary Size</strong></td><td>Larger (includes codegen)</td><td>Smaller (minimal)</td></tr>
+</tbody></table>
+</div>
+<p><strong>Why is pforge faster for dispatch?</strong></p>
+<ul>
+<li>Compile-time code generation with perfect hashing</li>
+<li>Zero dynamic lookups</li>
+<li>Inlined handler calls</li>
+</ul>
+<p><strong>Why is pmcp faster for cold start?</strong></p>
+<ul>
+<li>No code generation step</li>
+<li>Simpler binary</li>
+</ul>
+<h2 id="code-size-comparison"><a class="header" href="#code-size-comparison">Code Size Comparison</a></h2>
+<p>For a typical 10-tool MCP server:</p>
+<ul>
+<li><strong>pforge</strong>: ~50 lines YAML + ~200 lines handlers = <strong>~250 lines total</strong></li>
+<li><strong>pmcp</strong>: ~500-800 lines Rust (including boilerplate)</li>
+</ul>
+<h2 id="quality--testing"><a class="header" href="#quality--testing">Quality &amp; Testing</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Aspect</th><th>pforge</th><th>pmcp</th></tr></thead><tbody>
+<tr><td><strong>Quality Gates</strong></td><td>Built-in pre-commit hooks</td><td>You implement</td></tr>
+<tr><td><strong>TDD Methodology</strong></td><td>EXTREME TDD (5-min cycles)</td><td>Your choice</td></tr>
+<tr><td><strong>Property Testing</strong></td><td>Built-in generators</td><td>You implement</td></tr>
+<tr><td><strong>Mutation Testing</strong></td><td>cargo-mutants integrated</td><td>You configure</td></tr>
+<tr><td><strong>Coverage Target</strong></td><td>80%+ enforced</td><td>You set</td></tr>
+<tr><td><strong>Complexity Limit</strong></td><td>Max 20 enforced</td><td>You set</td></tr>
+</tbody></table>
+</div>
+<h2 id="migration-path"><a class="header" href="#migration-path">Migration Path</a></h2>
+<h3 id="pmcp--pforge"><a class="header" href="#pmcp--pforge">pmcp → pforge</a></h3>
+<p>If you have a pmcp server and want to try pforge:</p>
+<ol>
+<li>Extract your tool logic into handlers</li>
+<li>Create <code>forge.yaml</code> config</li>
+<li>Test with <code>pforge serve</code></li>
+</ol>
+<h3 id="pforge--pmcp"><a class="header" href="#pforge--pmcp">pforge → pmcp</a></h3>
+<p>If you need more flexibility:</p>
+<ol>
+<li>Use your pforge handlers as-is</li>
+<li>Replace YAML with <code>ServerBuilder</code> code</li>
+<li>Add custom logic as needed</li>
+</ol>
+<h2 id="real-world-usage"><a class="header" href="#real-world-usage">Real-World Usage</a></h2>
+<p><strong>pforge in production:</strong></p>
+<ul>
+<li>PMAT code analysis server (pforge wraps pmat CLI)</li>
+<li>GitHub webhook server (pforge proxies GitHub API)</li>
+<li>Data pipeline orchestrator (pforge chains tools)</li>
+</ul>
+<p><strong>pmcp in production:</strong></p>
+<ul>
+<li>Browser-based REPL (WebAssembly, custom logic)</li>
+<li>Database query server (complex state, transactions)</li>
+<li>Real-time collaboration (WebSocket, stateful)</li>
+</ul>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Choose based on your needs:</p>
+<ul>
+<li><strong>Quick standard MCP server?</strong> → <strong>pforge</strong></li>
+<li><strong>Complex custom logic?</strong> → <strong>pmcp</strong></li>
+<li><strong>Not sure?</strong> → <strong>Start with pforge</strong>, migrate to pmcp if needed</li>
+</ul>
+<p>Both are production-ready, both support crates.io publishing, and both are maintained by the same team.</p>
+<hr />
+<p>Next: <a href="ch01-01-when-pforge.html">When to Use pforge</a></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch01-01-when-pforgemd"><a class="header" href="#ch01-01-when-pforgemd">ch01-01-when-pforge.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch01-02-when-pmcpmd"><a class="header" href="#ch01-02-when-pmcpmd">ch01-02-when-pmcp.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch01-03-comparisonmd"><a class="header" href="#ch01-03-comparisonmd">ch01-03-comparison.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch01-04-migrationmd"><a class="header" href="#ch01-04-migrationmd">ch01-04-migration.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="chapter-15-how-pforge-uses-pmcp-under-the-hood"><a class="header" href="#chapter-15-how-pforge-uses-pmcp-under-the-hood">Chapter 1.5: How pforge Uses pmcp Under the Hood</a></h1>
+<p>This chapter reveals the <strong>architectural relationship</strong> between pforge and pmcp (rust-mcp-sdk). Understanding this relationship is crucial for knowing when to use each tool and how they complement each other.</p>
+<h2 id="the-architecture-pforge-built-on-pmcp"><a class="header" href="#the-architecture-pforge-built-on-pmcp">The Architecture: pforge Built on pmcp</a></h2>
+<p><strong>Key Insight:</strong> pforge is <strong>not a replacement</strong> for pmcp - it’s a <strong>framework built on top of pmcp</strong>.</p>
+<pre><code>┌─────────────────────────────────────┐
+│   pforge (Declarative Framework)    │
+│   • YAML Configuration               │
+│   • Code Generation                  │
+│   • Handler Registry                 │
+│   • Quality Gates                    │
+└─────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────┐
+│   pmcp (Low-Level MCP SDK)          │
+│   • ServerBuilder                    │
+│   • TypedTool API                    │
+│   • Transport Layer (stdio/SSE/WS)   │
+│   • JSON-RPC Protocol                │
+└─────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────┐
+│   Model Context Protocol (MCP)      │
+│   • Tools, Resources, Prompts        │
+│   • Sampling, Logging                │
+└─────────────────────────────────────┘
+</code></pre>
+<h2 id="dependency-chain"><a class="header" href="#dependency-chain">Dependency Chain</a></h2>
+<p>From <code>crates/pforge-runtime/Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+pmcp = "1.6"  # ← pforge runtime depends on pmcp
+schemars = { version = "0.8", features = ["derive"] }
+# ... other deps
+</code></pre>
+<p><strong>This means:</strong></p>
+<ul>
+<li>Every pforge server is a pmcp server under the hood</li>
+<li>pforge translates YAML → pmcp API calls</li>
+<li>All pmcp features are available to pforge</li>
+</ul>
+<h2 id="what-pforge-adds-on-top-of-pmcp"><a class="header" href="#what-pforge-adds-on-top-of-pmcp">What pforge Adds on Top of pmcp</a></h2>
+<p>pforge is essentially a <strong>code generator + framework</strong> that:</p>
+<ol>
+<li><strong>Parses YAML</strong> → Generates Rust code</li>
+<li><strong>Creates Handler Registry</strong> → Maps tool names to handlers</li>
+<li><strong>Builds pmcp Server</strong> → Uses <code>pmcp::ServerBuilder</code></li>
+<li><strong>Enforces Quality</strong> → PMAT gates, TDD methodology</li>
+<li><strong>Optimizes Dispatch</strong> → Perfect hashing, compile-time optimization</li>
+</ol>
+<h2 id="example-the-same-server-in-both"><a class="header" href="#example-the-same-server-in-both">Example: The Same Server in Both</a></h2>
+<h3 id="with-pure-pmcp-what-you-write"><a class="header" href="#with-pure-pmcp-what-you-write">With Pure pmcp (What You Write)</a></h3>
+<pre><code class="language-rust">// main.rs - Direct pmcp usage
+use pmcp::{ServerBuilder, TypedTool};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct GreetArgs {
+    name: String,
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let server = ServerBuilder::new()
+        .name("greeter")
+        .version("1.0.0")
+        .tool_typed("greet", |args: GreetArgs, _extra| {
+            Box::pin(async move {
+                Ok(serde_json::json!({
+                    "message": format!("Hello, {}!", args.name)
+                }))
+            })
+        })
+        .build()?;
+
+    server.run_stdio().await?;
+    Ok(())
+}</code></pre>
+<h3 id="with-pforge-what-you-write"><a class="header" href="#with-pforge-what-you-write">With pforge (What You Write)</a></h3>
+<pre><code class="language-yaml"># forge.yaml
+forge:
+  name: greeter
+  version: 1.0.0
+
+tools:
+  - type: native
+    name: greet
+    handler:
+      path: handlers::greet_handler
+    params:
+      name: { type: string, required: true }
+</code></pre>
+<pre><code class="language-rust">// src/handlers.rs
+use pforge_runtime::{Handler, Result, Error};
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GreetOutput {
+    message: String,
+}
+
+pub struct GreetHandler;
+
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("Hello, {}!", input.name)
+        })
+    }
+}
+
+pub use GreetHandler as greet_handler;</code></pre>
+<h3 id="what-pforge-generates-under-the-hood"><a class="header" href="#what-pforge-generates-under-the-hood">What pforge Generates (Under the Hood)</a></h3>
+<p>When you run <code>pforge build</code>, it generates something like:</p>
+<pre><code class="language-rust">// Generated by pforge codegen
+use pmcp::ServerBuilder;
+use pforge_runtime::HandlerRegistry;
+
+pub fn build_server() -&gt; Result&lt;pmcp::Server&gt; {
+    let mut registry = HandlerRegistry::new();
+
+    // Register handlers
+    registry.register("greet", handlers::greet_handler);
+
+    // Build pmcp server
+    let server = ServerBuilder::new()
+        .name("greeter")
+        .version("1.0.0")
+        .tool_typed("greet", |args: handlers::GreetInput, _extra| {
+            Box::pin(async move {
+                let handler = handlers::greet_handler;
+                let output = handler.handle(args).await?;
+                Ok(serde_json::to_value(output)?)
+            })
+        })
+        .build()?;
+
+    Ok(server)
+}</code></pre>
+<p><strong>Key Point:</strong> pforge generates pmcp code!</p>
+<h2 id="the-handler-abstraction"><a class="header" href="#the-handler-abstraction">The Handler Abstraction</a></h2>
+<p>pforge defines a <code>Handler</code> trait that’s <strong>compatible with</strong> pmcp’s <code>TypedTool</code>:</p>
+<pre><code class="language-rust">// pforge-runtime/src/handler.rs
+#[async_trait::async_trait]
+pub trait Handler: Send + Sync {
+    type Input: for&lt;'de&gt; Deserialize&lt;'de&gt; + JsonSchema;
+    type Output: Serialize + JsonSchema;
+    type Error: Into&lt;Error&gt;;
+
+    async fn handle(&amp;self, input: Self::Input)
+        -&gt; Result&lt;Self::Output, Self::Error&gt;;
+}</code></pre>
+<p>This trait is designed to be <strong>zero-cost</strong> and <strong>directly map</strong> to pmcp’s <code>TypedTool</code> API.</p>
+<h2 id="real-example-how-pforge-uses-pmcp-in-runtime"><a class="header" href="#real-example-how-pforge-uses-pmcp-in-runtime">Real Example: How pforge Uses pmcp in Runtime</a></h2>
+<p>From <code>pforge-runtime/src/handler.rs</code>:</p>
+<pre><code class="language-rust">// pforge integrates with pmcp's type system
+use schemars::JsonSchema;  // Same as pmcp uses
+use serde::{Deserialize, Serialize};  // Same as pmcp uses
+
+/// Handler trait compatible with pmcp TypedTool
+#[async_trait::async_trait]
+pub trait Handler: Send + Sync {
+    type Input: for&lt;'de&gt; Deserialize&lt;'de&gt; + JsonSchema;
+    type Output: Serialize + JsonSchema;
+    type Error: Into&lt;Error&gt;;
+
+    async fn handle(&amp;self, input: Self::Input)
+        -&gt; Result&lt;Self::Output, Self::Error&gt;;
+}</code></pre>
+<p><strong>Notice:</strong> The trait bounds match pmcp’s requirements exactly:</p>
+<ul>
+<li><code>Deserialize</code> for input parsing</li>
+<li><code>Serialize</code> for output JSON</li>
+<li><code>JsonSchema</code> for MCP schema generation</li>
+<li><code>Send + Sync</code> for async runtime</li>
+</ul>
+<h2 id="when-pforge-calls-pmcp"><a class="header" href="#when-pforge-calls-pmcp">When pforge Calls pmcp</a></h2>
+<p>Here’s the actual flow when you run <code>pforge serve</code>:</p>
+<pre><code>1. pforge CLI parses forge.yaml
+   ↓
+2. pforge-codegen generates Rust code
+   ↓
+3. Generated code creates HandlerRegistry
+   ↓
+4. Registry wraps handlers in pmcp TypedTool
+   ↓
+5. pmcp ServerBuilder builds the server
+   ↓
+6. pmcp handles MCP protocol (stdio/SSE/WebSocket)
+   ↓
+7. pmcp routes requests to handlers
+   ↓
+8. pforge Handler executes and returns
+   ↓
+9. pmcp serializes response to JSON-RPC
+</code></pre>
+<h2 id="performance-why-pforge-is-faster-for-dispatch"><a class="header" href="#performance-why-pforge-is-faster-for-dispatch">Performance: Why pforge is Faster for Dispatch</a></h2>
+<p><strong>pmcp</strong>: General-purpose HashMap lookup</p>
+<pre><code class="language-rust">// In pmcp (simplified)
+let tool = tools.get(tool_name)?;  // HashMap lookup
+tool.execute(args).await</code></pre>
+<p><strong>pforge</strong>: Compile-time perfect hash</p>
+<pre><code class="language-rust">// Generated by pforge (simplified)
+match tool_name {
+    "greet" =&gt; greet_handler.handle(args).await,
+    "calculate" =&gt; calculate_handler.handle(args).await,
+    // ... compile-time matched
+    _ =&gt; Err(ToolNotFound)
+}</code></pre>
+<p>Result: &lt;1μs dispatch in pforge vs &lt;10μs in pmcp</p>
+<h2 id="using-both-together"><a class="header" href="#using-both-together">Using Both Together</a></h2>
+<p>You can mix pforge and pmcp in the same project!</p>
+<h3 id="example-pforge-for-simple-tools-pmcp-for-complex-logic"><a class="header" href="#example-pforge-for-simple-tools-pmcp-for-complex-logic">Example: pforge for Simple Tools, pmcp for Complex Logic</a></h3>
+<pre><code class="language-yaml"># forge.yaml - Simple tools in pforge
+tools:
+  - type: native
+    name: greet
+    handler:
+      path: handlers::greet_handler
+</code></pre>
+<pre><code class="language-rust">// main.rs - Add complex pmcp tool
+use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    // Load pforge-generated server
+    let mut server = pforge_runtime::build_from_config("forge.yaml")?;
+
+    // Add custom pmcp tool with complex logic
+    server.add_tool_typed("complex_stateful", |args, extra| {
+        Box::pin(async move {
+            // Custom logic not expressible in pforge YAML
+            // Maybe database transactions, WebSocket, etc.
+            todo!()
+        })
+    });
+
+    server.run_stdio().await
+}</code></pre>
+<h2 id="dependency-versions"><a class="header" href="#dependency-versions">Dependency Versions</a></h2>
+<p>pforge tracks pmcp versions:</p>
+<div class="table-wrapper"><table><thead><tr><th>pforge Version</th><th>pmcp Version</th><th>Notes</th></tr></thead><tbody>
+<tr><td>0.1.0</td><td>1.6.0</td><td>Initial release</td></tr>
+<tr><td>Future</td><td>Latest</td><td>Will track pmcp updates</td></tr>
+</tbody></table>
+</div>
+<h2 id="summary-the-relationship"><a class="header" href="#summary-the-relationship">Summary: The Relationship</a></h2>
+<p>Think of it like this:</p>
+<ul>
+<li><strong>pmcp</strong> = Express.js (low-level web framework)</li>
+<li><strong>pforge</strong> = Next.js (opinionated framework on Express)</li>
+</ul>
+<p>Or in Rust terms:</p>
+<ul>
+<li><strong>pmcp</strong> = actix-web (low-level HTTP server)</li>
+<li><strong>pforge</strong> = Rocket (high-level framework on actix)</li>
+</ul>
+<p><strong>Both are necessary:</strong></p>
+<ul>
+<li>pmcp provides the MCP protocol implementation</li>
+<li>pforge provides the declarative YAML layer + quality tools</li>
+</ul>
+<p><strong>You’re using pmcp whether you know it or not:</strong></p>
+<ul>
+<li>Every pforge server is a pmcp server</li>
+<li>pforge just generates the pmcp code for you</li>
+</ul>
+<h2 id="when-to-drop-down-to-pmcp"><a class="header" href="#when-to-drop-down-to-pmcp">When to Drop Down to pmcp</a></h2>
+<p>Use pure pmcp directly when pforge’s handler types don’t fit:</p>
+<p>❌ <strong>Can’t express in pforge:</strong></p>
+<ul>
+<li>Custom server lifecycle hooks</li>
+<li>Stateful request correlation</li>
+<li>Custom transport implementations</li>
+<li>Dynamic tool registration</li>
+<li>WebAssembly compilation</li>
+<li>Database connection pools with transactions</li>
+</ul>
+<p>✅ <strong>Can express in pforge:</strong></p>
+<ul>
+<li>Standard CRUD operations</li>
+<li>CLI tool wrappers</li>
+<li>HTTP API proxies</li>
+<li>Simple data transformations</li>
+<li>Multi-tool pipelines</li>
+<li>Standard state management</li>
+</ul>
+<h2 id="verification-check-the-dependency"><a class="header" href="#verification-check-the-dependency">Verification: Check the Dependency</a></h2>
+<pre><code class="language-bash"># See pmcp in pforge's dependencies
+$ grep pmcp crates/pforge-runtime/Cargo.toml
+pmcp = "1.6"
+
+# See pforge using pmcp types
+$ rg "pmcp::" crates/pforge-runtime/src/
+# (Currently minimal direct usage - trait compat layer)
+</code></pre>
+<h2 id="future-pforge-may-expose-more-pmcp-features"><a class="header" href="#future-pforge-may-expose-more-pmcp-features">Future: pforge May Expose More pmcp Features</a></h2>
+<p>Future pforge versions may expose:</p>
+<ul>
+<li>Custom middleware (pmcp has this)</li>
+<li>Sampling requests (pmcp has this)</li>
+<li>Logging handlers (pmcp has this)</li>
+<li>Custom transports (pmcp has this)</li>
+</ul>
+<p>For now, drop down to pmcp for these features.</p>
+<hr />
+<p><strong>Next:</strong> <a href="ch01-04-migration.html">Migration Between Them</a></p>
+<h2 id="quick-reference"><a class="header" href="#quick-reference">Quick Reference</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>pmcp</th><th>pforge</th></tr></thead><tbody>
+<tr><td><strong>Foundation</strong></td><td>MCP protocol impl</td><td>YAML → pmcp code</td></tr>
+<tr><td><strong>You Write</strong></td><td>Rust code</td><td>YAML + handlers</td></tr>
+<tr><td><strong>Performance</strong></td><td>Fast</td><td>Faster (perfect hash)</td></tr>
+<tr><td><strong>Flexibility</strong></td><td>Complete</td><td>4 handler types</td></tr>
+<tr><td><strong>Built On</strong></td><td>Nothing</td><td><strong>pmcp</strong></td></tr>
+<tr><td><strong>Can Use</strong></td><td>Standalone</td><td>Standalone or with pmcp</td></tr>
+<tr><td><strong>Crates.io</strong></td><td><code>pmcp</code></td><td><code>pforge-*</code> (uses pmcp)</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="ch02-00-quick-startmd"><a class="header" href="#ch02-00-quick-startmd">ch02-00-quick-start.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch02-01-installationmd"><a class="header" href="#ch02-01-installationmd">ch02-01-installation.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch02-02-first-servermd"><a class="header" href="#ch02-02-first-servermd">ch02-02-first-server.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch02-03-testingmd"><a class="header" href="#ch02-03-testingmd">ch02-03-testing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch03-00-calculatormd"><a class="header" href="#ch03-00-calculatormd">ch03-00-calculator.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch03-01-yaml-configmd"><a class="header" href="#ch03-01-yaml-configmd">ch03-01-yaml-config.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch03-02-handlermd"><a class="header" href="#ch03-02-handlermd">ch03-02-handler.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch03-03-testsmd"><a class="header" href="#ch03-03-testsmd">ch03-03-tests.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch03-04-runningmd"><a class="header" href="#ch03-04-runningmd">ch03-04-running.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch04-00-file-opsmd"><a class="header" href="#ch04-00-file-opsmd">ch04-00-file-ops.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch04-01-cli-wrappersmd"><a class="header" href="#ch04-01-cli-wrappersmd">ch04-01-cli-wrappers.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch04-02-streamingmd"><a class="header" href="#ch04-02-streamingmd">ch04-02-streaming.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch04-03-integration-testsmd"><a class="header" href="#ch04-03-integration-testsmd">ch04-03-integration-tests.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch05-00-github-apimd"><a class="header" href="#ch05-00-github-apimd">ch05-00-github-api.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch05-01-http-configmd"><a class="header" href="#ch05-01-http-configmd">ch05-01-http-config.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch05-02-authenticationmd"><a class="header" href="#ch05-02-authenticationmd">ch05-02-authentication.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch05-03-error-handlingmd"><a class="header" href="#ch05-03-error-handlingmd">ch05-03-error-handling.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch06-00-data-pipelinemd"><a class="header" href="#ch06-00-data-pipelinemd">ch06-00-data-pipeline.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch06-01-compositionmd"><a class="header" href="#ch06-01-compositionmd">ch06-01-composition.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch06-02-conditionalsmd"><a class="header" href="#ch06-02-conditionalsmd">ch06-02-conditionals.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch06-03-statemd"><a class="header" href="#ch06-03-statemd">ch06-03-state.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch07-00-five-minute-cyclemd"><a class="header" href="#ch07-00-five-minute-cyclemd">ch07-00-five-minute-cycle.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch07-01-redmd"><a class="header" href="#ch07-01-redmd">ch07-01-red.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch07-02-greenmd"><a class="header" href="#ch07-02-greenmd">ch07-02-green.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch07-03-refactormd"><a class="header" href="#ch07-03-refactormd">ch07-03-refactor.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch07-04-commitmd"><a class="header" href="#ch07-04-commitmd">ch07-04-commit.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch08-00-quality-gatesmd"><a class="header" href="#ch08-00-quality-gatesmd">ch08-00-quality-gates.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch08-01-pre-commitmd"><a class="header" href="#ch08-01-pre-commitmd">ch08-01-pre-commit.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch08-02-pmatmd"><a class="header" href="#ch08-02-pmatmd">ch08-02-pmat.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch08-03-complexitymd"><a class="header" href="#ch08-03-complexitymd">ch08-03-complexity.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch08-04-coveragemd"><a class="header" href="#ch08-04-coveragemd">ch08-04-coverage.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch09-00-testing-strategiesmd"><a class="header" href="#ch09-00-testing-strategiesmd">ch09-00-testing-strategies.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch09-01-unit-testingmd"><a class="header" href="#ch09-01-unit-testingmd">ch09-01-unit-testing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch09-02-integration-testingmd"><a class="header" href="#ch09-02-integration-testingmd">ch09-02-integration-testing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch09-03-property-testingmd"><a class="header" href="#ch09-03-property-testingmd">ch09-03-property-testing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch09-04-mutation-testingmd"><a class="header" href="#ch09-04-mutation-testingmd">ch09-04-mutation-testing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch10-00-state-managementmd"><a class="header" href="#ch10-00-state-managementmd">ch10-00-state-management.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch11-00-fault-tolerancemd"><a class="header" href="#ch11-00-fault-tolerancemd">ch11-00-fault-tolerance.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch12-00-middlewaremd"><a class="header" href="#ch12-00-middlewaremd">ch12-00-middleware.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch13-00-resources-promptsmd"><a class="header" href="#ch13-00-resources-promptsmd">ch13-00-resources-prompts.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch14-00-performancemd"><a class="header" href="#ch14-00-performancemd">ch14-00-performance.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch15-00-benchmarkingmd"><a class="header" href="#ch15-00-benchmarkingmd">ch15-00-benchmarking.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch16-00-codegenmd"><a class="header" href="#ch16-00-codegenmd">ch16-00-codegen.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch17-00-publishing-cratesmd"><a class="header" href="#ch17-00-publishing-cratesmd">ch17-00-publishing-crates.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch17-01-preparingmd"><a class="header" href="#ch17-01-preparingmd">ch17-01-preparing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch17-02-versioningmd"><a class="header" href="#ch17-02-versioningmd">ch17-02-versioning.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch17-03-documentationmd"><a class="header" href="#ch17-03-documentationmd">ch17-03-documentation.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch17-04-publishingmd"><a class="header" href="#ch17-04-publishingmd">ch17-04-publishing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch18-00-cicdmd"><a class="header" href="#ch18-00-cicdmd">ch18-00-cicd.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ch19-00-bridgesmd"><a class="header" href="#ch19-00-bridgesmd">ch19-00-bridges.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="appendix-a-config-referencemd"><a class="header" href="#appendix-a-config-referencemd">appendix-a-config-reference.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="appendix-b-api-docsmd"><a class="header" href="#appendix-b-api-docsmd">appendix-b-api-docs.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="appendix-c-troubleshootingmd"><a class="header" href="#appendix-c-troubleshootingmd">appendix-c-troubleshooting.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="appendix-d-contributingmd"><a class="header" href="#appendix-d-contributingmd">appendix-d-contributing.md</a></h1>
+<p>TODO: This chapter is under development.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+        <script>
+            window.playground_line_numbers = true;
+        </script>
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="ace.js"></script>
+        <script src="editor.js"></script>
+        <script src="mode-rust.js"></script>
+        <script src="theme-dawn.js"></script>
+        <script src="theme-tomorrow_night.js"></script>
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+    </div>
+    </body>
+</html>

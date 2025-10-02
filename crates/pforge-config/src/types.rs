@@ -35,9 +35,10 @@ pub enum TransportType {
     WebSocket,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum OptimizationLevel {
+    #[default]
     Debug,
     Release,
 }
@@ -149,7 +150,7 @@ pub struct Validation {
     pub max_length: Option<usize>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     Get,
@@ -180,9 +181,10 @@ pub struct PipelineStep {
     pub error_policy: ErrorPolicy,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorPolicy {
+    #[default]
     FailFast,
     Continue,
 }
@@ -229,16 +231,4 @@ pub enum StateBackend {
 
 fn default_transport() -> TransportType {
     TransportType::Stdio
-}
-
-impl Default for OptimizationLevel {
-    fn default() -> Self {
-        Self::Debug
-    }
-}
-
-impl Default for ErrorPolicy {
-    fn default() -> Self {
-        Self::FailFast
-    }
 }

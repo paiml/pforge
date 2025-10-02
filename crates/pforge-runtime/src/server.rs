@@ -26,7 +26,10 @@ impl McpServer {
             match tool {
                 pforge_config::ToolDef::Native { name, .. } => {
                     // Native handlers will be registered by generated code
-                    eprintln!("Note: Native handler '{}' requires handler implementation", name);
+                    eprintln!(
+                        "Note: Native handler '{}' requires handler implementation",
+                        name
+                    );
                 }
                 pforge_config::ToolDef::Cli {
                     name,
@@ -57,7 +60,9 @@ impl McpServer {
                     auth,
                     ..
                 } => {
-                    use crate::handlers::http::{AuthConfig as HttpAuthConfig, HttpHandler, HttpMethod as HandlerHttpMethod};
+                    use crate::handlers::http::{
+                        AuthConfig as HttpAuthConfig, HttpHandler, HttpMethod as HandlerHttpMethod,
+                    };
 
                     let handler_method = match method {
                         pforge_config::HttpMethod::Get => HandlerHttpMethod::Get,
@@ -68,11 +73,9 @@ impl McpServer {
                     };
 
                     let handler_auth = auth.as_ref().map(|a| match a {
-                        pforge_config::AuthConfig::Bearer { token } => {
-                            HttpAuthConfig::Bearer {
-                                token: token.clone(),
-                            }
-                        }
+                        pforge_config::AuthConfig::Bearer { token } => HttpAuthConfig::Bearer {
+                            token: token.clone(),
+                        },
                         pforge_config::AuthConfig::Basic { username, password } => {
                             HttpAuthConfig::Basic {
                                 username: username.clone(),
@@ -107,7 +110,10 @@ impl McpServer {
 
     /// Run the MCP server
     pub async fn run(&self) -> Result<()> {
-        eprintln!("Starting MCP server: {} v{}", self.config.forge.name, self.config.forge.version);
+        eprintln!(
+            "Starting MCP server: {} v{}",
+            self.config.forge.name, self.config.forge.version
+        );
         eprintln!("Transport: {:?}", self.config.forge.transport);
         eprintln!("Tools registered: {}", self.config.tools.len());
 
@@ -121,7 +127,7 @@ impl McpServer {
         eprintln!("Press Ctrl+C to exit");
 
         // Wait indefinitely (will be replaced with actual MCP loop)
-        tokio::signal::ctrl_c().await.map_err(|e| Error::Io(e))?;
+        tokio::signal::ctrl_c().await.map_err(Error::Io)?;
 
         eprintln!("\nShutting down...");
         Ok(())

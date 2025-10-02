@@ -1450,14 +1450,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "pforge-example-calculator"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pforge-runtime",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "pforge-integration-tests"
 version = "0.1.0"
 dependencies = [
  "pforge-config",
  "pforge-runtime",
+ "proptest",
  "serde",
  "serde_json",
  "serde_yaml",
+ "serde_yml",
  "tokio",
 ]
 

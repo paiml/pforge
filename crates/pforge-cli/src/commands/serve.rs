@@ -8,8 +8,7 @@ pub async fn execute(config_path: &str) -> Result<()> {
     println!("  Config: {}", config_path);
 
     // Parse configuration
-    let config = parse_config(Path::new(config_path))
-        .context("Failed to parse configuration")?;
+    let config = parse_config(Path::new(config_path)).context("Failed to parse configuration")?;
 
     println!("  Server: {} v{}", config.forge.name, config.forge.version);
     println!("  Transport: {:?}", config.forge.transport);
