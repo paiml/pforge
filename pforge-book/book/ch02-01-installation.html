@@ -158,8 +158,189 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch02-01-installationmd"><a class="header" href="#ch02-01-installationmd">ch02-01-installation.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<p>Installing pforge takes less than two minutes. You have two options: install from crates.io (recommended) or build from source.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Before installing pforge, ensure you have Rust installed:</p>
+<pre><code class="language-bash"># Check if Rust is installed
+rustc --version
+
+# If not installed, get it from rustup.rs
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+</code></pre>
+<p>You’ll need Rust 1.70 or later. pforge leverages modern Rust features for performance and safety.</p>
+<h2 id="option-1-install-from-cratesio-recommended"><a class="header" href="#option-1-install-from-cratesio-recommended">Option 1: Install from crates.io (Recommended)</a></h2>
+<p>The simplest installation method:</p>
+<pre><code class="language-bash">cargo install pforge-cli
+</code></pre>
+<p>This downloads the pre-built pforge CLI from crates.io and installs it to <code>~/.cargo/bin/pforge</code>.</p>
+<p>Expected output:</p>
+<pre><code>    Updating crates.io index
+  Downloaded pforge-cli v0.1.0
+  Downloaded 1 crate (45.2 KB) in 0.89s
+   Compiling pforge-cli v0.1.0
+    Finished release [optimized] target(s) in 1m 23s
+  Installing ~/.cargo/bin/pforge
+   Installed package `pforge-cli v0.1.0` (executable `pforge`)
+</code></pre>
+<p>Installation typically takes 1-2 minutes depending on your connection speed and CPU.</p>
+<h2 id="option-2-build-from-source"><a class="header" href="#option-2-build-from-source">Option 2: Build from Source</a></h2>
+<p>For the latest development version or to contribute:</p>
+<pre><code class="language-bash"># Clone the repository
+git clone https://github.com/paiml/pforge
+cd pforge
+
+# Build and install
+cargo install --path crates/pforge-cli
+
+# Or use the Makefile
+make install
+</code></pre>
+<p>Building from source gives you:</p>
+<ul>
+<li>Latest features not yet published to crates.io</li>
+<li>Ability to modify the source code</li>
+<li>Development environment for contributing</li>
+</ul>
+<p>Note: Source builds take longer (3-5 minutes) due to full dependency compilation.</p>
+<h2 id="verify-installation"><a class="header" href="#verify-installation">Verify Installation</a></h2>
+<p>Check that pforge is correctly installed:</p>
+<pre><code class="language-bash">pforge --version
+</code></pre>
+<p>Expected output:</p>
+<pre><code>pforge 0.1.0
+</code></pre>
+<p>Try the help command:</p>
+<pre><code class="language-bash">pforge --help
+</code></pre>
+<p>You should see:</p>
+<pre><code>pforge 0.1.0
+A declarative framework for building MCP servers
+
+USAGE:
+    pforge &lt;SUBCOMMAND&gt;
+
+SUBCOMMANDS:
+    new       Create a new pforge project
+    serve     Run an MCP server
+    build     Build a server binary
+    dev       Development mode with hot reload
+    test      Run server tests
+    help      Print this message or the help of the given subcommand(s)
+
+OPTIONS:
+    -h, --help       Print help information
+    -V, --version    Print version information
+</code></pre>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="command-not-found"><a class="header" href="#command-not-found">Command Not Found</a></h3>
+<p>If you see <code>command not found: pforge</code>, ensure <code>~/.cargo/bin</code> is in your PATH:</p>
+<pre><code class="language-bash"># Check if it's in PATH
+echo $PATH | grep -q ".cargo/bin" &amp;&amp; echo "Found" || echo "Not found"
+
+# Add to PATH (add this to ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Reload your shell
+source ~/.bashrc  # or source ~/.zshrc
+</code></pre>
+<h3 id="compilation-errors"><a class="header" href="#compilation-errors">Compilation Errors</a></h3>
+<p>If installation fails with compilation errors:</p>
+<ol>
+<li>Update Rust to the latest stable version:</li>
+</ol>
+<pre><code class="language-bash">rustup update stable
+rustup default stable
+</code></pre>
+<ol start="2">
+<li>Clear the cargo cache and retry:</li>
+</ol>
+<pre><code class="language-bash">cargo clean
+cargo install pforge-cli --force
+</code></pre>
+<ol start="3">
+<li>Check for system dependencies (Linux):</li>
+</ol>
+<pre><code class="language-bash"># Ubuntu/Debian
+sudo apt-get install build-essential pkg-config libssl-dev
+
+# Fedora/RHEL
+sudo dnf install gcc pkg-config openssl-devel
+</code></pre>
+<h3 id="network-issues"><a class="header" href="#network-issues">Network Issues</a></h3>
+<p>If crates.io download fails:</p>
+<ol>
+<li>Check your internet connection</li>
+<li>Try using a mirror or proxy</li>
+<li>Build from source as a fallback</li>
+</ol>
+<h2 id="platform-specific-notes"><a class="header" href="#platform-specific-notes">Platform-Specific Notes</a></h2>
+<h3 id="macos"><a class="header" href="#macos">macOS</a></h3>
+<p>pforge works out of the box on macOS 10.15 or later. For Apple Silicon (M1/M2):</p>
+<pre><code class="language-bash"># Verify architecture
+uname -m  # Should show arm64
+
+# Install normally
+cargo install pforge-cli
+</code></pre>
+<h3 id="linux"><a class="header" href="#linux">Linux</a></h3>
+<p>Tested on:</p>
+<ul>
+<li>Ubuntu 20.04+ (x86_64, ARM64)</li>
+<li>Debian 11+</li>
+<li>Fedora 35+</li>
+<li>Arch Linux (latest)</li>
+</ul>
+<p>Ensure you have a C compiler (gcc or clang) installed.</p>
+<h3 id="windows"><a class="header" href="#windows">Windows</a></h3>
+<p>pforge supports Windows 10 and later with either:</p>
+<ul>
+<li>MSVC toolchain (recommended)</li>
+<li>GNU toolchain (mingw-w64)</li>
+</ul>
+<pre><code class="language-powershell"># Install using PowerShell
+cargo install pforge-cli
+
+# Verify
+pforge --version
+</code></pre>
+<p>Note: Some examples use Unix-style paths. Windows users should adjust accordingly.</p>
+<h2 id="development-dependencies-optional"><a class="header" href="#development-dependencies-optional">Development Dependencies (Optional)</a></h2>
+<p>For the full development experience with quality gates:</p>
+<pre><code class="language-bash"># Install cargo-watch for hot reload
+cargo install cargo-watch
+
+# Install cargo-tarpaulin for coverage (Linux only)
+cargo install cargo-tarpaulin
+
+# Install cargo-mutants for mutation testing
+cargo install cargo-mutants
+
+# Install pmat for quality analysis
+cargo install pmat
+</code></pre>
+<p>These are optional for basic usage but required if you plan to:</p>
+<ul>
+<li>Run quality gates (<code>make quality-gate</code>)</li>
+<li>Use watch mode (<code>pforge dev --watch</code>)</li>
+<li>Measure test coverage</li>
+<li>Perform mutation testing</li>
+</ul>
+<h2 id="updating-pforge"><a class="header" href="#updating-pforge">Updating pforge</a></h2>
+<p>To update to the latest version:</p>
+<pre><code class="language-bash">cargo install pforge-cli --force
+</code></pre>
+<p>The <code>--force</code> flag reinstalls even if the current version is up to date.</p>
+<p>Check release notes at: https://github.com/paiml/pforge/releases</p>
+<h2 id="uninstalling"><a class="header" href="#uninstalling">Uninstalling</a></h2>
+<p>To remove pforge:</p>
+<pre><code class="language-bash">cargo uninstall pforge-cli
+</code></pre>
+<p>This removes the binary from <code>~/.cargo/bin/pforge</code>.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that pforge is installed, let’s create your first server.</p>
+<hr />
+<p>Next: <a href="ch02-02-first-server.html">Your First Server</a></p>
 
                     </main>
 

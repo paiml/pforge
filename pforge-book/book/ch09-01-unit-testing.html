@@ -158,8 +158,742 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch09-01-unit-testingmd"><a class="header" href="#ch09-01-unit-testingmd">ch09-01-unit-testing.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="unit-testing"><a class="header" href="#unit-testing">Unit Testing</a></h1>
+<p>Unit tests are the foundation of pforge’s testing pyramid. With <strong>74 fast, focused tests</strong> distributed across all crates, unit testing ensures individual components work correctly in isolation before integration. Each unit test completes in under 1 millisecond, enabling rapid feedback during development.</p>
+<h2 id="unit-test-philosophy"><a class="header" href="#unit-test-philosophy">Unit Test Philosophy</a></h2>
+<p>pforge’s unit testing follows five core principles:</p>
+<ol>
+<li><strong>Fast</strong>: &lt;1ms per test for instant feedback</li>
+<li><strong>Focused</strong>: Test one behavior per test function</li>
+<li><strong>Isolated</strong>: No dependencies on external state or other tests</li>
+<li><strong>Deterministic</strong>: Same input always produces same output</li>
+<li><strong>Clear</strong>: Test name clearly describes what’s being tested</li>
+</ol>
+<p>These principles enable the 5-minute TDD cycle that drives pforge development.</p>
+<h2 id="test-organization"><a class="header" href="#test-organization">Test Organization</a></h2>
+<p>Unit tests are co-located with source code using Rust’s <code>#[cfg(test)]</code> module pattern:</p>
+<pre><code class="language-rust">// crates/pforge-runtime/src/registry.rs
+
+pub struct HandlerRegistry {
+    handlers: FxHashMap&lt;String, Arc&lt;dyn HandlerEntry&gt;&gt;,
+}
+
+impl HandlerRegistry {
+    pub fn new() -&gt; Self {
+        Self {
+            handlers: FxHashMap::default(),
+        }
+    }
+
+    pub fn register&lt;H&gt;(&amp;mut self, name: impl Into&lt;String&gt;, handler: H)
+    where
+        H: Handler,
+        H::Input: 'static,
+        H::Output: 'static,
+    {
+        let entry = HandlerEntryImpl::new(handler);
+        self.handlers.insert(name.into(), Arc::new(entry));
+    }
+
+    pub fn has_handler(&amp;self, name: &amp;str) -&gt; bool {
+        self.handlers.contains_key(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_new() {
+        let registry = HandlerRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_registry_register() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test_handler", TestHandler);
+
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 1);
+        assert!(registry.has_handler("test_handler"));
+        assert!(!registry.has_handler("nonexistent"));
+    }
+}</code></pre>
+<h3 id="benefits-of-inline-tests"><a class="header" href="#benefits-of-inline-tests">Benefits of Inline Tests</a></h3>
+<ul>
+<li><strong>Proximity</strong>: Tests are next to the code they test</li>
+<li><strong>Visibility</strong>: Easy to see what’s tested and what’s missing</li>
+<li><strong>Refactoring</strong>: Tests update naturally when code changes</li>
+<li><strong>Compilation</strong>: Tests only compile in test mode (no production overhead)</li>
+</ul>
+<h2 id="test-naming-conventions"><a class="header" href="#test-naming-conventions">Test Naming Conventions</a></h2>
+<p>pforge uses descriptive test names that form readable sentences:</p>
+<pre><code class="language-rust">#[test]
+fn test_registry_returns_error_for_unknown_tool() {
+    // Clear intent: what's being tested and expected outcome
+}
+
+#[test]
+fn test_config_validation_rejects_duplicate_tool_names() {
+    // Describes both the action and expected result
+}
+
+#[test]
+fn test_handler_dispatch_preserves_async_context() {
+    // Documents important behavior
+}</code></pre>
+<h3 id="naming-pattern"><a class="header" href="#naming-pattern">Naming Pattern</a></h3>
+<p><strong>Format</strong>: <code>test_&lt;component&gt;_&lt;behavior&gt;_&lt;condition&gt;</code></p>
+<p>Examples:</p>
+<ul>
+<li><code>test_registry_new_creates_empty_registry</code></li>
+<li><code>test_validator_rejects_invalid_handler_paths</code></li>
+<li><code>test_codegen_generates_correct_struct_for_native_tool</code></li>
+</ul>
+<h2 id="common-unit-testing-patterns"><a class="header" href="#common-unit-testing-patterns">Common Unit Testing Patterns</a></h2>
+<h3 id="testing-state-transitions"><a class="header" href="#testing-state-transitions">Testing State Transitions</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_registry_tracks_handler_count_correctly() {
+    let mut registry = HandlerRegistry::new();
+
+    // Initial state
+    assert_eq!(registry.len(), 0);
+    assert!(registry.is_empty());
+
+    // After first registration
+    registry.register("handler1", TestHandler);
+    assert_eq!(registry.len(), 1);
+    assert!(!registry.is_empty());
+
+    // After second registration
+    registry.register("handler2", TestHandler);
+    assert_eq!(registry.len(), 2);
+}</code></pre>
+<h3 id="testing-error-conditions"><a class="header" href="#testing-error-conditions">Testing Error Conditions</a></h3>
+<p>All error paths must be tested explicitly:</p>
+<pre><code class="language-rust">#[test]
+fn test_validator_rejects_duplicate_tool_names() {
+    let config = ForgeConfig {
+        forge: create_test_metadata(),
+        tools: vec![
+            create_native_tool("duplicate"),
+            create_native_tool("duplicate"),  // Intentional duplicate
+        ],
+        resources: vec![],
+        prompts: vec![],
+        state: None,
+    };
+
+    let result = validate_config(&amp;config);
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        ConfigError::DuplicateToolName(_)
+    ));
+}
+
+#[test]
+fn test_validator_rejects_invalid_handler_paths() {
+    let config = create_config_with_handler_path("invalid_path");
+
+    let result = validate_config(&amp;config);
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ConfigError::InvalidHandlerPath(msg) =&gt; {
+            assert!(msg.contains("expected format: module::function"));
+        }
+        _ =&gt; panic!("Expected InvalidHandlerPath error"),
+    }
+}</code></pre>
+<h3 id="testing-boundary-conditions"><a class="header" href="#testing-boundary-conditions">Testing Boundary Conditions</a></h3>
+<p>Test edge cases explicitly:</p>
+<pre><code class="language-rust">#[test]
+fn test_registry_handles_empty_state() {
+    let registry = HandlerRegistry::new();
+    assert_eq!(registry.len(), 0);
+    assert!(registry.is_empty());
+}
+
+#[test]
+fn test_config_validation_accepts_zero_tools() {
+    let config = ForgeConfig {
+        forge: create_test_metadata(),
+        tools: vec![],  // Empty tools list
+        resources: vec![],
+        prompts: vec![],
+        state: None,
+    };
+
+    let result = validate_config(&amp;config);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_handler_path_validation_rejects_empty_string() {
+    let result = validate_handler_path("");
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        ConfigError::InvalidHandlerPath(_)
+    ));
+}</code></pre>
+<h3 id="testing-async-functions"><a class="header" href="#testing-async-functions">Testing Async Functions</a></h3>
+<p>Use <code>#[tokio::test]</code> for async unit tests:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_registry_dispatch_succeeds_for_registered_handler() {
+    let mut registry = HandlerRegistry::new();
+    registry.register("double", DoubleHandler);
+
+    let input = TestInput { value: 21 };
+    let input_bytes = serde_json::to_vec(&amp;input).unwrap();
+
+    let result = registry.dispatch("double", &amp;input_bytes).await;
+
+    assert!(result.is_ok());
+    let output: TestOutput = serde_json::from_slice(&amp;result.unwrap()).unwrap();
+    assert_eq!(output.result, 42);
+}
+
+#[tokio::test]
+async fn test_registry_dispatch_returns_tool_not_found_error() {
+    let registry = HandlerRegistry::new();
+
+    let result = registry.dispatch("nonexistent", b"{}").await;
+
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        Error::ToolNotFound(_)
+    ));
+}</code></pre>
+<h3 id="testing-with-test-fixtures"><a class="header" href="#testing-with-test-fixtures">Testing With Test Fixtures</a></h3>
+<p>Use helper functions to reduce boilerplate:</p>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Test fixtures
+    fn create_test_metadata() -&gt; ForgeMetadata {
+        ForgeMetadata {
+            name: "test_server".to_string(),
+            version: "1.0.0".to_string(),
+            transport: TransportType::Stdio,
+            optimization: OptimizationLevel::Debug,
+        }
+    }
+
+    fn create_native_tool(name: &amp;str) -&gt; ToolDef {
+        ToolDef::Native {
+            name: name.to_string(),
+            description: format!("Test tool: {}", name),
+            handler: HandlerRef {
+                path: format!("handlers::{}", name),
+                inline: None,
+            },
+            params: ParamSchema {
+                fields: HashMap::new(),
+            },
+            timeout_ms: None,
+        }
+    }
+
+    fn create_valid_config() -&gt; ForgeConfig {
+        ForgeConfig {
+            forge: create_test_metadata(),
+            tools: vec![create_native_tool("test_tool")],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        }
+    }
+
+    #[test]
+    fn test_with_fixtures() {
+        let config = create_valid_config();
+        assert!(validate_config(&amp;config).is_ok());
+    }
+}</code></pre>
+<h2 id="real-unit-test-examples"><a class="header" href="#real-unit-test-examples">Real Unit Test Examples</a></h2>
+<h3 id="example-1-handler-registry-tests"><a class="header" href="#example-1-handler-registry-tests">Example 1: Handler Registry Tests</a></h3>
+<p>From <code>crates/pforge-runtime/src/registry.rs</code>:</p>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    struct TestInput {
+        value: i32,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+    struct TestOutput {
+        result: i32,
+    }
+
+    struct TestHandler;
+
+    #[async_trait]
+    impl crate::Handler for TestHandler {
+        type Input = TestInput;
+        type Output = TestOutput;
+        type Error = crate::Error;
+
+        async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+            Ok(TestOutput {
+                result: input.value * 2,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registry_new() {
+        let registry = HandlerRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_registry_register() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 1);
+        assert!(registry.has_handler("test"));
+        assert!(!registry.has_handler("nonexistent"));
+    }
+
+    #[tokio::test]
+    async fn test_registry_dispatch() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        let input = TestInput { value: 21 };
+        let input_bytes = serde_json::to_vec(&amp;input).unwrap();
+
+        let result = registry.dispatch("test", &amp;input_bytes).await;
+        assert!(result.is_ok());
+
+        let output: TestOutput = serde_json::from_slice(&amp;result.unwrap()).unwrap();
+        assert_eq!(output.result, 42);
+    }
+
+    #[tokio::test]
+    async fn test_registry_dispatch_missing_tool() {
+        let registry = HandlerRegistry::new();
+
+        let result = registry.dispatch("nonexistent", b"{}").await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::ToolNotFound(name) =&gt; {
+                assert_eq!(name, "nonexistent");
+            }
+            _ =&gt; panic!("Expected ToolNotFound error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_registry_get_schemas() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        let input_schema = registry.get_input_schema("test");
+        assert!(input_schema.is_some());
+
+        let output_schema = registry.get_output_schema("test");
+        assert!(output_schema.is_some());
+
+        let missing_schema = registry.get_input_schema("nonexistent");
+        assert!(missing_schema.is_none());
+    }
+}</code></pre>
+<h3 id="example-2-config-validation-tests"><a class="header" href="#example-2-config-validation-tests">Example 2: Config Validation Tests</a></h3>
+<p>From <code>crates/pforge-config/src/validator.rs</code>:</p>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_config_success() {
+        let config = ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: OptimizationLevel::Debug,
+            },
+            tools: vec![ToolDef::Native {
+                name: "tool1".to_string(),
+                description: "Tool 1".to_string(),
+                handler: HandlerRef {
+                    path: "module::handler".to_string(),
+                    inline: None,
+                },
+                params: ParamSchema {
+                    fields: HashMap::new(),
+                },
+                timeout_ms: None,
+            }],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        assert!(validate_config(&amp;config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_config_duplicate_tools() {
+        let config = ForgeConfig {
+            forge: create_test_metadata(),
+            tools: vec![
+                create_tool("duplicate"),
+                create_tool("duplicate"),
+            ],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = validate_config(&amp;config);
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ConfigError::DuplicateToolName(_)
+        ));
+    }
+
+    #[test]
+    fn test_validate_handler_path_empty() {
+        let result = validate_handler_path("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_handler_path_no_separator() {
+        let result = validate_handler_path("invalid_path");
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::InvalidHandlerPath(msg) =&gt; {
+                assert!(msg.contains("expected format: module::function"));
+            }
+            _ =&gt; panic!("Wrong error type"),
+        }
+    }
+
+    #[test]
+    fn test_validate_handler_path_valid() {
+        assert!(validate_handler_path("module::function").is_ok());
+        assert!(validate_handler_path("crate::module::function").is_ok());
+    }
+}</code></pre>
+<h3 id="example-3-code-generation-tests"><a class="header" href="#example-3-code-generation-tests">Example 3: Code Generation Tests</a></h3>
+<p>From <code>crates/pforge-codegen/src/lib.rs</code>:</p>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_config() -&gt; ForgeConfig {
+        ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test_server".to_string(),
+                version: "1.0.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: OptimizationLevel::Debug,
+            },
+            tools: vec![ToolDef::Native {
+                name: "test_tool".to_string(),
+                description: "Test tool".to_string(),
+                handler: HandlerRef {
+                    path: "handlers::test_handler".to_string(),
+                    inline: None,
+                },
+                params: ParamSchema {
+                    fields: {
+                        let mut map = HashMap::new();
+                        map.insert("input".to_string(), ParamType::Simple(SimpleType::String));
+                        map
+                    },
+                },
+                timeout_ms: None,
+            }],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        }
+    }
+
+    #[test]
+    fn test_generate_all() {
+        let config = create_test_config();
+        let result = generate_all(&amp;config);
+
+        assert!(result.is_ok());
+        let code = result.unwrap();
+
+        // Verify generated header
+        assert!(code.contains("// Auto-generated by pforge"));
+        assert!(code.contains("// DO NOT EDIT"));
+
+        // Verify imports
+        assert!(code.contains("use pforge_runtime::*"));
+        assert!(code.contains("use serde::{Deserialize, Serialize}"));
+        assert!(code.contains("use schemars::JsonSchema"));
+
+        // Verify param struct generation
+        assert!(code.contains("pub struct TestToolParams"));
+
+        // Verify registration function
+        assert!(code.contains("pub fn register_handlers"));
+    }
+
+    #[test]
+    fn test_generate_all_empty_tools() {
+        let config = ForgeConfig {
+            forge: create_test_metadata(),
+            tools: vec![],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = generate_all(&amp;config);
+        assert!(result.is_ok());
+
+        let code = result.unwrap();
+        assert!(code.contains("pub fn register_handlers"));
+    }
+
+    #[test]
+    fn test_write_generated_code() {
+        let config = create_test_config();
+        let temp_dir = std::env::temp_dir();
+        let output_path = temp_dir.join("test_generated.rs");
+
+        let result = write_generated_code(&amp;config, &amp;output_path);
+        assert!(result.is_ok());
+
+        // Verify file exists
+        assert!(output_path.exists());
+
+        // Verify content
+        let content = std::fs::read_to_string(&amp;output_path).unwrap();
+        assert!(content.contains("pub struct TestToolParams"));
+
+        // Cleanup
+        std::fs::remove_file(&amp;output_path).ok();
+    }
+
+    #[test]
+    fn test_write_generated_code_invalid_path() {
+        let config = create_test_config();
+        let invalid_path = Path::new("/nonexistent/directory/test.rs");
+
+        let result = write_generated_code(&amp;config, invalid_path);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), CodegenError::IoError(_, _)));
+    }
+}</code></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<h3 id="keep-tests-fast"><a class="header" href="#keep-tests-fast">Keep Tests Fast</a></h3>
+<pre><code class="language-rust">// Good: Fast, focused test (&lt;1ms)
+#[test]
+fn test_config_has_unique_tool_names() {
+    let mut names = HashSet::new();
+    for tool in config.tools {
+        assert!(names.insert(tool.name()));
+    }
+}
+
+// Bad: Slow test (&gt;10ms) - move to integration test
+#[test]
+fn test_full_server_startup() {
+    // This belongs in integration tests, not unit tests
+    let server = Server::new(config);
+    server.start().await;
+    // ... many operations ...
+}</code></pre>
+<h3 id="avoid-io-in-unit-tests"><a class="header" href="#avoid-io-in-unit-tests">Avoid I/O in Unit Tests</a></h3>
+<pre><code class="language-rust">// Good: No I/O, fast
+#[test]
+fn test_serialization() {
+    let config = create_test_config();
+    let yaml = serde_yml::to_string(&amp;config).unwrap();
+    assert!(yaml.contains("test_server"));
+}
+
+// Bad: File I/O slows down tests
+#[test]
+fn test_config_from_file() {
+    let config = load_config_from_file("test.yaml");  // Slow!
+    assert!(config.is_ok());
+}</code></pre>
+<h2 id="test-coverage"><a class="header" href="#test-coverage">Test Coverage</a></h2>
+<p>pforge enforces ≥80% line coverage. View coverage with:</p>
+<pre><code class="language-bash"># Generate coverage report
+make coverage
+
+# View HTML report
+make coverage-open
+</code></pre>
+<h3 id="ensuring-coverage"><a class="header" href="#ensuring-coverage">Ensuring Coverage</a></h3>
+<pre><code class="language-rust">// Cover all match arms
+#[test]
+fn test_error_display() {
+    let errors = vec![
+        Error::ToolNotFound("test".to_string()),
+        Error::InvalidConfig("test".to_string()),
+        Error::Validation("test".to_string()),
+        Error::Handler("test".to_string()),
+        Error::Timeout("test".to_string()),
+    ];
+
+    for error in errors {
+        let msg = error.to_string();
+        assert!(!msg.is_empty());
+    }
+}
+
+// Cover all enum variants
+#[test]
+fn test_transport_serialization() {
+    let transports = vec![
+        TransportType::Stdio,
+        TransportType::Sse,
+        TransportType::WebSocket,
+    ];
+
+    for transport in transports {
+        let yaml = serde_yml::to_string(&amp;transport).unwrap();
+        let parsed: TransportType = serde_yml::from_str(&amp;yaml).unwrap();
+        assert_eq!(transport, parsed);
+    }
+}</code></pre>
+<h2 id="running-unit-tests"><a class="header" href="#running-unit-tests">Running Unit Tests</a></h2>
+<h3 id="quick-commands"><a class="header" href="#quick-commands">Quick Commands</a></h3>
+<pre><code class="language-bash"># Run all unit tests
+cargo test --lib
+
+# Run specific crate's unit tests
+cargo test --lib -p pforge-runtime
+
+# Run specific test
+cargo test test_registry_new
+
+# Run with output
+cargo test --lib -- --nocapture
+
+# Run with threads for debugging
+cargo test --lib -- --test-threads=1
+</code></pre>
+<h3 id="watch-mode"><a class="header" href="#watch-mode">Watch Mode</a></h3>
+<p>For TDD, use watch mode:</p>
+<pre><code class="language-bash"># Auto-run tests on file changes
+make watch
+
+# Or with cargo-watch
+cargo watch -x 'test --lib --quiet' -x 'clippy --quiet'
+</code></pre>
+<h2 id="best-practices-summary"><a class="header" href="#best-practices-summary">Best Practices Summary</a></h2>
+<ol>
+<li><strong>Keep tests fast</strong>: Target &lt;1ms per test</li>
+<li><strong>Test one thing</strong>: Single behavior per test</li>
+<li><strong>Use descriptive names</strong>: <code>test_component_behavior_condition</code></li>
+<li><strong>Test error paths</strong>: Every error variant needs a test</li>
+<li><strong>Avoid I/O</strong>: No file/network operations in unit tests</li>
+<li><strong>Use fixtures</strong>: Helper functions reduce boilerplate</li>
+<li><strong>Test boundaries</strong>: Empty, zero, max values</li>
+<li><strong>Isolate tests</strong>: No shared state between tests</li>
+<li><strong>Make tests readable</strong>: Clear setup, action, assertion</li>
+<li><strong>Maintain coverage</strong>: Keep ≥80% line coverage</li>
+</ol>
+<h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common Pitfalls</a></h2>
+<h3 id="avoid-test-dependencies"><a class="header" href="#avoid-test-dependencies">Avoid Test Dependencies</a></h3>
+<pre><code class="language-rust">// Bad: Tests depend on each other
+static mut COUNTER: i32 = 0;
+
+#[test]
+fn test_one() {
+    unsafe { COUNTER += 1; }
+    assert_eq!(unsafe { COUNTER }, 1);  // Fails if run out of order!
+}
+
+// Good: Each test is independent
+#[test]
+fn test_one() {
+    let counter = 0;
+    let result = counter + 1;
+    assert_eq!(result, 1);
+}</code></pre>
+<h3 id="avoid-unwrap-in-tests"><a class="header" href="#avoid-unwrap-in-tests">Avoid Unwrap in Tests</a></h3>
+<pre><code class="language-rust">// Bad: Unwrap hides error details
+#[test]
+fn test_parsing() {
+    let config = parse_config(yaml).unwrap();  // What error occurred?
+    assert_eq!(config.name, "test");
+}
+
+// Good: Explicit error handling
+#[test]
+fn test_parsing() {
+    let config = parse_config(yaml)
+        .expect("Failed to parse valid config");
+    assert_eq!(config.name, "test");
+}
+
+// Even better: Test the Result
+#[test]
+fn test_parsing() {
+    let result = parse_config(yaml);
+    assert!(result.is_ok(), "Parse failed: {:?}", result.unwrap_err());
+    assert_eq!(result.unwrap().name, "test");
+}</code></pre>
+<h3 id="test-negative-cases"><a class="header" href="#test-negative-cases">Test Negative Cases</a></h3>
+<pre><code class="language-rust">// Incomplete: Only tests happy path
+#[test]
+fn test_validate_config() {
+    let config = create_valid_config();
+    assert!(validate_config(&amp;config).is_ok());
+}
+
+// Complete: Tests both success and failure
+#[test]
+fn test_validate_config_success() {
+    let config = create_valid_config();
+    assert!(validate_config(&amp;config).is_ok());
+}
+
+#[test]
+fn test_validate_config_rejects_duplicates() {
+    let config = create_config_with_duplicates();
+    assert!(validate_config(&amp;config).is_err());
+}
+
+#[test]
+fn test_validate_config_rejects_invalid_paths() {
+    let config = create_config_with_invalid_path();
+    assert!(validate_config(&amp;config).is_err());
+}</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Unit tests form the foundation of pforge’s quality assurance:</p>
+<ul>
+<li><strong>74 fast tests</strong> distributed across all crates</li>
+<li><strong>&lt;1ms per test</strong> enabling rapid TDD cycles</li>
+<li><strong>Co-located</strong> with source code for easy maintenance</li>
+<li><strong>Comprehensive coverage</strong> of all error paths</li>
+<li><strong>Part of quality gates</strong> blocking commits on failure</li>
+</ul>
+<p>Well-written unit tests provide instant feedback, document expected behavior, and catch regressions before they reach production. Combined with integration tests (Chapter 9.2), property-based tests (Chapter 9.3), and mutation testing (Chapter 9.4), they ensure pforge maintains the highest quality standards.</p>
 
                     </main>
 

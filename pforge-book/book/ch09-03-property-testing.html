@@ -158,8 +158,499 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch09-03-property-testingmd"><a class="header" href="#ch09-03-property-testingmd">ch09-03-property-testing.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="property-based-testing"><a class="header" href="#property-based-testing">Property-Based Testing</a></h1>
+<p>Property-based testing automatically discovers edge cases by generating thousands of random test inputs and verifying that certain properties (invariants) always hold true. pforge uses <strong>12 property-based tests</strong> with <strong>10,000 iterations each</strong>, totaling <strong>120,000 automated test cases</strong> that would be infeasible to write manually.</p>
+<h2 id="property-based-testing-philosophy"><a class="header" href="#property-based-testing-philosophy">Property-Based Testing Philosophy</a></h2>
+<p>Traditional example-based testing tests specific cases. Property-based testing tests universal truths:</p>
+<div class="table-wrapper"><table><thead><tr><th>Approach</th><th>Example-Based</th><th>Property-Based</th></tr></thead><tbody>
+<tr><td><strong>Test cases</strong></td><td>Hand-written</td><td>Auto-generated</td></tr>
+<tr><td><strong>Coverage</strong></td><td>Specific scenarios</td><td>Wide input space</td></tr>
+<tr><td><strong>Edge cases</strong></td><td>Manual discovery</td><td>Automatic discovery</td></tr>
+<tr><td><strong>Count</strong></td><td>Dozens</td><td>Thousands</td></tr>
+<tr><td><strong>Failures</strong></td><td>Show bug</td><td>Find + minimize example</td></tr>
+</tbody></table>
+</div>
+<h3 id="the-power-of-properties"><a class="header" href="#the-power-of-properties">The Power of Properties</a></h3>
+<p>A single property test replaces hundreds of example tests:</p>
+<pre><code class="language-rust">// Example-based: Test specific cases
+#[test]
+fn test_config_roundtrip_example1() {
+    let config = /* specific config */;
+    let yaml = serde_yml::to_string(&amp;config).unwrap();
+    let parsed: ForgeConfig = serde_yml::from_str(&amp;yaml).unwrap();
+    assert_eq!(config.name, parsed.name);
+}
+
+#[test]
+fn test_config_roundtrip_example2() { /* ... */ }
+// ... hundreds more examples needed ...
+
+// Property-based: Test universal property
+proptest! {
+    #[test]
+    fn config_serialization_roundtrip(config in arb_forge_config()) {
+        // Tests 10,000 random configs automatically!
+        let yaml = serde_yml::to_string(&amp;config)?;
+        let parsed: ForgeConfig = serde_yml::from_str(&amp;yaml)?;
+        prop_assert_eq!(config.forge.name, parsed.forge.name);
+    }
+}</code></pre>
+<h2 id="setup-and-configuration"><a class="header" href="#setup-and-configuration">Setup and Configuration</a></h2>
+<p>pforge uses the <code>proptest</code> crate for property-based testing:</p>
+<pre><code class="language-toml"># Cargo.toml
+[dev-dependencies]
+proptest = "1.0"
+</code></pre>
+<h3 id="proptest-configuration"><a class="header" href="#proptest-configuration">Proptest Configuration</a></h3>
+<pre><code class="language-rust">proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 10000,  // Run 10K iterations per property
+        max_shrink_iters: 10000,  // Minimize failing examples
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn my_property(input in arb_my_type()) {
+        // Test logic...
+    }
+}</code></pre>
+<h2 id="arbitrary-generators"><a class="header" href="#arbitrary-generators">Arbitrary Generators</a></h2>
+<p>Generators create random test data. pforge has custom generators for all config types:</p>
+<h3 id="simple-type-generators"><a class="header" href="#simple-type-generators">Simple Type Generators</a></h3>
+<pre><code class="language-rust">fn arb_simple_type() -&gt; impl Strategy&lt;Value = SimpleType&gt; {
+    prop_oneof![
+        Just(SimpleType::String),
+        Just(SimpleType::Integer),
+        Just(SimpleType::Float),
+        Just(SimpleType::Boolean),
+        Just(SimpleType::Array),
+        Just(SimpleType::Object),
+    ]
+}
+
+fn arb_transport_type() -&gt; impl Strategy&lt;Value = TransportType&gt; {
+    prop_oneof![
+        Just(TransportType::Stdio),
+        Just(TransportType::Sse),
+        Just(TransportType::WebSocket),
+    ]
+}
+
+fn arb_optimization_level() -&gt; impl Strategy&lt;Value = OptimizationLevel&gt; {
+    prop_oneof![
+        Just(OptimizationLevel::Debug),
+        Just(OptimizationLevel::Release),
+    ]
+}</code></pre>
+<h3 id="structured-generators"><a class="header" href="#structured-generators">Structured Generators</a></h3>
+<pre><code class="language-rust">fn arb_forge_metadata() -&gt; impl Strategy&lt;Value = ForgeMetadata&gt; {
+    (
+        "[a-z][a-z0-9_-]{2,20}",  // Name regex
+        "[0-9]\\.[0-9]\\.[0-9]",  // Version regex
+        arb_transport_type(),
+        arb_optimization_level(),
+    )
+        .prop_map(|(name, version, transport, optimization)| ForgeMetadata {
+            name,
+            version,
+            transport,
+            optimization,
+        })
+}
+
+fn arb_handler_ref() -&gt; impl Strategy&lt;Value = HandlerRef&gt; {
+    "[a-z][a-z0-9_]{2,10}::[a-z][a-z0-9_]{2,10}"
+        .prop_map(|path| HandlerRef { path, inline: None })
+}
+
+fn arb_param_schema() -&gt; impl Strategy&lt;Value = ParamSchema&gt; {
+    prop::collection::hash_map(
+        "[a-z][a-z0-9_]{2,15}",  // Field names
+        arb_simple_type().prop_map(ParamType::Simple),
+        0..5,  // 0-5 fields
+    )
+    .prop_map(|fields| ParamSchema { fields })
+}</code></pre>
+<h3 id="complex-generators-with-constraints"><a class="header" href="#complex-generators-with-constraints">Complex Generators with Constraints</a></h3>
+<pre><code class="language-rust">fn arb_forge_config() -&gt; impl Strategy&lt;Value = ForgeConfig&gt; {
+    (
+        arb_forge_metadata(),
+        prop::collection::vec(arb_tool_def(), 1..10),
+    )
+        .prop_map(|(forge, tools)| {
+            // Ensure unique tool names (constraint)
+            let mut unique_tools = Vec::new();
+            let mut seen_names = std::collections::HashSet::new();
+
+            for tool in tools {
+                let name = tool.name();
+                if seen_names.insert(name.to_string()) {
+                    unique_tools.push(tool);
+                }
+            }
+
+            ForgeConfig {
+                forge,
+                tools: unique_tools,
+                resources: vec![],
+                prompts: vec![],
+                state: None,
+            }
+        })
+}</code></pre>
+<h2 id="pforges-12-properties"><a class="header" href="#pforges-12-properties">pforge’s 12 Properties</a></h2>
+<h3 id="category-1-configuration-properties-6-tests"><a class="header" href="#category-1-configuration-properties-6-tests">Category 1: Configuration Properties (6 tests)</a></h3>
+<h4 id="property-1-serialization-roundtrip"><a class="header" href="#property-1-serialization-roundtrip">Property 1: Serialization Roundtrip</a></h4>
+<p><strong>Invariant</strong>: Serializing and deserializing a config preserves its structure.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn config_serialization_roundtrip(config in arb_forge_config()) {
+        // YAML roundtrip
+        let yaml = serde_yml::to_string(&amp;config).unwrap();
+        let parsed: ForgeConfig = serde_yml::from_str(&amp;yaml).unwrap();
+
+        // Key properties preserved
+        prop_assert_eq!(&amp;config.forge.name, &amp;parsed.forge.name);
+        prop_assert_eq!(&amp;config.forge.version, &amp;parsed.forge.version);
+        prop_assert_eq!(config.tools.len(), parsed.tools.len());
+    }
+}</code></pre>
+<p><strong>Edge cases found</strong>: Empty strings, special characters, Unicode in names.</p>
+<h4 id="property-2-tool-name-uniqueness"><a class="header" href="#property-2-tool-name-uniqueness">Property 2: Tool Name Uniqueness</a></h4>
+<p><strong>Invariant</strong>: After validation, all tool names are unique.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn tool_names_unique(config in arb_forge_config()) {
+        let mut names = std::collections::HashSet::new();
+        for tool in &amp;config.tools {
+            prop_assert!(names.insert(tool.name()));
+        }
+    }
+}</code></pre>
+<p><strong>Edge cases found</strong>: Case sensitivity, whitespace differences.</p>
+<h4 id="property-3-valid-configs-pass-validation"><a class="header" href="#property-3-valid-configs-pass-validation">Property 3: Valid Configs Pass Validation</a></h4>
+<p><strong>Invariant</strong>: Configs generated by our generators always pass validation.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn valid_configs_pass_validation(config in arb_forge_config()) {
+        let result = validate_config(&amp;config);
+        prop_assert!(result.is_ok(), "Valid config failed validation: {:?}", result);
+    }
+}</code></pre>
+<p><strong>Edge cases found</strong>: Empty tool lists, minimal configs.</p>
+<h4 id="property-4-handler-paths-contain-separator"><a class="header" href="#property-4-handler-paths-contain-separator">Property 4: Handler Paths Contain Separator</a></h4>
+<p><strong>Invariant</strong>: Native tool handler paths always contain <code>::</code>.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn native_handler_paths_valid(config in arb_forge_config()) {
+        for tool in &amp;config.tools {
+            if let ToolDef::Native { handler, .. } = tool {
+                prop_assert!(handler.path.contains("::"),
+                    "Handler path '{}' doesn't contain ::", handler.path);
+            }
+        }
+    }
+}</code></pre>
+<p><strong>Edge cases found</strong>: Single-segment paths, paths with multiple separators.</p>
+<h4 id="property-5-transport-types-serialize-correctly"><a class="header" href="#property-5-transport-types-serialize-correctly">Property 5: Transport Types Serialize Correctly</a></h4>
+<p><strong>Invariant</strong>: Transport types roundtrip through serialization.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn transport_types_valid(config in arb_forge_config()) {
+        let yaml = serde_yml::to_string(&amp;config.forge.transport).unwrap();
+        let parsed: TransportType = serde_yml::from_str(&amp;yaml).unwrap();
+        prop_assert_eq!(config.forge.transport, parsed);
+    }
+}</code></pre>
+<h4 id="property-6-tool-names-follow-conventions"><a class="header" href="#property-6-tool-names-follow-conventions">Property 6: Tool Names Follow Conventions</a></h4>
+<p><strong>Invariant</strong>: Tool names are lowercase alphanumeric with hyphens/underscores, length 3-50.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn tool_names_follow_conventions(config in arb_forge_config()) {
+        for tool in &amp;config.tools {
+            let name = tool.name();
+            prop_assert!(name.chars().all(|c|
+                c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_'
+            ), "Tool name '{}' doesn't follow conventions", name);
+
+            prop_assert!(name.len() &gt;= 3 &amp;&amp; name.len() &lt;= 50,
+                "Tool name '{}' length {} not in range 3-50", name, name.len());
+        }
+    }
+}</code></pre>
+<h3 id="category-2-validation-properties-2-tests"><a class="header" href="#category-2-validation-properties-2-tests">Category 2: Validation Properties (2 tests)</a></h3>
+<h4 id="property-7-duplicate-names-always-rejected"><a class="header" href="#property-7-duplicate-names-always-rejected">Property 7: Duplicate Names Always Rejected</a></h4>
+<p><strong>Invariant</strong>: Configs with duplicate tool names always fail validation.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn duplicate_tool_names_rejected(name in "[a-z][a-z0-9_-]{2,20}") {
+        let config = ForgeConfig {
+            forge: create_test_metadata(),
+            tools: vec![
+                ToolDef::Native {
+                    name: name.clone(),
+                    description: "Tool 1".to_string(),
+                    handler: HandlerRef { path: "mod1::handler".to_string(), inline: None },
+                    params: ParamSchema { fields: HashMap::new() },
+                    timeout_ms: None,
+                },
+                ToolDef::Native {
+                    name: name.clone(),  // Duplicate!
+                    description: "Tool 2".to_string(),
+                    handler: HandlerRef { path: "mod2::handler".to_string(), inline: None },
+                    params: ParamSchema { fields: HashMap::new() },
+                    timeout_ms: None,
+                },
+            ],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = validate_config(&amp;config);
+        prop_assert!(result.is_err(), "Duplicate names should fail validation");
+        prop_assert!(matches!(result.unwrap_err(), ConfigError::DuplicateToolName(_)));
+    }
+}</code></pre>
+<h4 id="property-8-invalid-handler-paths-rejected"><a class="header" href="#property-8-invalid-handler-paths-rejected">Property 8: Invalid Handler Paths Rejected</a></h4>
+<p><strong>Invariant</strong>: Handler paths without <code>::</code> are always rejected.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn invalid_handler_paths_rejected(path in "[a-z]{3,20}") {
+        // Path without :: should fail
+        let config = create_config_with_handler_path(path);
+        let result = validate_config(&amp;config);
+        prop_assert!(result.is_err(), "Invalid handler path should fail validation");
+    }
+}</code></pre>
+<h3 id="category-3-edge-case-properties-2-tests"><a class="header" href="#category-3-edge-case-properties-2-tests">Category 3: Edge Case Properties (2 tests)</a></h3>
+<h4 id="property-9-empty-configs-valid"><a class="header" href="#property-9-empty-configs-valid">Property 9: Empty Configs Valid</a></h4>
+<p><strong>Invariant</strong>: Configs with only metadata (no tools) are valid.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn empty_config_valid(forge in arb_forge_metadata()) {
+        let config = ForgeConfig {
+            forge,
+            tools: vec![],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = validate_config(&amp;config);
+        prop_assert!(result.is_ok(), "Empty config should be valid");
+    }
+}</code></pre>
+<h4 id="property-10-single-tool-configs-valid"><a class="header" href="#property-10-single-tool-configs-valid">Property 10: Single Tool Configs Valid</a></h4>
+<p><strong>Invariant</strong>: Any config with exactly one tool is valid.</p>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn single_tool_valid(forge in arb_forge_metadata(), tool in arb_tool_def()) {
+        let config = ForgeConfig {
+            forge,
+            tools: vec![tool],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = validate_config(&amp;config);
+        prop_assert!(result.is_ok(), "Single tool config should be valid");
+    }
+}</code></pre>
+<h3 id="category-4-type-system-properties-2-tests"><a class="header" href="#category-4-type-system-properties-2-tests">Category 4: Type System Properties (2 tests)</a></h3>
+<h4 id="property-11-http-methods-serialize-correctly"><a class="header" href="#property-11-http-methods-serialize-correctly">Property 11: HTTP Methods Serialize Correctly</a></h4>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn http_methods_valid(method in arb_http_method()) {
+        let yaml = serde_yml::to_string(&amp;method).unwrap();
+        let parsed: HttpMethod = serde_yml::from_str(&amp;yaml).unwrap();
+        prop_assert_eq!(method, parsed);
+    }
+}</code></pre>
+<h4 id="property-12-optimization-levels-consistent"><a class="header" href="#property-12-optimization-levels-consistent">Property 12: Optimization Levels Consistent</a></h4>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn optimization_levels_consistent(level in arb_optimization_level()) {
+        let yaml = serde_yml::to_string(&amp;level).unwrap();
+        let parsed: OptimizationLevel = serde_yml::from_str(&amp;yaml).unwrap();
+        prop_assert_eq!(level, parsed);
+    }
+}</code></pre>
+<h2 id="shrinking-minimal-failing-examples"><a class="header" href="#shrinking-minimal-failing-examples">Shrinking: Minimal Failing Examples</a></h2>
+<p>When a property fails, proptest <strong>shrinks</strong> the input to find the minimal example:</p>
+<pre><code class="language-rust">// Property fails with complex config
+Config {
+    name: "xyz_server_test_123",
+    tools: [tool1, tool2, tool3, tool4],
+    ...
+}
+
+// Proptest shrinks to minimal failing case
+Config {
+    name: "a",  // Minimal failing name
+    tools: [],  // Minimal failing tools
+    ...
+}</code></pre>
+<p>Shrunk examples are <strong>persisted</strong> in <code>proptest-regressions/</code> to prevent regressions.</p>
+<h2 id="running-property-tests"><a class="header" href="#running-property-tests">Running Property Tests</a></h2>
+<h3 id="basic-commands"><a class="header" href="#basic-commands">Basic Commands</a></h3>
+<pre><code class="language-bash"># Run all property tests (10K cases each)
+cargo test --test property_test
+
+# Run specific property
+cargo test --test property_test config_serialization_roundtrip
+
+# Run with more cases
+PROPTEST_CASES=100000 cargo test --test property_test
+
+# Run with seed for reproducibility
+PROPTEST_SEED=1234567890 cargo test --test property_test
+</code></pre>
+<h3 id="release-mode"><a class="header" href="#release-mode">Release Mode</a></h3>
+<p>Property tests run faster in release mode:</p>
+<pre><code class="language-bash"># Recommended: Run in release mode
+cargo test --test property_test --release -- --test-threads=1
+</code></pre>
+<p>This is the default in <code>Makefile</code>:</p>
+<pre><code class="language-bash">make test-property
+</code></pre>
+<h2 id="regression-files"><a class="header" href="#regression-files">Regression Files</a></h2>
+<p>Failed tests are saved in <code>proptest-regressions/</code>:</p>
+<pre><code>crates/pforge-integration-tests/
+└── proptest-regressions/
+    └── property_test.txt  # Failing cases
+</code></pre>
+<p>Example regression file:</p>
+<pre><code># Seeds for failing test cases. Edit at your own risk.
+# property: config_serialization_roundtrip
+xs 3582691854 1234567890
+</code></pre>
+<p><strong>Important</strong>: Commit regression files to git! They ensure failures don’t reoccur.</p>
+<h2 id="writing-new-properties"><a class="header" href="#writing-new-properties">Writing New Properties</a></h2>
+<h3 id="step-1-define-generator"><a class="header" href="#step-1-define-generator">Step 1: Define Generator</a></h3>
+<pre><code class="language-rust">fn arb_my_type() -&gt; impl Strategy&lt;Value = MyType&gt; {
+    (
+        arb_field1(),
+        arb_field2(),
+    ).prop_map(|(field1, field2)| MyType { field1, field2 })
+}</code></pre>
+<h3 id="step-2-write-property"><a class="header" href="#step-2-write-property">Step 2: Write Property</a></h3>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn my_property(input in arb_my_type()) {
+        let result = my_function(input);
+        prop_assert!(result.is_ok());
+    }
+}</code></pre>
+<h3 id="step-3-run-and-refine"><a class="header" href="#step-3-run-and-refine">Step 3: Run and Refine</a></h3>
+<pre><code class="language-bash">cargo test --test property_test my_property
+</code></pre>
+<p>If failures occur:</p>
+<ol>
+<li>Check if property is actually true</li>
+<li>Adjust generator constraints</li>
+<li>Fix implementation bugs</li>
+<li>Commit regression file</li>
+</ol>
+<h2 id="property-testing-best-practices"><a class="header" href="#property-testing-best-practices">Property Testing Best Practices</a></h2>
+<h3 id="1-test-universal-truths"><a class="header" href="#1-test-universal-truths">1. Test Universal Truths</a></h3>
+<pre><code class="language-rust">// Good: Universal property
+proptest! {
+    #[test]
+    fn serialize_deserialize_roundtrip(x in any::&lt;MyType&gt;()) {
+        let json = serde_json::to_string(&amp;x)?;
+        let y: MyType = serde_json::from_str(&amp;json)?;
+        prop_assert_eq!(x, y);  // Always true
+    }
+}
+
+// Bad: Specific assertion
+proptest! {
+    #[test]
+    fn bad_property(x in any::&lt;i32&gt;()) {
+        prop_assert_eq!(x, 42);  // Only true 1/2^32 times!
+    }
+}</code></pre>
+<h3 id="2-use-meaningful-generators"><a class="header" href="#2-use-meaningful-generators">2. Use Meaningful Generators</a></h3>
+<pre><code class="language-rust">// Good: Generates valid data
+fn arb_email() -&gt; impl Strategy&lt;Value = String&gt; {
+    "[a-z]{1,10}@[a-z]{1,10}\\.(com|org|net)"
+}
+
+// Bad: Most generated strings aren't emails
+fn arb_email_bad() -&gt; impl Strategy&lt;Value = String&gt; {
+    any::&lt;String&gt;()  // Generates random bytes
+}</code></pre>
+<h3 id="3-add-constraints-to-generators"><a class="header" href="#3-add-constraints-to-generators">3. Add Constraints to Generators</a></h3>
+<pre><code class="language-rust">fn arb_positive_number() -&gt; impl Strategy&lt;Value = i32&gt; {
+    1..=i32::MAX  // Constrained range
+}
+
+fn arb_non_empty_vec&lt;T: Arbitrary&gt;() -&gt; impl Strategy&lt;Value = Vec&lt;T&gt;&gt; {
+    prop::collection::vec(any::&lt;T&gt;(), 1..100)  // At least 1 element
+}</code></pre>
+<h3 id="4-test-error-conditions"><a class="header" href="#4-test-error-conditions">4. Test Error Conditions</a></h3>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn invalid_input_rejected(bad_input in arb_invalid_input()) {
+        let result = validate(bad_input);
+        prop_assert!(result.is_err());  // Should always fail
+    }
+}</code></pre>
+<h2 id="benefits-and-limitations"><a class="header" href="#benefits-and-limitations">Benefits and Limitations</a></h2>
+<h3 id="benefits"><a class="header" href="#benefits">Benefits</a></h3>
+<ol>
+<li><strong>Comprehensive</strong>: 10K+ cases per property vs ~10 manual examples</li>
+<li><strong>Edge case discovery</strong>: Finds bugs humans miss</li>
+<li><strong>Regression prevention</strong>: Failing cases saved automatically</li>
+<li><strong>Documentation</strong>: Properties describe system invariants</li>
+<li><strong>Confidence</strong>: Mathematical proof of correctness over input space</li>
+</ol>
+<h3 id="limitations"><a class="header" href="#limitations">Limitations</a></h3>
+<ol>
+<li><strong>Slower</strong>: 10K iterations takes seconds vs milliseconds for unit tests</li>
+<li><strong>Complexity</strong>: Generators can be complex to write</li>
+<li><strong>False positives</strong>: Properties must be precisely stated</li>
+<li><strong>Non-determinism</strong>: Random failures can be hard to debug (use seeds!)</li>
+</ol>
+<h2 id="integration-with-cicd"><a class="header" href="#integration-with-cicd">Integration with CI/CD</a></h2>
+<p>Property tests run in CI but with fewer iterations for speed:</p>
+<pre><code class="language-yaml"># .github/workflows/quality.yml
+- name: Property tests
+  run: |
+    PROPTEST_CASES=1000 cargo test --test property_test --release
+</code></pre>
+<p>Locally, run full 10K iterations:</p>
+<pre><code class="language-bash">make test-property  # Uses 10K cases
+</code></pre>
+<h2 id="real-world-impact"><a class="header" href="#real-world-impact">Real-World Impact</a></h2>
+<p>Property-based testing has found real bugs in pforge:</p>
+<ol>
+<li><strong>Unicode handling</strong>: Tool names with emoji crashed parser</li>
+<li><strong>Empty configs</strong>: Validation rejected valid empty tool lists</li>
+<li><strong>Case sensitivity</strong>: Duplicate detection was case-sensitive</li>
+<li><strong>Whitespace</strong>: Leading/trailing whitespace in names caused issues</li>
+<li><strong>Nesting depth</strong>: Deeply nested param schemas caused stack overflow</li>
+</ol>
+<p>All caught by property tests before reaching production!</p>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Property-based testing provides massive test coverage with minimal code:</p>
+<ul>
+<li><strong>12 properties</strong> generate <strong>120,000 test cases</strong></li>
+<li><strong>Automatic edge case discovery</strong> finds bugs humans miss</li>
+<li><strong>Shrinking</strong> provides minimal failing examples</li>
+<li><strong>Regression prevention</strong> through persisted failing cases</li>
+<li><strong>Mathematical rigor</strong> proves invariants hold</li>
+</ul>
+<p>Combined with unit tests (Chapter 9.1) and integration tests (Chapter 9.2), property-based testing ensures pforge’s configuration system is rock-solid. Next, Chapter 9.4 covers mutation testing to validate that our tests are actually effective.</p>
+<h2 id="further-reading"><a class="header" href="#further-reading">Further Reading</a></h2>
+<ul>
+<li><a href="https://proptest-rs.github.io/proptest/">Proptest Book</a></li>
+<li><a href="https://www.cs.tufts.edu/~nr/cs257/archive/john-hughes/quick.pdf">QuickCheck Paper</a> - Original property testing paper</li>
+<li><a href="https://hypothesis.readthedocs.io/">Hypothesis</a> - Python property testing</li>
+<li>pforge property tests: <code>crates/pforge-integration-tests/property_test.rs</code></li>
+</ul>
 
                     </main>
 

@@ -158,8 +158,578 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch17-02-versioningmd"><a class="header" href="#ch17-02-versioningmd">ch17-02-versioning.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="version-management"><a class="header" href="#version-management">Version Management</a></h1>
+<p>Semantic versioning is the contract between you and your users. In the Rust ecosystem, version numbers communicate compatibility guarantees. This chapter covers version management for multi-crate workspaces like pforge.</p>
+<h2 id="semantic-versioning-basics"><a class="header" href="#semantic-versioning-basics">Semantic Versioning Basics</a></h2>
+<p>Semantic versioning (semver) uses three numbers: MAJOR.MINOR.PATCH</p>
+<pre><code>0.1.0
+│ │ │
+│ │ └─ PATCH: Bug fixes, no API changes
+│ └─── MINOR: New features, backward compatible
+└───── MAJOR: Breaking changes
+</code></pre>
+<h3 id="version-increment-rules"><a class="header" href="#version-increment-rules">Version Increment Rules</a></h3>
+<p>Increment:</p>
+<ul>
+<li><strong>PATCH</strong> (0.1.0 → 0.1.1): Bug fixes, documentation, internal optimizations</li>
+<li><strong>MINOR</strong> (0.1.0 → 0.2.0): New features, new public APIs, deprecations</li>
+<li><strong>MAJOR</strong> (0.1.0 → 1.0.0): Breaking changes, removed APIs, incompatible changes</li>
+</ul>
+<h3 id="the-0x-special-case"><a class="header" href="#the-0x-special-case">The 0.x Special Case</a></h3>
+<p>Versions before 1.0.0 have relaxed rules:</p>
+<p><strong>For 0.y.z</strong>:</p>
+<ul>
+<li>Increment <strong>y</strong> (minor) for breaking changes</li>
+<li>Increment <strong>z</strong> (patch) for all other changes</li>
+</ul>
+<p>This acknowledges that pre-1.0 APIs are unstable.</p>
+<p><strong>pforge uses 0.1.0</strong> because:</p>
+<ul>
+<li>The framework is production-ready but evolving</li>
+<li>We reserve the right to make breaking changes</li>
+<li>Version 1.0.0 will signal API stability</li>
+</ul>
+<h3 id="when-to-release-100"><a class="header" href="#when-to-release-100">When to Release 1.0.0</a></h3>
+<p>Release 1.0.0 when:</p>
+<ul>
+<li>API is stable and well-tested</li>
+<li>No planned breaking changes</li>
+<li>Production deployments exist</li>
+<li>You commit to backward compatibility</li>
+</ul>
+<p>For pforge, 1.0.0 will mean:</p>
+<ul>
+<li>MCP server schema is stable</li>
+<li>Core abstractions (Handler, Registry) won’t change</li>
+<li>YAML configuration is locked</li>
+<li>Quality gates are production-proven</li>
+</ul>
+<h2 id="version-compatibility-in-rust"><a class="header" href="#version-compatibility-in-rust">Version Compatibility in Rust</a></h2>
+<p>Cargo uses semver to resolve dependencies.</p>
+<h3 id="caret-requirements-default"><a class="header" href="#caret-requirements-default">Caret Requirements (Default)</a></h3>
+<pre><code class="language-toml">serde = "1.0"
+</code></pre>
+<p>Expands to: <code>&gt;=1.0.0, &lt;2.0.0</code></p>
+<p>Allows:</p>
+<ul>
+<li>1.0.0 ✓</li>
+<li>1.0.108 ✓</li>
+<li>1.15.2 ✓</li>
+<li>2.0.0 ✗ (breaking change)</li>
+</ul>
+<p>This is <strong>default and recommended</strong> for libraries.</p>
+<h3 id="tilde-requirements"><a class="header" href="#tilde-requirements">Tilde Requirements</a></h3>
+<pre><code class="language-toml">serde = "~1.0.100"
+</code></pre>
+<p>Expands to: <code>&gt;=1.0.100, &lt;1.1.0</code></p>
+<p>More restrictive - only allows patch updates.</p>
+<h3 id="exact-requirements"><a class="header" href="#exact-requirements">Exact Requirements</a></h3>
+<pre><code class="language-toml">serde = "=1.0.100"
+</code></pre>
+<p>Exactly version 1.0.100, no other version.</p>
+<p><strong>Avoid in libraries</strong> - too restrictive, causes dependency conflicts.</p>
+<h3 id="wildcard-requirements"><a class="header" href="#wildcard-requirements">Wildcard Requirements</a></h3>
+<pre><code class="language-toml">serde = "1.*"
+</code></pre>
+<p>Expands to: <code>&gt;=1.0.0, &lt;2.0.0</code></p>
+<p>Same as caret, but less clear. Use caret instead.</p>
+<h3 id="version-selection-strategy"><a class="header" href="#version-selection-strategy">Version Selection Strategy</a></h3>
+<p><strong>For libraries (like pforge-config)</strong>:</p>
+<ul>
+<li>Use caret: <code>"1.0"</code></li>
+<li>Allows users to upgrade dependencies</li>
+<li>Prevents dependency hell</li>
+</ul>
+<p><strong>For binaries (like pforge-cli)</strong>:</p>
+<ul>
+<li>Use caret: <code>"1.0"</code></li>
+<li>Lock with <code>Cargo.lock</code> for reproducibility</li>
+<li>Commit <code>Cargo.lock</code> to repository</li>
+</ul>
+<h2 id="workspace-version-management"><a class="header" href="#workspace-version-management">Workspace Version Management</a></h2>
+<p>pforge uses workspace-level version management for consistency.</p>
+<h3 id="unified-versioning-strategy"><a class="header" href="#unified-versioning-strategy">Unified Versioning Strategy</a></h3>
+<p><strong>All pforge crates share the same version number</strong>: 0.1.0</p>
+<p><strong>Benefits</strong>:</p>
+<ul>
+<li>Simple to understand: “pforge 0.1.0” refers to all crates</li>
+<li>Easy to document: one version per release</li>
+<li>Guaranteed compatibility: all crates from same release work together</li>
+<li>Simplified testing: test matrix doesn’t explode</li>
+</ul>
+<p><strong>Drawbacks</strong>:</p>
+<ul>
+<li>Publish all crates even if some unchanged</li>
+<li>Version numbers jump (config might go 0.1.0 → 0.3.0 without changes)</li>
+</ul>
+<p><strong>Alternative</strong>: Independent versioning (each crate has own version). More complex but allows granular releases.</p>
+<h3 id="implementing-workspace-versions"><a class="header" href="#implementing-workspace-versions">Implementing Workspace Versions</a></h3>
+<p>In workspace root <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[workspace.package]
+version = "0.1.0"
+</code></pre>
+<p>Each crate inherits:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-config"
+version.workspace = true
+</code></pre>
+<h3 id="updating-all-versions"><a class="header" href="#updating-all-versions">Updating All Versions</a></h3>
+<p>To bump version across workspace:</p>
+<pre><code class="language-bash"># Edit workspace Cargo.toml
+sed -i 's/version = "0.1.0"/version = "0.2.0"/' Cargo.toml
+
+# Update Cargo.lock
+cargo update -w
+
+# Verify
+grep -r "version.*0.2.0" Cargo.toml
+</code></pre>
+<h3 id="version-bumping-script"><a class="header" href="#version-bumping-script">Version Bumping Script</a></h3>
+<p>Automate with a script:</p>
+<pre><code class="language-bash">#!/bin/bash
+# scripts/bump-version.sh
+
+set -e
+
+CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | cut -d '"' -f 2)
+echo "Current version: $CURRENT_VERSION"
+echo "Enter new version:"
+read NEW_VERSION
+
+# Validate semver format
+if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "Error: Version must be in format X.Y.Z"
+    exit 1
+fi
+
+# Update workspace version
+sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+
+# Update Cargo.lock
+cargo update -w
+
+# Update internal dependency versions in workspace dependencies
+sed -i "s/version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/g" Cargo.toml
+
+echo "Version bumped to $NEW_VERSION"
+echo "Don't forget to:"
+echo "  1. Update CHANGELOG.md"
+echo "  2. Run: cargo test --all"
+echo "  3. Commit changes"
+echo "  4. Create git tag: git tag -a v$NEW_VERSION"
+</code></pre>
+<p>Run it:</p>
+<pre><code class="language-bash">./scripts/bump-version.sh
+</code></pre>
+<p>Example session:</p>
+<pre><code>Current version: 0.1.0
+Enter new version:
+0.2.0
+Version bumped to 0.2.0
+Don't forget to:
+  1. Update CHANGELOG.md
+  2. Run: cargo test --all
+  3. Commit changes
+  4. Create git tag: git tag -a v0.2.0
+</code></pre>
+<h2 id="internal-dependency-versions"><a class="header" href="#internal-dependency-versions">Internal Dependency Versions</a></h2>
+<p>Workspace crates depending on each other need careful version management.</p>
+<h3 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h3>
+<p>When <code>pforge-runtime</code> depends on <code>pforge-config</code>:</p>
+<pre><code class="language-toml"># In pforge-runtime/Cargo.toml
+[dependencies]
+pforge-config = { path = "../pforge-config", version = "0.1.0" }
+</code></pre>
+<p><strong>After version bump to 0.2.0</strong>, this is now wrong. Runtime 0.2.0 still requires config 0.1.0.</p>
+<h3 id="the-solution-workspace-dependencies"><a class="header" href="#the-solution-workspace-dependencies">The Solution: Workspace Dependencies</a></h3>
+<p>Define once in workspace root:</p>
+<pre><code class="language-toml">[workspace.dependencies]
+pforge-config = { path = "crates/pforge-config", version = "0.1.0" }
+pforge-macro = { path = "crates/pforge-macro", version = "0.1.0" }
+pforge-runtime = { path = "crates/pforge-runtime", version = "0.1.0" }
+pforge-codegen = { path = "crates/pforge-codegen", version = "0.1.0" }
+</code></pre>
+<p>Crates reference with:</p>
+<pre><code class="language-toml">[dependencies]
+pforge-config = { workspace = true }
+</code></pre>
+<p><strong>When you bump workspace version to 0.2.0</strong>, update once in workspace dependencies section:</p>
+<pre><code class="language-toml">[workspace.dependencies]
+pforge-config = { path = "crates/pforge-config", version = "0.2.0" }
+pforge-macro = { path = "crates/pforge-macro", version = "0.2.0" }
+pforge-runtime = { path = "crates/pforge-runtime", version = "0.2.0" }
+pforge-codegen = { path = "crates/pforge-codegen", version = "0.2.0" }
+</code></pre>
+<p>All crates automatically use new version.</p>
+<h3 id="version-compatibility-between-internal-crates"><a class="header" href="#version-compatibility-between-internal-crates">Version Compatibility Between Internal Crates</a></h3>
+<p>For unified versioning:</p>
+<pre><code class="language-toml"># All internal deps use exact workspace version
+pforge-config = { workspace = true }  # Resolves to "0.2.0"
+</code></pre>
+<p>For independent versioning:</p>
+<pre><code class="language-toml"># Allow compatible versions
+pforge-config = { version = "0.2", path = "../pforge-config" }  # &gt;=0.2.0, &lt;0.3.0
+</code></pre>
+<p><strong>pforge uses unified versioning</strong> for simplicity.</p>
+<h2 id="changelog-management"><a class="header" href="#changelog-management">Changelog Management</a></h2>
+<p>A CHANGELOG documents what changed between versions.</p>
+<h3 id="changelogmd-structure"><a class="header" href="#changelogmd-structure">CHANGELOG.md Structure</a></h3>
+<p>Follow “Keep a Changelog” format (https://keepachangelog.com):</p>
+<pre><code class="language-markdown"># Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Feature X for doing Y
+
+### Changed
+- Refactored Z for performance
+
+### Fixed
+- Bug in handler dispatch
+
+## [0.2.0] - 2025-02-15
+
+### Added
+- HTTP tool type support
+- Middleware system for request/response transformation
+- State persistence with sled backend
+
+### Changed
+- BREAKING: Renamed `ToolDefinition` to `ToolDef`
+- Improved error messages with context
+
+### Fixed
+- Template files not included in pforge-cli package (#42)
+- Race condition in handler registry
+
+## [0.1.0] - 2025-01-10
+
+### Added
+- Initial release
+- Native, CLI, and Pipeline tool types
+- YAML configuration parsing
+- Code generation from YAML to Rust
+- Quality gates with PMAT integration
+- Comprehensive test suite
+</code></pre>
+<h3 id="changelog-categories"><a class="header" href="#changelog-categories">Changelog Categories</a></h3>
+<ul>
+<li><strong>Added</strong>: New features</li>
+<li><strong>Changed</strong>: Changes in existing functionality</li>
+<li><strong>Deprecated</strong>: Soon-to-be-removed features</li>
+<li><strong>Removed</strong>: Removed features</li>
+<li><strong>Fixed</strong>: Bug fixes</li>
+<li><strong>Security</strong>: Vulnerability fixes</li>
+</ul>
+<h3 id="marking-breaking-changes"><a class="header" href="#marking-breaking-changes">Marking Breaking Changes</a></h3>
+<p>Prefix with <strong>BREAKING</strong>:</p>
+<pre><code class="language-markdown">### Changed
+- BREAKING: Renamed `ToolDefinition` to `ToolDef`
+- BREAKING: Handler trait now requires `async fn execute`
+</code></pre>
+<p>Makes breaking changes obvious to users.</p>
+<h3 id="unreleased-section"><a class="header" href="#unreleased-section">Unreleased Section</a></h3>
+<p>Accumulate changes in <code>[Unreleased]</code> during development:</p>
+<pre><code class="language-markdown">## [Unreleased]
+
+### Added
+- WebSocket transport support
+- Prometheus metrics
+
+### Fixed
+- Memory leak in long-running servers
+</code></pre>
+<p>On release, move to versioned section:</p>
+<pre><code class="language-markdown">## [Unreleased]
+
+## [0.3.0] - 2025-03-20
+
+### Added
+- WebSocket transport support
+- Prometheus metrics
+
+### Fixed
+- Memory leak in long-running servers
+</code></pre>
+<h2 id="git-tags-and-releases"><a class="header" href="#git-tags-and-releases">Git Tags and Releases</a></h2>
+<p>Tag each release for reproducibility.</p>
+<h3 id="creating-version-tags"><a class="header" href="#creating-version-tags">Creating Version Tags</a></h3>
+<p>After bumping version and updating changelog:</p>
+<pre><code class="language-bash"># Create annotated tag
+git tag -a v0.2.0 -m "Release version 0.2.0"
+
+# Push tag to remote
+git push origin v0.2.0
+</code></pre>
+<h3 id="annotated-vs-lightweight-tags"><a class="header" href="#annotated-vs-lightweight-tags">Annotated vs Lightweight Tags</a></h3>
+<p><strong>Annotated</strong> (recommended):</p>
+<pre><code class="language-bash">git tag -a v0.2.0 -m "Release version 0.2.0"
+</code></pre>
+<p>Includes tagger info, date, message.</p>
+<p><strong>Lightweight</strong>:</p>
+<pre><code class="language-bash">git tag v0.2.0
+</code></pre>
+<p>Just a pointer to commit. Use annotated for releases.</p>
+<h3 id="tag-naming-convention"><a class="header" href="#tag-naming-convention">Tag Naming Convention</a></h3>
+<p>Use <code>v</code> prefix: <code>v0.1.0</code>, <code>v0.2.0</code>, <code>v1.0.0</code></p>
+<p><strong>pforge convention</strong>: <code>v{major}.{minor}.{patch}</code></p>
+<h3 id="listing-tags"><a class="header" href="#listing-tags">Listing Tags</a></h3>
+<pre><code class="language-bash"># List all tags
+git tag
+
+# List with messages
+git tag -n
+
+# List specific pattern
+git tag -l "v0.*"
+</code></pre>
+<h3 id="checking-out-a-tag"><a class="header" href="#checking-out-a-tag">Checking Out a Tag</a></h3>
+<p>Users can check out specific version:</p>
+<pre><code class="language-bash">git clone https://github.com/paiml/pforge
+cd pforge
+git checkout v0.1.0
+cargo build
+</code></pre>
+<h3 id="deleting-tags"><a class="header" href="#deleting-tags">Deleting Tags</a></h3>
+<p>If you tagged the wrong commit:</p>
+<pre><code class="language-bash"># Delete local tag
+git tag -d v0.2.0
+
+# Delete remote tag
+git push --delete origin v0.2.0
+</code></pre>
+<p>Then create correct tag.</p>
+<h2 id="version-yanking"><a class="header" href="#version-yanking">Version Yanking</a></h2>
+<p>crates.io allows “yanking” versions - prevents new users from depending on them, but doesn’t break existing users.</p>
+<h3 id="when-to-yank"><a class="header" href="#when-to-yank">When to Yank</a></h3>
+<p>Yank a version if:</p>
+<ul>
+<li>Critical security vulnerability</li>
+<li>Data corruption bug</li>
+<li>Completely broken functionality</li>
+<li>Published by mistake</li>
+</ul>
+<p><strong>Don’t yank for</strong>:</p>
+<ul>
+<li>Minor bugs (publish patch instead)</li>
+<li>Deprecation (use proper deprecation)</li>
+<li>Regret about API design (breaking changes go in next major version)</li>
+</ul>
+<h3 id="how-to-yank"><a class="header" href="#how-to-yank">How to Yank</a></h3>
+<pre><code class="language-bash">cargo yank --version 0.1.0
+</code></pre>
+<p>Output:</p>
+<pre><code>    Updating crates.io index
+       Yank pforge-config@0.1.0
+</code></pre>
+<h3 id="un-yanking"><a class="header" href="#un-yanking">Un-Yanking</a></h3>
+<p>Made a mistake yanking?</p>
+<pre><code class="language-bash">cargo yank --version 0.1.0 --undo
+</code></pre>
+<h3 id="effect-of-yanking"><a class="header" href="#effect-of-yanking">Effect of Yanking</a></h3>
+<p><strong>Yanked versions</strong>:</p>
+<ul>
+<li>Don’t appear in default search results on crates.io</li>
+<li>Can’t be specified in new <code>Cargo.toml</code> files (cargo will error)</li>
+<li>Still work for existing <code>Cargo.lock</code> files</li>
+<li>Still visible on crates.io with “yanked” label</li>
+</ul>
+<p><strong>Use case</strong>: pforge 0.1.0 had template bug. We:</p>
+<ol>
+<li>Published 0.1.1 with fix</li>
+<li>Yanked 0.1.0</li>
+<li>New users get 0.1.1, existing users unaffected</li>
+</ol>
+<h2 id="pre-release-versions"><a class="header" href="#pre-release-versions">Pre-Release Versions</a></h2>
+<p>For alpha, beta, or release candidate versions, use pre-release identifiers.</p>
+<h3 id="pre-release-format"><a class="header" href="#pre-release-format">Pre-Release Format</a></h3>
+<pre><code>1.0.0-alpha
+1.0.0-alpha.1
+1.0.0-beta
+1.0.0-beta.2
+1.0.0-rc.1
+1.0.0
+</code></pre>
+<p>Semver ordering:</p>
+<pre><code>1.0.0-alpha &lt; 1.0.0-alpha.1 &lt; 1.0.0-beta &lt; 1.0.0-rc.1 &lt; 1.0.0
+</code></pre>
+<h3 id="publishing-pre-releases"><a class="header" href="#publishing-pre-releases">Publishing Pre-Releases</a></h3>
+<pre><code class="language-toml">[package]
+version = "1.0.0-alpha.1"
+</code></pre>
+<pre><code class="language-bash">cargo publish
+</code></pre>
+<p>Users must opt in:</p>
+<pre><code class="language-toml">[dependencies]
+pforge-config = "1.0.0-alpha.1"  # Exact version
+</code></pre>
+<p>Or:</p>
+<pre><code class="language-toml">pforge-config = "&gt;=1.0.0-alpha, &lt;1.0.0"
+</code></pre>
+<h3 id="when-to-use-pre-releases"><a class="header" href="#when-to-use-pre-releases">When to Use Pre-Releases</a></h3>
+<ul>
+<li><strong>alpha</strong>: Early testing, expect bugs, API may change</li>
+<li><strong>beta</strong>: Feature-complete, polishing, API frozen</li>
+<li><strong>rc</strong> (release candidate): Final testing before stable</li>
+</ul>
+<p><strong>pforge strategy</strong>: Once 1.0.0 is near:</p>
+<ol>
+<li>Publish 1.0.0-beta.1</li>
+<li>Solicit feedback</li>
+<li>Publish 1.0.0-rc.1 after fixes</li>
+<li>Publish 1.0.0 if RC is stable</li>
+</ol>
+<h2 id="version-strategy-for-multi-crate-publishing"><a class="header" href="#version-strategy-for-multi-crate-publishing">Version Strategy for Multi-Crate Publishing</a></h2>
+<p>Publishing multiple crates requires version coordination.</p>
+<h3 id="pforges-version-strategy"><a class="header" href="#pforges-version-strategy">pforge’s Version Strategy</a></h3>
+<p><strong>All crates share version</strong>: 0.1.0 → 0.2.0 for all</p>
+<p><strong>Publishing order</strong> (dependency-first):</p>
+<ol>
+<li>pforge-config 0.2.0</li>
+<li>pforge-macro 0.2.0 (parallel with config)</li>
+<li>pforge-runtime 0.2.0 (depends on config)</li>
+<li>pforge-codegen 0.2.0 (depends on config)</li>
+<li>pforge-cli 0.2.0 (depends on all)</li>
+</ol>
+<p><strong>After each publication</strong>, verify on crates.io before continuing.</p>
+<h3 id="handling-version-mismatches"><a class="header" href="#handling-version-mismatches">Handling Version Mismatches</a></h3>
+<p><strong>Problem</strong>: pforge-runtime 0.2.0 published, but pforge-config 0.2.0 isn’t on crates.io yet.</p>
+<p><strong>Error</strong>:</p>
+<pre><code>error: no matching package named `pforge-config` found
+location searched: registry `crates-io`
+required by package `pforge-runtime v0.2.0`
+</code></pre>
+<p><strong>Solution</strong>: Wait for pforge-config 0.2.0 to be available. crates.io processing takes 1-2 minutes.</p>
+<h3 id="version-skew-prevention"><a class="header" href="#version-skew-prevention">Version Skew Prevention</a></h3>
+<p><strong>Use exact versions for internal dependencies</strong>:</p>
+<pre><code class="language-toml">[workspace.dependencies]
+pforge-config = { path = "crates/pforge-config", version = "=0.2.0" }
+</code></pre>
+<p>The <code>=</code> ensures runtime 0.2.0 uses exactly config 0.2.0, not 0.2.1.</p>
+<p><strong>Trade-off</strong>: Stricter compatibility, but requires republishing dependents for patches.</p>
+<p><strong>pforge uses caret</strong> (<code>version = "0.2.0"</code> which means <code>&gt;=0.2.0, &lt;0.3.0</code>) because we do unified releases anyway.</p>
+<h2 id="changelog-template"><a class="header" href="#changelog-template">CHANGELOG Template</a></h2>
+<pre><code class="language-markdown"># Changelog
+
+All notable changes to pforge will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [0.1.0] - 2025-01-10
+
+Initial release of pforge.
+
+### Added
+- **pforge-config**: YAML configuration parsing with schema validation
+- **pforge-macro**: Procedural macros for handler generation
+- **pforge-runtime**: Core runtime with handler registry and dispatch
+- **pforge-codegen**: Code generation from YAML to Rust
+- **pforge-cli**: Command-line interface (new, build, serve, dev, test)
+- Native tool type: Zero-cost Rust handlers
+- CLI tool type: Wrapper for command-line tools with streaming
+- Pipeline tool type: Composable tool chains
+- Quality gates: PMAT integration with pre-commit hooks
+- Test suite: Unit, integration, property-based, mutation tests
+- Documentation: Comprehensive specification and examples
+- Examples: hello-world, calculator, pmat-server
+- Performance: &lt;1μs dispatch, &lt;100ms cold start
+- EXTREME TDD methodology: 5-minute cycles with quality enforcement
+
+### Performance
+- Tool dispatch (hot): &lt; 1μs
+- Cold start: &lt; 100ms
+- Sequential throughput: &gt; 100K req/s
+- Concurrent throughput (8-core): &gt; 500K req/s
+- Memory baseline: &lt; 512KB
+
+### Quality Metrics
+- Test coverage: 85%
+- Mutation score: 92%
+- Technical Debt Grade: 0.82
+- Cyclomatic complexity: Max 15 (target ≤20)
+- Zero SATD comments
+- Zero unwrap() in production code
+
+[Unreleased]: https://github.com/paiml/pforge/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/paiml/pforge/releases/tag/v0.1.0
+</code></pre>
+<h2 id="release-checklist"><a class="header" href="#release-checklist">Release Checklist</a></h2>
+<p>Before publishing a new version:</p>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Run full test suite: <code>cargo test --all</code></li>
+<li><input disabled="" type="checkbox"/>
+Run quality gates: <code>make quality-gate</code></li>
+<li><input disabled="" type="checkbox"/>
+Update version in <code>Cargo.toml</code> workspace section</li>
+<li><input disabled="" type="checkbox"/>
+Update version in workspace dependencies</li>
+<li><input disabled="" type="checkbox"/>
+Run <code>cargo update -w</code></li>
+<li><input disabled="" type="checkbox"/>
+Update CHANGELOG.md (move Unreleased to version section)</li>
+<li><input disabled="" type="checkbox"/>
+Update documentation if needed</li>
+<li><input disabled="" type="checkbox"/>
+Run <code>cargo doc --no-deps</code> to verify</li>
+<li><input disabled="" type="checkbox"/>
+Commit changes: <code>git commit -m "Bump version to X.Y.Z"</code></li>
+<li><input disabled="" type="checkbox"/>
+Create git tag: <code>git tag -a vX.Y.Z -m "Release version X.Y.Z"</code></li>
+<li><input disabled="" type="checkbox"/>
+Push commits: <code>git push origin main</code></li>
+<li><input disabled="" type="checkbox"/>
+Push tags: <code>git push origin vX.Y.Z</code></li>
+<li><input disabled="" type="checkbox"/>
+Publish crates in dependency order</li>
+<li><input disabled="" type="checkbox"/>
+Verify each publication on crates.io</li>
+<li><input disabled="" type="checkbox"/>
+Test installation: <code>cargo install pforge-cli --force</code></li>
+<li><input disabled="" type="checkbox"/>
+Create GitHub release with CHANGELOG excerpt</li>
+<li><input disabled="" type="checkbox"/>
+Announce release (Twitter, Reddit, Discord, etc.)</li>
+</ul>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Effective version management requires:</p>
+<ol>
+<li><strong>Semantic versioning</strong>: MAJOR.MINOR.PATCH with clear rules</li>
+<li><strong>Workspace versions</strong>: Unified versioning for consistency</li>
+<li><strong>Internal dependencies</strong>: Use workspace dependencies with versions</li>
+<li><strong>Changelog</strong>: Document every change with “Keep a Changelog” format</li>
+<li><strong>Git tags</strong>: Tag releases for reproducibility</li>
+<li><strong>Yanking</strong>: Use sparingly for critical issues</li>
+<li><strong>Pre-releases</strong>: alpha/beta/rc for testing before stable</li>
+<li><strong>Coordination</strong>: Publish in dependency order, verify each step</li>
+</ol>
+<p>pforge’s version strategy:</p>
+<ul>
+<li>Unified 0.x versioning across all crates</li>
+<li>Workspace-level version management</li>
+<li>Dependency-first publishing order</li>
+<li>Comprehensive CHANGELOG with breaking change markers</li>
+<li>Git tags for every release</li>
+</ul>
+<p>Version 1.0.0 will signal API stability and production readiness.</p>
+<hr />
+<p><strong>Next</strong>: <a href="ch17-03-documentation.html">Documentation</a></p>
 
                     </main>
 

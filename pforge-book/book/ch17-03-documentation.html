@@ -158,8 +158,653 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch17-03-documentationmd"><a class="header" href="#ch17-03-documentationmd">ch17-03-documentation.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="documentation"><a class="header" href="#documentation">Documentation</a></h1>
+<p>Good documentation is essential for published crates. Users discover your crate on crates.io, read the README, then dive into API docs on docs.rs. This chapter covers writing comprehensive documentation that drives adoption.</p>
+<h2 id="why-documentation-matters"><a class="header" href="#why-documentation-matters">Why Documentation Matters</a></h2>
+<p>Documentation serves multiple audiences:</p>
+<ol>
+<li><strong>New users</strong>: Decide if the crate solves their problem (README)</li>
+<li><strong>Integrators</strong>: Learn how to use the API (docs.rs)</li>
+<li><strong>Contributors</strong>: Understand implementation (inline comments)</li>
+<li><strong>Future you</strong>: Remember why you made certain decisions</li>
+</ol>
+<p><strong>Impact on adoption</strong>: Well-documented crates get 10x more downloads than poorly documented ones with identical functionality.</p>
+<h2 id="documentation-layers"><a class="header" href="#documentation-layers">Documentation Layers</a></h2>
+<p>pforge uses a three-layer documentation strategy:</p>
+<h3 id="layer-1-readme-discovery"><a class="header" href="#layer-1-readme-discovery">Layer 1: README (Discovery)</a></h3>
+<p>Purpose: Convince users to try your crate</p>
+<p>Location: <code>README.md</code> in crate root</p>
+<p>Length: 100-200 lines</p>
+<p>Content:</p>
+<ul>
+<li>One-line description</li>
+<li>Installation instructions</li>
+<li>Quick example (working code in 10 lines)</li>
+<li>Feature highlights</li>
+<li>Links to full documentation</li>
+</ul>
+<h3 id="layer-2-api-documentation-integration"><a class="header" href="#layer-2-api-documentation-integration">Layer 2: API Documentation (Integration)</a></h3>
+<p>Purpose: Teach users how to use the API</p>
+<p>Location: Doc comments in source code</p>
+<p>Generated: docs.rs automatic build</p>
+<p>Content:</p>
+<ul>
+<li>Crate-level overview (<code>lib.rs</code>)</li>
+<li>Module documentation</li>
+<li>Function/struct/trait documentation</li>
+<li>Examples for every public API</li>
+<li>Usage patterns</li>
+</ul>
+<h3 id="layer-3-specification-architecture"><a class="header" href="#layer-3-specification-architecture">Layer 3: Specification (Architecture)</a></h3>
+<p>Purpose: Explain design decisions and architecture</p>
+<p>Location: <code>docs/</code> directory or separate documentation site</p>
+<p>Length: As long as needed (pforge spec is 2400+ lines)</p>
+<p>Content:</p>
+<ul>
+<li>System architecture</li>
+<li>Design rationale</li>
+<li>Performance characteristics</li>
+<li>Advanced usage patterns</li>
+<li>Migration guides</li>
+</ul>
+<h2 id="writing-effective-doc-comments"><a class="header" href="#writing-effective-doc-comments">Writing Effective Doc Comments</a></h2>
+<p>Rust doc comments use <code>///</code> for items and <code>//!</code> for modules/crates.</p>
+<h3 id="crate-level-documentation"><a class="header" href="#crate-level-documentation">Crate-Level Documentation</a></h3>
+<p>In <code>lib.rs</code>:</p>
+<pre><code class="language-rust">//! # pforge-config
+//!
+//! Configuration parsing and validation for pforge MCP servers.
+//!
+//! This crate provides the core types and functions for parsing YAML
+//! configurations into type-safe Rust structures. It validates
+//! configurations against the MCP server schema.
+//!
+//! ## Quick Example
+//!
+//! ```rust
+//! use pforge_config::ForgeConfig;
+//!
+//! let yaml = r#"
+//! forge:
+//!   name: my-server
+//!   version: 0.1.0
+//! tools:
+//!   - name: greet
+//!     type: native
+//!     description: "Greet the user"
+//! "#;
+//!
+//! let config = ForgeConfig::from_yaml(yaml)?;
+//! assert_eq!(config.name, "my-server");
+//! assert_eq!(config.tools.len(), 1);
+//! # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+//! ```
+//!
+//! ## Features
+//!
+//! - **Type-safe parsing**: YAML → Rust structs with validation
+//! - **Schema validation**: Ensures all required fields present
+//! - **Error reporting**: Detailed error messages with line numbers
+//! - **Zero-copy**: References into YAML string where possible
+//!
+//! ## Architecture
+//!
+//! The configuration system uses three main types:
+//!
+//! - [`ForgeConfig`]: Root configuration structure
+//! - [`ToolDef`]: Tool definition enum (Native, CLI, HTTP, Pipeline)
+//! - [`ParamSchema`]: Parameter type definitions with validation
+//!
+//! See the `types` module for details.
+
+pub mod types;
+pub mod validation;
+pub mod parser;</code></pre>
+<p><strong>Key elements</strong>:</p>
+<ul>
+<li>Title (<code># pforge-config</code>)</li>
+<li>One-line description</li>
+<li>Quick example with complete, runnable code</li>
+<li>Feature highlights</li>
+<li>Architecture overview</li>
+<li>Links to modules</li>
+</ul>
+<h3 id="module-documentation"><a class="header" href="#module-documentation">Module Documentation</a></h3>
+<pre><code class="language-rust">//! Tool definition types and validation.
+//!
+//! This module contains the core types for defining MCP tools:
+//!
+//! - [`ToolDef`]: Enum of tool types (Native, CLI, HTTP, Pipeline)
+//! - [`NativeToolDef`]: Rust handler configuration
+//! - [`CliToolDef`]: CLI wrapper configuration
+//!
+//! ## Example
+//!
+//! ```rust
+//! use pforge_config::types::{ToolDef, NativeToolDef};
+//!
+//! let tool = ToolDef::Native(NativeToolDef {
+//!     name: "greet".to_string(),
+//!     description: "Greet the user".to_string(),
+//!     handler: "greet::handler".to_string(),
+//!     params: vec![],
+//! });
+//! ```
+
+pub enum ToolDef {
+    Native(NativeToolDef),
+    Cli(CliToolDef),
+    Http(HttpToolDef),
+    Pipeline(PipelineToolDef),
+}</code></pre>
+<h3 id="function-documentation"><a class="header" href="#function-documentation">Function Documentation</a></h3>
+<pre><code class="language-rust">/// Parses a YAML string into a [`ForgeConfig`].
+///
+/// This function validates the YAML structure and all required fields.
+/// It returns detailed error messages if validation fails.
+///
+/// # Arguments
+///
+/// * `yaml` - YAML configuration string
+///
+/// # Returns
+///
+/// - `Ok(ForgeConfig)` if parsing and validation succeed
+/// - `Err(ConfigError)` with detailed error message if validation fails
+///
+/// # Errors
+///
+/// Returns [`ConfigError::ParseError`] if YAML is malformed.
+/// Returns [`ConfigError::ValidationError`] if required fields are missing.
+///
+/// # Examples
+///
+/// ```rust
+/// use pforge_config::ForgeConfig;
+///
+/// let yaml = r#"
+/// forge:
+///   name: test-server
+///   version: 0.1.0
+/// "#;
+///
+/// let config = ForgeConfig::from_yaml(yaml)?;
+/// assert_eq!(config.name, "test-server");
+/// # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+/// ```
+///
+/// ## Invalid YAML
+///
+/// ```rust
+/// use pforge_config::ForgeConfig;
+///
+/// let yaml = "invalid: yaml: content:";
+/// let result = ForgeConfig::from_yaml(yaml);
+/// assert!(result.is_err());
+/// ```
+pub fn from_yaml(yaml: &amp;str) -&gt; Result&lt;ForgeConfig, ConfigError&gt; {
+    // Implementation
+}</code></pre>
+<p><strong>Documentation sections</strong>:</p>
+<ul>
+<li>Summary line</li>
+<li>Detailed description</li>
+<li>Arguments (with types)</li>
+<li>Returns (success and error cases)</li>
+<li>Errors (when and why they occur)</li>
+<li>Examples (both success and failure cases)</li>
+</ul>
+<h3 id="struct-documentation"><a class="header" href="#struct-documentation">Struct Documentation</a></h3>
+<pre><code class="language-rust">/// Configuration for a Native Rust handler.
+///
+/// Native handlers are compiled into the server binary for maximum
+/// performance. They execute with &lt;1μs dispatch overhead.
+///
+/// # Fields
+///
+/// - `name`: Tool name (must be unique per server)
+/// - `description`: Human-readable description (shown in MCP clients)
+/// - `handler`: Rust function path (e.g., "handlers::greet::execute")
+/// - `params`: Parameter definitions with types and validation
+/// - `timeout_ms`: Optional execution timeout in milliseconds
+///
+/// # Example
+///
+/// ```rust
+/// use pforge_config::types::NativeToolDef;
+///
+/// let tool = NativeToolDef {
+///     name: "calculate".to_string(),
+///     description: "Perform calculation".to_string(),
+///     handler: "calc::handler".to_string(),
+///     params: vec![],
+///     timeout_ms: Some(5000),
+/// };
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NativeToolDef {
+    pub name: String,
+    pub description: String,
+    pub handler: String,
+    pub params: Vec&lt;ParamSchema&gt;,
+    pub timeout_ms: Option&lt;u64&gt;,
+}</code></pre>
+<h3 id="trait-documentation"><a class="header" href="#trait-documentation">Trait Documentation</a></h3>
+<pre><code class="language-rust">/// Handler trait for MCP tools.
+///
+/// Implement this trait for each tool in your server. The runtime
+/// automatically registers handlers and routes requests.
+///
+/// # Type Parameters
+///
+/// - `Input`: Request parameter type (must implement `Deserialize`)
+/// - `Output`: Response type (must implement `Serialize`)
+///
+/// # Example
+///
+/// ```rust
+/// use pforge_runtime::Handler;
+/// use async_trait::async_trait;
+/// use serde::{Deserialize, Serialize};
+///
+/// #[derive(Deserialize)]
+/// struct GreetInput {
+///     name: String,
+/// }
+///
+/// #[derive(Serialize)]
+/// struct GreetOutput {
+///     message: String,
+/// }
+///
+/// struct GreetHandler;
+///
+/// #[async_trait]
+/// impl Handler for GreetHandler {
+///     type Input = GreetInput;
+///     type Output = GreetOutput;
+///
+///     async fn execute(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output, Box&lt;dyn std::error::Error&gt;&gt; {
+///         Ok(GreetOutput {
+///             message: format!("Hello, {}!", input.name),
+///         })
+///     }
+/// }
+/// ```
+///
+/// # Performance
+///
+/// Handler dispatch has &lt;1μs overhead. Most time is spent in your
+/// implementation. Use `async` for I/O-bound operations, avoid blocking.
+///
+/// # Error Handling
+///
+/// Return `Err` for failures. Errors are automatically converted to
+/// MCP error responses with appropriate error codes.
+#[async_trait]
+pub trait Handler: Send + Sync {
+    type Input: DeserializeOwned;
+    type Output: Serialize;
+
+    async fn execute(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output, Box&lt;dyn std::error::Error&gt;&gt;;
+}</code></pre>
+<h2 id="documentation-best-practices"><a class="header" href="#documentation-best-practices">Documentation Best Practices</a></h2>
+<h3 id="1-write-examples-that-compile"><a class="header" href="#1-write-examples-that-compile">1. Write Examples That Compile</a></h3>
+<p>Use doc tests that actually run:</p>
+<pre><code class="language-rust">/// ```rust
+/// use pforge_config::ForgeConfig;
+///
+/// let config = ForgeConfig::from_yaml("...")?;
+/// # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+/// ```</code></pre>
+<p>The <code># Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())</code> line is hidden in rendered docs but makes the example compile.</p>
+<p><strong>Test your examples</strong>:</p>
+<pre><code class="language-bash">cargo test --doc
+</code></pre>
+<p>This runs all code examples. Failing examples = bad documentation.</p>
+<h3 id="2-show-both-success-and-failure"><a class="header" href="#2-show-both-success-and-failure">2. Show Both Success and Failure</a></h3>
+<p>Document error cases:</p>
+<pre><code class="language-rust">/// # Examples
+///
+/// ## Success
+///
+/// ```rust
+/// let result = parse("valid input");
+/// assert!(result.is_ok());
+/// ```
+///
+/// ## Invalid Input
+///
+/// ```rust
+/// let result = parse("invalid");
+/// assert!(result.is_err());
+/// ```</code></pre>
+<p>Users need to know what can go wrong.</p>
+<h3 id="3-use-intra-doc-links"><a class="header" href="#3-use-intra-doc-links">3. Use Intra-Doc Links</a></h3>
+<p>Link to related items:</p>
+<pre><code class="language-rust">/// See also [`ToolDef`] and [`ForgeConfig`].
+///
+/// Uses the `Handler` trait trait.</code></pre>
+<p>Makes navigation easy on docs.rs.</p>
+<h3 id="4-document-panics"><a class="header" href="#4-document-panics">4. Document Panics</a></h3>
+<p>If a function can panic, document when:</p>
+<pre><code class="language-rust">/// # Panics
+///
+/// Panics if the handler registry is not initialized.
+/// Call `Registry::init()` before using this function.</code></pre>
+<p>Though <strong>pforge policy: no panics in production code</strong>.</p>
+<h3 id="5-document-safety"><a class="header" href="#5-document-safety">5. Document Safety</a></h3>
+<p>For <code>unsafe</code> code:</p>
+<pre><code class="language-rust">/// # Safety
+///
+/// Caller must ensure `ptr` is:
+/// - Non-null
+/// - Properly aligned
+/// - Valid for reads of `len` bytes
+pub unsafe fn from_raw_parts(ptr: *const u8, len: usize) -&gt; &amp;[u8] {
+    // ...
+}</code></pre>
+<h3 id="6-provide-context"><a class="header" href="#6-provide-context">6. Provide Context</a></h3>
+<p>Explain <strong>why</strong>, not just <strong>what</strong>:</p>
+<p><strong>Bad</strong>:</p>
+<pre><code class="language-rust">/// Returns the handler registry.
+pub fn registry() -&gt; &amp;Registry { ... }</code></pre>
+<p><strong>Good</strong>:</p>
+<pre><code class="language-rust">/// Returns the global handler registry.
+///
+/// The registry contains all registered tools and routes requests
+/// to appropriate handlers. This is initialized once at startup
+/// and shared across all requests for zero-overhead dispatch.
+pub fn registry() -&gt; &amp;Registry { ... }</code></pre>
+<h3 id="7-document-performance"><a class="header" href="#7-document-performance">7. Document Performance</a></h3>
+<p>For performance-critical APIs:</p>
+<pre><code class="language-rust">/// Dispatches a tool call to the appropriate handler.
+///
+/// # Performance
+///
+/// - Lookup: O(1) average case using FxHash
+/// - Dispatch: &lt;1μs overhead
+/// - Memory: Zero allocations for most calls
+///
+/// Benchmark results (Intel i7-9700K):
+/// - Sequential: 1.2M calls/sec
+/// - Concurrent (8 threads): 6.5M calls/sec</code></pre>
+<p>Users care about performance characteristics.</p>
+<h2 id="docsrs-configuration"><a class="header" href="#docsrs-configuration">docs.rs Configuration</a></h2>
+<p>docs.rs automatically builds documentation for published crates.</p>
+<h3 id="default-configuration"><a class="header" href="#default-configuration">Default Configuration</a></h3>
+<p>docs.rs builds with:</p>
+<ul>
+<li>Latest stable Rust</li>
+<li>Default features</li>
+<li><code>--all-features</code> flag</li>
+</ul>
+<h3 id="custom-build-configuration"><a class="header" href="#custom-build-configuration">Custom Build Configuration</a></h3>
+<p>For advanced control, add <code>[package.metadata.docs.rs]</code> to <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+</code></pre>
+<p>This enables all features for documentation builds.</p>
+<h3 id="feature-flags-in-docs"><a class="header" href="#feature-flags-in-docs">Feature Flags in Docs</a></h3>
+<p>Show which items require features:</p>
+<pre><code class="language-rust">#[cfg(feature = "http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http")))]
+pub struct HttpToolDef {
+    // ...
+}</code></pre>
+<p>On docs.rs, this shows “Available on crate feature <code>http</code> only”.</p>
+<h3 id="platform-specific-docs"><a class="header" href="#platform-specific-docs">Platform-Specific Docs</a></h3>
+<p>For platform-specific items:</p>
+<pre><code class="language-rust">#[cfg(target_os = "linux")]
+#[cfg_attr(docsrs, doc(cfg(target_os = "linux")))]
+pub fn linux_specific() {
+    // ...
+}</code></pre>
+<p>Shows “Available on Linux only” in docs.</p>
+<h2 id="testing-documentation"><a class="header" href="#testing-documentation">Testing Documentation</a></h2>
+<h3 id="doc-tests"><a class="header" href="#doc-tests">Doc Tests</a></h3>
+<p>Every <code>///</code> example is a test:</p>
+<pre><code class="language-rust">/// ```rust
+/// use pforge_config::ForgeConfig;
+/// let config = ForgeConfig::from_yaml("...")?;
+/// # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+/// ```</code></pre>
+<p>Run with:</p>
+<pre><code class="language-bash">cargo test --doc
+</code></pre>
+<h3 id="no-run-examples"><a class="header" href="#no-run-examples">No-Run Examples</a></h3>
+<p>For examples that shouldn’t execute:</p>
+<pre><code class="language-rust">/// ```rust,no_run
+/// // This would connect to a real server
+/// let server = Server::connect("http://example.com")?;
+/// # Ok::&lt;(), Box&lt;dyn std::error::Error&gt;&gt;(())
+/// ```</code></pre>
+<h3 id="compile-only-examples"><a class="header" href="#compile-only-examples">Compile-Only Examples</a></h3>
+<p>For examples that compile but shouldn’t run:</p>
+<pre><code class="language-rust">/// ```rust,compile_fail
+/// // This should NOT compile
+/// let x: u32 = "string";
+/// ```</code></pre>
+<p>Useful for demonstrating what <strong>doesn’t</strong> work.</p>
+<h3 id="ignored-examples"><a class="header" href="#ignored-examples">Ignored Examples</a></h3>
+<p>For pseudo-code:</p>
+<pre><code class="language-rust">/// ```rust,ignore
+/// // Simplified pseudocode
+/// for tool in tools {
+///     process(tool);
+/// }
+/// ```</code></pre>
+<h2 id="readme-template"><a class="header" href="#readme-template">README Template</a></h2>
+<p>Here’s pforge’s README template:</p>
+<pre><code class="language-markdown"># pforge-config
+
+[![Crates.io](https://img.shields.io/crates/v/pforge-config.svg)](https://crates.io/crates/pforge-config)
+[![Documentation](https://docs.rs/pforge-config/badge.svg)](https://docs.rs/pforge-config)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Configuration parsing and validation for pforge MCP servers.
+
+## Overview
+
+pforge-config provides type-safe YAML configuration parsing for the pforge
+framework. It validates configurations against the MCP server schema and
+provides detailed error messages.
+
+## Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+pforge-config = "0.1.0"
+</code></pre>
+<h2 id="quick-example"><a class="header" href="#quick-example">Quick Example</a></h2>
+<pre><code class="language-rust">use pforge_config::ForgeConfig;
+
+let yaml = r#"
+forge:
+  name: my-server
+  version: 0.1.0
+tools:
+  - name: greet
+    type: native
+    description: "Greet the user"
+    handler: "handlers::greet"
+"#;
+
+let config = ForgeConfig::from_yaml(yaml)?;
+println!("Server: {}", config.name);
+println!("Tools: {}", config.tools.len());</code></pre>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<ul>
+<li><strong>Type-safe parsing</strong>: YAML → validated Rust structs</li>
+<li><strong>Schema validation</strong>: Ensures all required fields present</li>
+<li><strong>Detailed errors</strong>: Line numbers and field context</li>
+<li><strong>Zero-copy</strong>: Efficient parsing with minimal allocations</li>
+<li><strong>Extensible</strong>: Easy to add custom validation rules</li>
+</ul>
+<h2 id="documentation-1"><a class="header" href="#documentation-1">Documentation</a></h2>
+<p>Full API documentation: https://docs.rs/pforge-config</p>
+<p>For the complete pforge framework: https://github.com/paiml/pforge</p>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<p>See <code>examples/</code> directory:</p>
+<ul>
+<li><code>basic_config.rs</code>: Simple configuration</li>
+<li><code>validation.rs</code>: Error handling</li>
+<li><code>advanced.rs</code>: Complex configurations</li>
+</ul>
+<p>Run an example:</p>
+<pre><code class="language-bash">cargo run --example basic_config
+</code></pre>
+<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
+<ul>
+<li>Parse time: &lt;10ms for typical configs</li>
+<li>Memory usage: ~1KB per tool definition</li>
+<li>Validation: &lt;1ms after parsing</li>
+</ul>
+<h2 id="contributing"><a class="header" href="#contributing">Contributing</a></h2>
+<p>Contributions welcome! See CONTRIBUTING.md.</p>
+<h2 id="license"><a class="header" href="#license">License</a></h2>
+<p>MIT License. See LICENSE file for details.</p>
+<h2 id="related-crates"><a class="header" href="#related-crates">Related Crates</a></h2>
+<ul>
+<li><code>pforge-runtime</code>: Core runtime</li>
+<li><code>pforge-codegen</code>: Code generation</li>
+<li><code>pforge-cli</code>: Command-line tool</li>
+</ul>
+<pre><code>
+## Documentation Checklist
+
+Before publishing, verify:
+
+### Crate-Level Documentation
+- [ ] `lib.rs` has comprehensive `//!` documentation
+- [ ] Quick example is present and compiles
+- [ ] Feature list is complete
+- [ ] Architecture overview explains key types
+- [ ] Links to important modules work
+
+### API Documentation
+- [ ] All public functions documented
+- [ ] All public structs/enums documented
+- [ ] All public traits documented
+- [ ] Examples for complex APIs
+- [ ] Error cases documented
+- [ ] Performance characteristics noted where relevant
+
+### Examples
+- [ ] Examples compile: `cargo test --doc`
+- [ ] Examples are realistic (not toy examples)
+- [ ] Both success and error cases shown
+- [ ] Examples use proper error handling
+
+### README
+- [ ] One-line description matches `Cargo.toml`
+- [ ] Installation instructions correct
+- [ ] Quick example works
+- [ ] Links to docs.rs and repository
+- [ ] Badges are present and correct
+
+### Building
+- [ ] Documentation builds: `cargo doc --no-deps`
+- [ ] No warnings: `cargo doc --no-deps 2&gt;&amp;1 | grep warning`
+- [ ] Links resolve correctly
+- [ ] Code examples all pass
+
+## Common Documentation Mistakes
+
+### 1. Missing Examples
+
+**Problem**: Documentation without examples.
+
+**Fix**: Every public API should have at least one example.
+
+### 2. Outdated Examples
+
+**Problem**: Examples that don't compile.
+
+**Fix**: Run `cargo test --doc` regularly. Add to CI.
+
+### 3. Vague Descriptions
+
+**Problem**: "Gets the value" (what value? when? why?)
+
+**Fix**: Be specific. "Gets the configuration value for the given key, returning None if the key doesn't exist."
+
+### 4. Missing Error Documentation
+
+**Problem**: Function returns `Result` but doesn't document errors.
+
+**Fix**: Add `# Errors` section listing when each error occurs.
+
+### 5. Broken Links
+
+**Problem**: Links to non-existent items.
+
+**Fix**: Use intra-doc links: `[`FunctionName`]` instead of manual URLs.
+
+## Documentation Automation
+
+Create a script to verify documentation:
+
+```bash
+#!/bin/bash
+# scripts/check-docs.sh
+
+set -e
+
+echo "Checking documentation..."
+
+# Build docs
+echo "Building documentation..."
+cargo doc --no-deps --all
+
+# Test doc examples
+echo "Testing doc examples..."
+cargo test --doc --all
+
+# Check for warnings
+echo "Checking for warnings..."
+cargo doc --no-deps --all 2&gt;&amp;1 | tee /tmp/doc-output.txt
+if grep -q "warning" /tmp/doc-output.txt; then
+    echo "ERROR: Documentation has warnings"
+    exit 1
+fi
+
+# Check README examples compile
+echo "Checking README examples..."
+# Extract code blocks from README and test them
+# (implementation depends on your needs)
+
+echo "Documentation checks passed!"
+</code></pre>
+<p>Add to CI:</p>
+<pre><code class="language-yaml"># .github/workflows/ci.yml
+- name: Check documentation
+  run: ./scripts/check-docs.sh
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Comprehensive documentation requires:</p>
+<ol>
+<li><strong>Three layers</strong>: README (discovery), API docs (integration), specs (architecture)</li>
+<li><strong>Doc comments</strong>: Crate, module, function, struct, trait levels</li>
+<li><strong>Examples</strong>: Compilable, realistic, covering success and error cases</li>
+<li><strong>Best practices</strong>: Intra-doc links, error documentation, performance notes</li>
+<li><strong>Testing</strong>: <code>cargo test --doc</code> to verify examples</li>
+<li><strong>Automation</strong>: Scripts and CI to catch regressions</li>
+</ol>
+<p>pforge’s documentation strategy:</p>
+<ul>
+<li>Comprehensive <code>lib.rs</code> documentation with examples</li>
+<li>Every public API has examples</li>
+<li>README focuses on quick start</li>
+<li>Full specification in separate docs</li>
+<li>All examples tested in CI</li>
+</ul>
+<p>Good documentation drives adoption and reduces support burden.</p>
+<hr />
+<p><strong>Next</strong>: <a href="ch17-04-publishing.html">Publishing Process</a></p>
 
                     </main>
 

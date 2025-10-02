@@ -158,8 +158,361 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch07-00-five-minute-cyclemd"><a class="header" href="#ch07-00-five-minute-cyclemd">ch07-00-five-minute-cycle.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="the-5-minute-tdd-cycle"><a class="header" href="#the-5-minute-tdd-cycle">The 5-Minute TDD Cycle</a></h1>
+<p>Test-Driven Development (TDD) is often taught as a philosophy but rarely enforced as a discipline. In pforge, we take a different approach: EXTREME TDD with strict time-boxing derived from Toyota Production System principles.</p>
+<h2 id="why-5-minutes"><a class="header" href="#why-5-minutes">Why 5 Minutes?</a></h2>
+<p>The 5-minute cycle isn’t arbitrary. It’s rooted in manufacturing psychology and cognitive science:</p>
+<p><strong>Immediate Feedback</strong>: Humans excel at tasks with tight feedback loops. A 5-minute cycle means you discover mistakes within minutes, not hours or days. The cost of fixing a bug grows exponentially with time—a defect found in 5 minutes costs virtually nothing to fix; one found in production can cost 100x more.</p>
+<p><strong>Flow State Prevention</strong>: Counter-intuitively, preventing deep “flow states” in TDD improves overall quality. Flow states encourage big changes without tests, accumulating technical debt. Short cycles force frequent integration and testing.</p>
+<p><strong>Cognitive Load Management</strong>: Working memory holds ~7 items for ~20 seconds (Miller, 1956). A 5-minute cycle keeps changes small enough to fit in working memory, reducing errors and improving code comprehension.</p>
+<p><strong>Jidoka (“Stop the Line”)</strong>: Borrowed from Toyota’s production system, if quality gates fail, you stop immediately. No pushing forward with broken tests or failing builds. This prevents defects from propagating downstream.</p>
+<h2 id="the-sacred-5-minute-timer"><a class="header" href="#the-sacred-5-minute-timer">The Sacred 5-Minute Timer</a></h2>
+<p>Before starting any TDD cycle, set a physical timer for 5 minutes:</p>
+<pre><code class="language-bash"># Start your cycle
+timer 5m  # Use any timer tool
+</code></pre>
+<p>If the timer expires before you reach COMMIT, you must RESET: discard all changes and start over. No exceptions.</p>
+<p>This discipline seems harsh, but it’s transformative:</p>
+<ul>
+<li><strong>Forces small changes</strong>: You learn to break work into tiny increments</li>
+<li><strong>Eliminates waste</strong>: No time spent debugging large, complex changes</li>
+<li><strong>Builds skill</strong>: You develop pattern recognition for estimating change complexity</li>
+<li><strong>Maintains quality</strong>: Every commit passes all quality gates</li>
+</ul>
+<h2 id="the-four-phases"><a class="header" href="#the-four-phases">The Four Phases</a></h2>
+<p>The 5-minute cycle consists of four strictly time-boxed phases:</p>
+<h3 id="1-red-000-200--write-failing-test"><a class="header" href="#1-red-000-200--write-failing-test">1. RED (0:00-2:00) — Write Failing Test</a></h3>
+<p><strong>Maximum time: 2 minutes</strong></p>
+<p>Write a single failing test that specifies the next small increment of behavior. The test must:</p>
+<ul>
+<li>Compile (if applicable)</li>
+<li>Run and fail for the right reason</li>
+<li>Be small and focused</li>
+</ul>
+<p>If you can’t write a failing test in 2 minutes, your increment is too large. Break it down further.</p>
+<h3 id="2-green-200-400--minimum-code-to-pass"><a class="header" href="#2-green-200-400--minimum-code-to-pass">2. GREEN (2:00-4:00) — Minimum Code to Pass</a></h3>
+<p><strong>Maximum time: 2 minutes</strong></p>
+<p>Write the absolute minimum code to make the test pass. Do not:</p>
+<ul>
+<li>Add extra features</li>
+<li>Refactor existing code</li>
+<li>Optimize prematurely</li>
+<li>Write documentation</li>
+</ul>
+<p>Just make the test green. Hard-coding the return value is acceptable at this stage.</p>
+<h3 id="3-refactor-400-500--clean-up"><a class="header" href="#3-refactor-400-500--clean-up">3. REFACTOR (4:00-5:00) — Clean Up</a></h3>
+<p><strong>Maximum time: 1 minute</strong></p>
+<p>With tests passing, improve code quality:</p>
+<ul>
+<li>Extract duplication</li>
+<li>Improve names</li>
+<li>Simplify logic</li>
+<li>Ensure tests still pass</li>
+</ul>
+<p>This is fast refactoring—obvious improvements only. Deep refactoring requires its own cycle.</p>
+<h3 id="4-commit-or-reset-500"><a class="header" href="#4-commit-or-reset-500">4. COMMIT or RESET (5:00)</a></h3>
+<p><strong>At the 5-minute mark, exactly two outcomes:</strong></p>
+<p><strong>COMMIT</strong>: All quality gates pass → commit immediately
+<strong>RESET</strong>: Any gate fails or timer expired → discard all changes, start over</p>
+<p>No third option. No “just one more minute.” This is the discipline that ensures quality.</p>
+<h2 id="time-budget-breakdown"><a class="header" href="#time-budget-breakdown">Time Budget Breakdown</a></h2>
+<p>The time allocation reflects priorities:</p>
+<pre><code>RED:      2 minutes (40%) - Specification
+GREEN:    2 minutes (40%) - Implementation
+REFACTOR: 1 minute  (20%) - Quality
+COMMIT:   instant        - Validation
+</code></pre>
+<p>Notice that specification and implementation get equal time. This reflects TDD’s philosophy: tests are not an afterthought but co-equal with production code.</p>
+<p>The 1-minute refactor limit enforces the rule: “refactor constantly in small steps” rather than “big refactoring sessions.”</p>
+<h2 id="practical-timer-management"><a class="header" href="#practical-timer-management">Practical Timer Management</a></h2>
+<h3 id="setup-your-environment"><a class="header" href="#setup-your-environment">Setup Your Environment</a></h3>
+<pre><code class="language-bash"># Install a timer tool (example: termdown)
+cargo install termdown
+
+# Alias for quick access
+alias tdd='termdown 5m &amp;&amp; cargo test --lib --quiet'
+</code></pre>
+<h3 id="timer-discipline"><a class="header" href="#timer-discipline">Timer Discipline</a></h3>
+<p><strong>Start the timer BEFORE writing any code:</strong></p>
+<pre><code class="language-bash"># WRONG - code first, timer second
+vim src/handlers/calculate.rs
+termdown 5m
+
+# RIGHT - timer first, establishes commitment
+termdown 5m &amp;
+vim src/handlers/calculate.rs
+</code></pre>
+<p><strong>When the timer rings:</strong></p>
+<ol>
+<li><strong>Stop typing immediately</strong> — Mid-keystroke if necessary</li>
+<li><strong>Run quality gates</strong> — <code>make quality-gate</code></li>
+<li><strong>COMMIT or RESET</strong> — No middle ground</li>
+</ol>
+<h3 id="visual-cues"><a class="header" href="#visual-cues">Visual Cues</a></h3>
+<p>Many developers use physical timers for stronger psychological impact:</p>
+<ul>
+<li>Kitchen timer on desk (audible, visible)</li>
+<li>Pomodoro timer app (desktop notification)</li>
+<li>Smart watch timer (wrist vibration)</li>
+</ul>
+<p>The key is making the timer <strong>unavoidable</strong>.</p>
+<h2 id="example-complete-5-minute-cycle"><a class="header" href="#example-complete-5-minute-cycle">Example: Complete 5-Minute Cycle</a></h2>
+<p>Let’s walk through a real pforge TDD cycle implementing a <code>divide</code> tool for a calculator server.</p>
+<h3 id="minute-000---start-timer-begin-red"><a class="header" href="#minute-000---start-timer-begin-red">Minute 0:00 - Start Timer, Begin RED</a></h3>
+<pre><code class="language-bash"># Start 5-minute timer
+termdown 5m &amp;
+
+# Create test file
+vim crates/pforge-runtime/tests/unit/handlers/calculator_test.rs
+</code></pre>
+<h3 id="minute-030---write-failing-test"><a class="header" href="#minute-030---write-failing-test">Minute 0:30 - Write Failing Test</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_divide_returns_quotient() {
+    let handler = DivideHandler;
+    let input = DivideInput {
+        numerator: 10.0,
+        denominator: 2.0
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    assert_eq!(output.quotient, 5.0);
+}</code></pre>
+<h3 id="minute-100---test-fails-compilation-error"><a class="header" href="#minute-100---test-fails-compilation-error">Minute 1:00 - Test Fails (Compilation Error)</a></h3>
+<pre><code class="language-bash">cargo test --lib test_divide_returns_quotient
+# Error: cannot find struct `DivideHandler` in this scope
+</code></pre>
+<p>Good! We’re RED for the right reason.</p>
+<h3 id="minute-200---begin-green-phase"><a class="header" href="#minute-200---begin-green-phase">Minute 2:00 - Begin GREEN Phase</a></h3>
+<p>Create handler skeleton:</p>
+<pre><code class="language-rust">// src/handlers/calculator.rs
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DivideInput {
+    pub numerator: f64,
+    pub denominator: f64,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DivideOutput {
+    pub quotient: f64,
+}
+
+pub struct DivideHandler;
+
+#[async_trait::async_trait]
+impl Handler for DivideHandler {
+    type Input = DivideInput;
+    type Output = DivideOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(DivideOutput {
+            quotient: input.numerator / input.denominator,
+        })
+    }
+}</code></pre>
+<h3 id="minute-330---test-passes"><a class="header" href="#minute-330---test-passes">Minute 3:30 - Test Passes</a></h3>
+<pre><code class="language-bash">cargo test --lib test_divide_returns_quotient
+# test test_divide_returns_quotient ... ok
+</code></pre>
+<p>GREEN! We’re ahead of schedule.</p>
+<h3 id="minute-400---refactor-phase"><a class="header" href="#minute-400---refactor-phase">Minute 4:00 - REFACTOR Phase</a></h3>
+<p>Extract magic number, improve naming:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let quotient = input.numerator / input.denominator;
+    Ok(DivideOutput { quotient })
+}</code></pre>
+<p>Re-run tests:</p>
+<pre><code class="language-bash">cargo test --lib test_divide_returns_quotient
+# test test_divide_returns_quotient ... ok
+</code></pre>
+<h3 id="minute-450---commit-decision"><a class="header" href="#minute-450---commit-decision">Minute 4:50 - COMMIT Decision</a></h3>
+<pre><code class="language-bash">make quality-gate
+# ✓ cargo fmt --check
+# ✓ cargo clippy -- -D warnings
+# ✓ cargo test --all
+# ✓ pmat analyze complexity --max 20
+# ✓ pmat analyze satd --max 0
+# All gates passed!
+</code></pre>
+<h3 id="minute-500---commit"><a class="header" href="#minute-500---commit">Minute 5:00 - COMMIT</a></h3>
+<pre><code class="language-bash">git add crates/pforge-runtime/src/handlers/calculator.rs \
+        crates/pforge-runtime/tests/unit/handlers/calculator_test.rs
+
+git commit -m "feat: add divide operation to calculator
+
+Implements basic division with f64 precision.
+
+Generated with Claude Code
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;"
+</code></pre>
+<p><strong>Cycle complete in 5:00</strong>. Next cycle can address division-by-zero error handling.</p>
+<h2 id="what-reset-looks-like"><a class="header" href="#what-reset-looks-like">What RESET Looks Like</a></h2>
+<p>Now let’s see a failed cycle that requires RESET.</p>
+<h3 id="minute-000---start-timer"><a class="header" href="#minute-000---start-timer">Minute 0:00 - Start Timer</a></h3>
+<pre><code class="language-bash">termdown 5m &amp;
+</code></pre>
+<h3 id="minute-030---write-test-too-ambitious"><a class="header" href="#minute-030---write-test-too-ambitious">Minute 0:30 - Write Test (Too Ambitious)</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_advanced_statistics() {
+    let handler = StatsHandler;
+    let input = StatsInput {
+        data: vec![1.0, 2.0, 3.0, 4.0, 5.0],
+        compute_mean: true,
+        compute_median: true,
+        compute_mode: true,
+        compute_stddev: true,
+        compute_variance: true,
+        compute_quartiles: true,
+    };
+
+    let result = handler.handle(input).await;
+    // ... many assertions
+}</code></pre>
+<h3 id="minute-230---still-writing-implementation"><a class="header" href="#minute-230---still-writing-implementation">Minute 2:30 - Still Writing Implementation</a></h3>
+<pre><code class="language-rust">pub async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let mean = if input.compute_mean {
+        Some(calculate_mean(&amp;input.data))
+    } else {
+        None
+    };
+
+    let median = if input.compute_median {
+        // ... still implementing</code></pre>
+<h3 id="minute-500---timer-expires"><a class="header" href="#minute-500---timer-expires">Minute 5:00 - Timer Expires</a></h3>
+<p><strong>STOP.</strong></p>
+<p>The timer has expired. Tests are not passing. Quality gates haven’t run.</p>
+<h3 id="reset-protocol"><a class="header" href="#reset-protocol">RESET Protocol</a></h3>
+<pre><code class="language-bash"># Discard all changes
+git checkout .
+git clean -fd
+
+# Reflect: Why did this fail?
+# Answer: Tried to implement 6 features in one cycle
+# Solution: Break into 6 separate cycles, one per statistic
+</code></pre>
+<p>This RESET just saved you from:</p>
+<ul>
+<li>Accumulating technical debt</li>
+<li>Complex debugging sessions</li>
+<li>Merge conflicts</li>
+<li>Poor design choices made under time pressure</li>
+</ul>
+<h2 id="the-psychology-of-reset"><a class="header" href="#the-psychology-of-reset">The Psychology of RESET</a></h2>
+<p>RESET feels painful initially. You’ve written code and must delete it. But this pain is a teaching mechanism:</p>
+<p><strong>Immediate Consequence</strong>: Breaking discipline has an immediate, visible cost. You learn quickly what scope fits in 5 minutes.</p>
+<p><strong>Sunk Cost Avoidance</strong>: By discarding quickly, you avoid the sunk cost fallacy (“I’ve already invested 10 minutes, I’ll just finish”). This fallacy leads to sprawling commits.</p>
+<p><strong>Pattern Recognition</strong>: After several RESETs, you develop intuition for 5-minute scopes. You can estimate, “This will take 3 cycles” with accuracy.</p>
+<p><strong>Perfectionism Antidote</strong>: RESET teaches that code is disposable. The first attempt doesn’t need to be perfect—it just needs to teach you the right approach.</p>
+<h2 id="measuring-cycle-performance"><a class="header" href="#measuring-cycle-performance">Measuring Cycle Performance</a></h2>
+<p>Track your cycle outcomes to improve:</p>
+<pre><code class="language-bash"># .tdd-log (simple text file)
+2024-01-15 09:00 COMMIT divide_basic (4:30)
+2024-01-15 09:06 RESET  statistics_all (5:00+)
+2024-01-15 09:12 COMMIT divide_by_zero_check (3:45)
+2024-01-15 09:18 COMMIT mean_calculation (4:10)
+</code></pre>
+<p>Over time, you’ll notice:</p>
+<ul>
+<li>Cycles complete faster (pattern recognition improves)</li>
+<li>RESETs decrease (scoping improves)</li>
+<li>Quality gates pass more consistently (habits form)</li>
+</ul>
+<h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common Pitfalls</a></h2>
+<h3 id="pitfall-1-just-one-more-second"><a class="header" href="#pitfall-1-just-one-more-second">Pitfall 1: “Just One More Second”</a></h3>
+<p><strong>Symptom</strong>: Timer expires at 5:00, you think “I’m so close, just 30 more seconds.”</p>
+<p><strong>Why it’s dangerous</strong>: These “30 seconds” compound. Soon you’re running 7-minute cycles, then 10-minute, then abandoning time-boxing entirely.</p>
+<p><strong>Solution</strong>: Set a hard rule: “Timer expires = RESET, no exceptions for 30 days.” After 30 days, the habit is internalized.</p>
+<h3 id="pitfall-2-pausing-the-timer"><a class="header" href="#pitfall-2-pausing-the-timer">Pitfall 2: Pausing the Timer</a></h3>
+<p><strong>Symptom</strong>: Interruption occurs (Slack message, phone call). You pause the timer.</p>
+<p><strong>Why it’s dangerous</strong>: The 5-minute limit creates psychological pressure that improves focus. Pausing eliminates this pressure.</p>
+<p><strong>Solution</strong>: If interrupted, RESET the cycle after handling the interruption. Interruptions are context switches; your mental model is stale.</p>
+<h3 id="pitfall-3-skipping-refactor"><a class="header" href="#pitfall-3-skipping-refactor">Pitfall 3: Skipping REFACTOR</a></h3>
+<p><strong>Symptom</strong>: Test passes at 3:30. You immediately commit without refactoring.</p>
+<p><strong>Why it’s dangerous</strong>: Skipping refactoring accumulates cruft. After 100 cycles, your codebase is a mess.</p>
+<p><strong>Solution</strong>: Always use the remaining time to refactor. If test passes at 3:30, you have 1:30 to improve code. Use it.</p>
+<h3 id="pitfall-4-testing-timer-before-starting"><a class="header" href="#pitfall-4-testing-timer-before-starting">Pitfall 4: Testing Timer Before Starting</a></h3>
+<p><strong>Symptom</strong>: You outline your approach for 5 minutes, then start the timer before writing tests.</p>
+<p><strong>Why it’s dangerous</strong>: The planning time doesn’t count, so you’re actually running 10-minute cycles.</p>
+<p><strong>Solution</strong>: Timer starts when you open your editor. All planning happens within the 5-minute window (RED phase specifically).</p>
+<h2 id="integration-with-pforge-workflow"><a class="header" href="#integration-with-pforge-workflow">Integration with pforge Workflow</a></h2>
+<p>pforge provides built-in support for EXTREME TDD:</p>
+<h3 id="watch-mode-with-timer"><a class="header" href="#watch-mode-with-timer">Watch Mode with Timer</a></h3>
+<pre><code class="language-bash"># Continuous testing with integrated timer
+make dev
+</code></pre>
+<p>This runs:</p>
+<ol>
+<li>Start 5-minute timer</li>
+<li>Watch for file changes</li>
+<li>Run tests automatically</li>
+<li>Run quality gates</li>
+<li>Display COMMIT/RESET recommendation</li>
+</ol>
+<h3 id="quality-gate-integration"><a class="header" href="#quality-gate-integration">Quality Gate Integration</a></h3>
+<pre><code class="language-bash"># Fast quality check (&lt; 10 seconds)
+make quality-gate-fast
+</code></pre>
+<p>Runs only the critical gates:</p>
+<ul>
+<li>Compile check</li>
+<li>Clippy lints</li>
+<li>Unit tests (not integration)</li>
+</ul>
+<p>This gives quick feedback within the 5-minute window.</p>
+<h3 id="pre-commit-hook"><a class="header" href="#pre-commit-hook">Pre-Commit Hook</a></h3>
+<p>pforge installs a pre-commit hook that:</p>
+<ol>
+<li>Runs full quality gates</li>
+<li>Blocks commit if any fail</li>
+<li>Ensures every commit meets standards</li>
+</ol>
+<p>You never accidentally commit broken code.</p>
+<h2 id="advanced-distributed-tdd"><a class="header" href="#advanced-distributed-tdd">Advanced: Distributed TDD</a></h2>
+<p>For pair programming or mob programming, synchronize timers:</p>
+<pre><code class="language-bash"># All developers run
+tmux-clock-mode 5m
+</code></pre>
+<p>When anyone’s timer expires:</p>
+<ul>
+<li>Stop typing immediately</li>
+<li>Discuss COMMIT or RESET</li>
+<li>Start next cycle together</li>
+</ul>
+<p>This creates shared cadence and mutual accountability.</p>
+<h2 id="theoretical-foundation"><a class="header" href="#theoretical-foundation">Theoretical Foundation</a></h2>
+<p>pforge’s EXTREME TDD combines:</p>
+<ol>
+<li><strong>Beck’s TDD (2003)</strong>: RED-GREEN-REFACTOR cycle</li>
+<li><strong>Toyota Production System</strong>: Jidoka (stop the line), Kaizen (continuous improvement)</li>
+<li><strong>Lean Software Development</strong> (Poppendieck &amp; Poppendieck, 2003): Eliminate waste, amplify learning</li>
+<li><strong>Pomodoro Technique</strong> (Cirillo, 2006): Time-boxing for focus</li>
+</ol>
+<p>The 5-minute window is shorter than a Pomodoro (25 min) because code changes compound faster than other work. A bug introduced at minute 5 is harder to debug at minute 25.</p>
+<h2 id="benefits-after-30-days"><a class="header" href="#benefits-after-30-days">Benefits After 30 Days</a></h2>
+<p>Developers who strictly follow 5-minute TDD for 30 days report:</p>
+<ul>
+<li><strong>50% reduction in debugging time</strong>: Small cycles mean small bugs</li>
+<li><strong>80% increase in test coverage</strong>: Testing is automatic, not optional</li>
+<li><strong>90% reduction in production bugs</strong>: Quality gates catch issues early</li>
+<li><strong>Subjective improvement in code quality</strong>: Constant refactoring prevents cruft</li>
+<li><strong>Reduced stress</strong>: Frequent commits create safety net</li>
+</ul>
+<p>The first week is hard. The second week, muscle memory forms. By week four, it feels natural.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that you understand the 5-minute cycle philosophy, let’s dive into each phase:</p>
+<ul>
+<li><strong>RED Phase</strong>: How to write effective failing tests in 2 minutes</li>
+<li><strong>GREEN Phase</strong>: Techniques for minimal, correct implementations</li>
+<li><strong>REFACTOR Phase</strong>: Quick refactoring patterns that fit in 1 minute</li>
+<li><strong>COMMIT Phase</strong>: Quality gate integration and decision criteria</li>
+</ul>
+<p>Each subsequent chapter provides detailed techniques for maximizing each phase.</p>
+<hr />
+<p>Next: <a href="ch07-01-red.html">RED: Write Failing Test</a></p>
 
                     </main>
 

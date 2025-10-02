@@ -158,8 +158,705 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch17-01-preparingmd"><a class="header" href="#ch17-01-preparingmd">ch17-01-preparing.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="preparing-your-crate-for-publication"><a class="header" href="#preparing-your-crate-for-publication">Preparing Your Crate for Publication</a></h1>
+<p>Before publishing to crates.io, your crate needs proper metadata, documentation, and configuration. This chapter walks through preparing each pforge crate based on real-world experience.</p>
+<h2 id="required-metadata-fields"><a class="header" href="#required-metadata-fields">Required Metadata Fields</a></h2>
+<p>crates.io requires specific metadata in <code>Cargo.toml</code>. Missing any of these will cause publication to fail.</p>
+<h3 id="minimum-required-fields"><a class="header" href="#minimum-required-fields">Minimum Required Fields</a></h3>
+<pre><code class="language-toml">[package]
+name = "pforge-config"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Configuration parsing and validation for pforge MCP servers"
+</code></pre>
+<p>These five fields are <strong>mandatory</strong>. Attempting to publish without them produces:</p>
+<pre><code>error: failed to publish to crates.io
+
+Caused by:
+  missing required metadata fields: description, license
+</code></pre>
+<h3 id="recommended-fields"><a class="header" href="#recommended-fields">Recommended Fields</a></h3>
+<p>For better discoverability and user experience, add:</p>
+<pre><code class="language-toml">[package]
+# Required
+name = "pforge-config"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Configuration parsing and validation for pforge MCP servers"
+
+# Strongly recommended
+repository = "https://github.com/paiml/pforge"
+homepage = "https://github.com/paiml/pforge"
+documentation = "https://docs.rs/pforge-config"
+keywords = ["mcp", "config", "yaml", "codegen", "framework"]
+categories = ["development-tools", "config", "parsing"]
+authors = ["Pragmatic AI Labs"]
+readme = "README.md"
+</code></pre>
+<p>Each field serves a specific purpose:</p>
+<ul>
+<li><strong>repository</strong>: Link to source code (enables “Repository” button on crates.io)</li>
+<li><strong>homepage</strong>: Project website (can be same as repository)</li>
+<li><strong>documentation</strong>: Custom docs URL (defaults to docs.rs if omitted)</li>
+<li><strong>keywords</strong>: Search terms (max 5, each max 20 chars)</li>
+<li><strong>categories</strong>: Classification (from https://crates.io/categories)</li>
+<li><strong>authors</strong>: Credit (can be organization or individuals)</li>
+<li><strong>readme</strong>: README file path (relative to Cargo.toml)</li>
+</ul>
+<h2 id="workspace-metadata-pattern"><a class="header" href="#workspace-metadata-pattern">Workspace Metadata Pattern</a></h2>
+<p>For multi-crate workspaces like pforge, use workspace inheritance to avoid repetition.</p>
+<h3 id="workspace-root-configuration"><a class="header" href="#workspace-root-configuration">Workspace Root Configuration</a></h3>
+<p>In the root <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[workspace]
+resolver = "2"
+members = [
+    "crates/pforge-cli",
+    "crates/pforge-runtime",
+    "crates/pforge-codegen",
+    "crates/pforge-config",
+    "crates/pforge-macro",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/paiml/pforge"
+authors = ["Pragmatic AI Labs"]
+description = "Zero-boilerplate MCP server framework with EXTREME TDD methodology"
+keywords = ["mcp", "codegen", "tdd", "framework", "declarative"]
+categories = ["development-tools", "web-programming", "command-line-utilities"]
+homepage = "https://github.com/paiml/pforge"
+documentation = "https://docs.rs/pforge-runtime"
+</code></pre>
+<h3 id="individual-crate-configuration"><a class="header" href="#individual-crate-configuration">Individual Crate Configuration</a></h3>
+<p>Each crate inherits with <code>.workspace = true</code>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+</code></pre>
+<p><strong>Benefits</strong>:</p>
+<ul>
+<li>Update version once, applies to all crates</li>
+<li>Consistent metadata across workspace</li>
+<li>Less duplication</li>
+<li>Easier maintenance</li>
+</ul>
+<p><strong>Note</strong>: Individual crates can override workspace values if needed. For example, <code>pforge-cli</code> might have a different description than the workspace default.</p>
+<h2 id="choosing-keywords-and-categories"><a class="header" href="#choosing-keywords-and-categories">Choosing Keywords and Categories</a></h2>
+<h3 id="keywords"><a class="header" href="#keywords">Keywords</a></h3>
+<p>crates.io allows up to <strong>5 keywords</strong>, each max <strong>20 characters</strong>. Choose carefully for discoverability.</p>
+<p><strong>pforge’s keyword strategy</strong>:</p>
+<pre><code class="language-toml">keywords = ["mcp", "codegen", "tdd", "framework", "declarative"]
+</code></pre>
+<p>We chose:</p>
+<ul>
+<li><strong>mcp</strong>: Primary domain (Model Context Protocol)</li>
+<li><strong>codegen</strong>: Key feature (code generation)</li>
+<li><strong>tdd</strong>: Methodology (test-driven development)</li>
+<li><strong>framework</strong>: What it is</li>
+<li><strong>declarative</strong>: How it works</li>
+</ul>
+<p><strong>Avoid</strong>:</p>
+<ul>
+<li>Generic terms (“rust”, “server”) - too broad</li>
+<li>Duplicate concepts (“framework” + “library”)</li>
+<li>Marketing terms (“fast”, “best”)</li>
+<li>Longer than 20 chars (will be rejected)</li>
+</ul>
+<p><strong>Test keyword effectiveness</strong>:</p>
+<p>Search crates.io for each keyword to see competition and relevance.</p>
+<h3 id="categories"><a class="header" href="#categories">Categories</a></h3>
+<p>Categories come from a predefined list: https://crates.io/categories</p>
+<p><strong>pforge’s categories</strong>:</p>
+<pre><code class="language-toml">categories = ["development-tools", "web-programming", "command-line-utilities"]
+</code></pre>
+<p>Reasoning:</p>
+<ul>
+<li><strong>development-tools</strong>: Primary category (tool for developers)</li>
+<li><strong>web-programming</strong>: MCP is web/network protocol</li>
+<li><strong>command-line-utilities</strong>: pforge is a CLI tool</li>
+</ul>
+<p><strong>Available categories include</strong>:</p>
+<ul>
+<li>algorithms</li>
+<li>api-bindings</li>
+<li>asynchronous</li>
+<li>authentication</li>
+<li>caching</li>
+<li>command-line-utilities</li>
+<li>config</li>
+<li>cryptography</li>
+<li>database</li>
+<li>development-tools</li>
+<li>encoding</li>
+<li>parsing</li>
+<li>web-programming</li>
+</ul>
+<p>Choose 2-3 most relevant categories. Don’t over-categorize.</p>
+<h2 id="license-selection"><a class="header" href="#license-selection">License Selection</a></h2>
+<p>The <code>license</code> field uses SPDX identifiers: https://spdx.org/licenses/</p>
+<p><strong>Common choices</strong>:</p>
+<ul>
+<li><strong>MIT</strong>: Permissive, simple, widely used</li>
+<li><strong>Apache-2.0</strong>: Permissive, patent grant, corporate-friendly</li>
+<li><strong>MIT OR Apache-2.0</strong>: Dual license (common in Rust ecosystem)</li>
+<li><strong>BSD-3-Clause</strong>: Permissive, attribution required</li>
+<li><strong>GPL-3.0</strong>: Copyleft, viral license</li>
+</ul>
+<p><strong>pforge uses MIT</strong>:</p>
+<pre><code class="language-toml">license = "MIT"
+</code></pre>
+<p>Simple, permissive, minimal restrictions. Good for libraries and frameworks where you want maximum adoption.</p>
+<p><strong>For dual licensing</strong>:</p>
+<pre><code class="language-toml">license = "MIT OR Apache-2.0"
+</code></pre>
+<p><strong>For custom licenses</strong>:</p>
+<pre><code class="language-toml">license-file = "LICENSE.txt"
+</code></pre>
+<p>Points to a custom license file (rare, not recommended).</p>
+<p><strong>Include license file</strong>: Always add <code>LICENSE</code> or <code>LICENSE-MIT</code> file to repository root, even when using SPDX identifier.</p>
+<h2 id="including-files-in-the-package"><a class="header" href="#including-files-in-the-package">Including Files in the Package</a></h2>
+<p>By default, cargo includes all source files but excludes:</p>
+<ul>
+<li><code>.git/</code></li>
+<li><code>target/</code></li>
+<li>Files in <code>.gitignore</code></li>
+</ul>
+<h3 id="the-include-field"><a class="header" href="#the-include-field">The <code>include</code> Field</a></h3>
+<p>For crates needing specific files (like templates), use <code>include</code>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-cli"
+# ... other fields ...
+include = [
+    "src/**/*",
+    "templates/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
+</code></pre>
+<p><strong>When pforge-cli was first published without <code>include</code></strong>:</p>
+<pre><code class="language-bash">$ cargo install pforge-cli
+$ pforge new my-project
+Error: template directory not found
+</code></pre>
+<p>The <code>templates/</code> directory wasn’t included! Adding <code>include</code> fixed it.</p>
+<h3 id="the-exclude-field"><a class="header" href="#the-exclude-field">The <code>exclude</code> Field</a></h3>
+<p>Alternatively, exclude specific files:</p>
+<pre><code class="language-toml">exclude = [
+    "tests/fixtures/large_file.bin",
+    "benches/data/*",
+    ".github/",
+]
+</code></pre>
+<p>Use <code>include</code> (allowlist) or <code>exclude</code> (blocklist), not both.</p>
+<h3 id="verify-package-contents"><a class="header" href="#verify-package-contents">Verify Package Contents</a></h3>
+<p>Before publishing, check what will be included:</p>
+<pre><code class="language-bash">cargo package --list
+</code></pre>
+<p>Example output:</p>
+<pre><code>pforge-cli-0.1.0/Cargo.toml
+pforge-cli-0.1.0/src/main.rs
+pforge-cli-0.1.0/src/commands/mod.rs
+pforge-cli-0.1.0/src/commands/new.rs
+pforge-cli-0.1.0/templates/new-project/pforge.yaml.template
+pforge-cli-0.1.0/templates/new-project/Cargo.toml.template
+pforge-cli-0.1.0/README.md
+pforge-cli-0.1.0/LICENSE
+</code></pre>
+<p>Review this list carefully. Missing files cause runtime errors. Extra files increase download size.</p>
+<h3 id="inspect-the-package"><a class="header" href="#inspect-the-package">Inspect the Package</a></h3>
+<p>Create the package without publishing:</p>
+<pre><code class="language-bash">cargo package
+</code></pre>
+<p>This creates <code>target/package/pforge-cli-0.1.0.crate</code>. Inspect it:</p>
+<pre><code class="language-bash">tar -tzf target/package/pforge-cli-0.1.0.crate | head -20
+</code></pre>
+<p>Extract and examine:</p>
+<pre><code class="language-bash">cd target/package
+tar -xzf pforge-cli-0.1.0.crate
+cd pforge-cli-0.1.0
+tree
+</code></pre>
+<p>This lets you verify the exact contents users will download.</p>
+<h2 id="writing-the-readme"><a class="header" href="#writing-the-readme">Writing the README</a></h2>
+<p>The README is the first thing users see on crates.io and docs.rs. Make it count.</p>
+<h3 id="essential-readme-sections"><a class="header" href="#essential-readme-sections">Essential README Sections</a></h3>
+<p><strong>pforge-config’s README structure</strong>:</p>
+<pre><code class="language-markdown"># pforge-config
+
+Configuration parsing and validation for pforge MCP servers.
+
+## Overview
+
+pforge-config provides the core configuration types used by the pforge
+framework. It parses YAML configurations and validates them against
+the MCP server schema.
+
+## Installation
+
+Add to your `Cargo.toml`:
+
+[dependencies]
+pforge-config = "0.1.0"
+
+## Quick Example
+
+\`\`\`rust
+use pforge_config::ForgeConfig;
+
+let yaml = r#"
+forge:
+  name: my-server
+  version: 0.1.0
+tools:
+  - name: greet
+    type: native
+"#;
+
+let config = ForgeConfig::from_yaml(yaml)?;
+println!("Server: {}", config.name);
+\`\`\`
+
+## Features
+
+- YAML configuration parsing
+- Schema validation
+- Type-safe configuration structs
+- Comprehensive error messages
+
+## Documentation
+
+Full documentation available at https://docs.rs/pforge-config
+
+## License
+
+MIT
+</code></pre>
+<h3 id="readme-best-practices"><a class="header" href="#readme-best-practices">README Best Practices</a></h3>
+<ol>
+<li><strong>Start with one-line description</strong>: Same as <code>Cargo.toml</code> description</li>
+<li><strong>Show installation</strong>: Copy-paste <code>Cargo.toml</code> snippet</li>
+<li><strong>Provide quick example</strong>: Working code in first 20 lines</li>
+<li><strong>Highlight features</strong>: Bullet points, not paragraphs</li>
+<li><strong>Link to docs</strong>: Don’t duplicate full API docs in README</li>
+<li><strong>Keep it short</strong>: 100-200 lines max</li>
+<li><strong>Use badges</strong> (optional): Build status, crates.io version, docs.rs</li>
+</ol>
+<h3 id="badges-example"><a class="header" href="#badges-example">Badges Example</a></h3>
+<pre><code class="language-markdown">[![Crates.io](https://img.shields.io/crates/v/pforge-config.svg)](https://crates.io/crates/pforge-config)
+[![Documentation](https://docs.rs/pforge-config/badge.svg)](https://docs.rs/pforge-config)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+</code></pre>
+<p>Badges provide quick status at a glance.</p>
+<h2 id="version-specifications-for-dependencies"><a class="header" href="#version-specifications-for-dependencies">Version Specifications for Dependencies</a></h2>
+<h3 id="external-dependencies"><a class="header" href="#external-dependencies">External Dependencies</a></h3>
+<p>For dependencies from crates.io, use <strong>caret requirements</strong> (default):</p>
+<pre><code class="language-toml">[dependencies]
+serde = "1.0"          # Means &gt;=1.0.0, &lt;2.0.0
+serde_json = "1.0.108" # Means &gt;=1.0.108, &lt;2.0.0
+thiserror = "1.0"
+</code></pre>
+<p>This allows minor and patch updates automatically (following semver).</p>
+<p><strong>Alternative version syntax</strong>:</p>
+<pre><code class="language-toml">serde = "^1.0"      # Explicit caret (same as "1.0")
+serde = "~1.0.100"  # Tilde: &gt;=1.0.100, &lt;1.1.0
+serde = "&gt;=1.0"     # Unbounded (not recommended)
+serde = "=1.0.100"  # Exact version (too strict)
+</code></pre>
+<p><strong>Recommendation</strong>: Use simple version like <code>"1.0"</code> for libraries, <code>"=1.0.100"</code> only for binaries if needed.</p>
+<h3 id="internal-dependencies-workspace"><a class="header" href="#internal-dependencies-workspace">Internal Dependencies (Workspace)</a></h3>
+<p>For crates within the same workspace, use <strong>workspace dependencies</strong>:</p>
+<pre><code class="language-toml">[workspace.dependencies]
+pforge-config = { path = "crates/pforge-config", version = "0.1.0" }
+pforge-macro = { path = "crates/pforge-macro", version = "0.1.0" }
+pforge-runtime = { path = "crates/pforge-runtime", version = "0.1.0" }
+</code></pre>
+<p>Each crate references with:</p>
+<pre><code class="language-toml">[dependencies]
+pforge-config = { workspace = true }
+</code></pre>
+<p><strong>Critical</strong>: Both <code>path</code> and <code>version</code> are required. The <code>path</code> is used for local development. The <code>version</code> is used when published to crates.io.</p>
+<h3 id="what-happens-without-version"><a class="header" href="#what-happens-without-version">What Happens Without Version</a></h3>
+<p>If you forget <code>version</code> on internal dependencies:</p>
+<pre><code class="language-toml"># WRONG - will fail to publish
+pforge-config = { path = "../pforge-config" }
+</code></pre>
+<p>Publishing fails:</p>
+<pre><code>error: all dependencies must specify a version for published crates
+  --&gt; Cargo.toml:15:1
+   |
+15 | pforge-config = { path = "../pforge-config" }
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+</code></pre>
+<p><strong>Fix</strong>: Add explicit version:</p>
+<pre><code class="language-toml"># CORRECT
+pforge-config = { path = "../pforge-config", version = "0.1.0" }
+</code></pre>
+<p>Or use workspace inheritance:</p>
+<pre><code class="language-toml"># In workspace root Cargo.toml
+[workspace.dependencies]
+pforge-config = { path = "crates/pforge-config", version = "0.1.0" }
+
+# In dependent crate
+[dependencies]
+pforge-config = { workspace = true }
+</code></pre>
+<h3 id="optional-dependencies"><a class="header" href="#optional-dependencies">Optional Dependencies</a></h3>
+<p>For features that are optional:</p>
+<pre><code class="language-toml">[dependencies]
+serde = { version = "1.0", optional = true }
+
+[features]
+default = []
+serialization = ["serde"]
+</code></pre>
+<p>Users can enable with:</p>
+<pre><code class="language-toml">pforge-config = { version = "0.1.0", features = ["serialization"] }
+</code></pre>
+<h2 id="preparing-each-pforge-crate"><a class="header" href="#preparing-each-pforge-crate">Preparing Each pforge Crate</a></h2>
+<p>Here’s how we prepared each crate:</p>
+<h3 id="pforge-config-foundation-crate"><a class="header" href="#pforge-config-foundation-crate">pforge-config (Foundation Crate)</a></h3>
+<p><strong>Cargo.toml</strong>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yml = { workspace = true }
+thiserror = { workspace = true }
+url = "2.5"
+</code></pre>
+<p><strong>No special includes needed</strong> - all source files in <code>src/</code> are automatically included.</p>
+<p><strong>README</strong>: 150 lines, installation + quick example + features</p>
+<h3 id="pforge-macro-procedural-macro-crate"><a class="header" href="#pforge-macro-procedural-macro-crate">pforge-macro (Procedural Macro Crate)</a></h3>
+<p><strong>Cargo.toml</strong>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-macro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+</code></pre>
+<p><strong>Key</strong>: <code>proc-macro = true</code> required for procedural macro crates.</p>
+<p><strong>No dependencies on other pforge crates</strong> - macros are independent.</p>
+<h3 id="pforge-runtime-depends-on-config"><a class="header" href="#pforge-runtime-depends-on-config">pforge-runtime (Depends on Config)</a></h3>
+<p><strong>Cargo.toml</strong>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+# Internal dependency - requires pforge-config published first
+pforge-config = { workspace = true }
+
+# Runtime-specific
+pmcp = "1.6"
+schemars = { version = "0.8", features = ["derive"] }
+rustc-hash = "2.0"
+dashmap = "6.0"
+reqwest = { version = "0.12", features = ["json"] }
+</code></pre>
+<p><strong>Critical</strong>: <code>pforge-config</code> must be published to crates.io before <code>pforge-runtime</code> can be published.</p>
+<h3 id="pforge-codegen-depends-on-config"><a class="header" href="#pforge-codegen-depends-on-config">pforge-codegen (Depends on Config)</a></h3>
+<p><strong>Cargo.toml</strong>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-codegen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+# Internal dependency
+pforge-config = { workspace = true }
+
+# Codegen-specific
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+</code></pre>
+<p>Can be published in parallel with <code>pforge-runtime</code> since both only depend on <code>pforge-config</code>.</p>
+<h3 id="pforge-cli-depends-on-everything"><a class="header" href="#pforge-cli-depends-on-everything">pforge-cli (Depends on Everything)</a></h3>
+<p><strong>Cargo.toml</strong>:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+# CRITICAL: Include templates directory
+include = [
+    "src/**/*",
+    "templates/**/*",
+    "Cargo.toml",
+    "README.md",
+]
+
+[[bin]]
+name = "pforge"
+path = "src/main.rs"
+
+[dependencies]
+# All internal dependencies must be published first
+pforge-runtime = { workspace = true }
+pforge-config = { workspace = true }
+pforge-codegen = { workspace = true }
+
+# CLI-specific
+anyhow = { workspace = true }
+clap = { version = "4.4", features = ["derive"] }
+tokio = { workspace = true }
+</code></pre>
+<p><strong>Must be published last</strong> - depends on all other pforge crates.</p>
+<p><strong>Critical</strong>: The <code>include</code> field ensures templates are bundled.</p>
+<h2 id="pre-publication-checklist-per-crate"><a class="header" href="#pre-publication-checklist-per-crate">Pre-Publication Checklist Per Crate</a></h2>
+<p>Before publishing each crate, verify:</p>
+<h3 id="metadata-checklist"><a class="header" href="#metadata-checklist">Metadata Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+<code>name</code> is unique on crates.io</li>
+<li><input disabled="" type="checkbox"/>
+<code>version</code> follows semver</li>
+<li><input disabled="" type="checkbox"/>
+<code>edition</code> is set (2021 recommended)</li>
+<li><input disabled="" type="checkbox"/>
+<code>license</code> uses SPDX identifier</li>
+<li><input disabled="" type="checkbox"/>
+<code>description</code> is clear and concise</li>
+<li><input disabled="" type="checkbox"/>
+<code>repository</code> links to source code</li>
+<li><input disabled="" type="checkbox"/>
+<code>keywords</code> are relevant (max 5, each max 20 chars)</li>
+<li><input disabled="" type="checkbox"/>
+<code>categories</code> are from official list</li>
+<li><input disabled="" type="checkbox"/>
+<code>authors</code> are credited</li>
+<li><input disabled="" type="checkbox"/>
+<code>readme</code> path is correct</li>
+</ul>
+<h3 id="files-checklist"><a class="header" href="#files-checklist">Files Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+<code>README.md</code> exists and is comprehensive</li>
+<li><input disabled="" type="checkbox"/>
+<code>LICENSE</code> file exists</li>
+<li><input disabled="" type="checkbox"/>
+Required files are included (check with <code>cargo package --list</code>)</li>
+<li><input disabled="" type="checkbox"/>
+Templates/resources are in <code>include</code> if needed</li>
+<li><input disabled="" type="checkbox"/>
+No unnecessary files (large test data, etc.)</li>
+<li><input disabled="" type="checkbox"/>
+Package size is reasonable (&lt;5MB for libraries)</li>
+</ul>
+<h3 id="dependencies-checklist"><a class="header" href="#dependencies-checklist">Dependencies Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+All internal dependencies have <code>version</code> specified</li>
+<li><input disabled="" type="checkbox"/>
+Internal dependencies are published to crates.io</li>
+<li><input disabled="" type="checkbox"/>
+External dependency versions are appropriate</li>
+<li><input disabled="" type="checkbox"/>
+No <code>path</code> dependencies without <code>version</code></li>
+<li><input disabled="" type="checkbox"/>
+Optional dependencies have corresponding features</li>
+</ul>
+<h3 id="code-checklist"><a class="header" href="#code-checklist">Code Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+All tests pass: <code>cargo test</code></li>
+<li><input disabled="" type="checkbox"/>
+Clippy is clean: <code>cargo clippy -- -D warnings</code></li>
+<li><input disabled="" type="checkbox"/>
+Code is formatted: <code>cargo fmt --check</code></li>
+<li><input disabled="" type="checkbox"/>
+Documentation builds: <code>cargo doc --no-deps</code></li>
+<li><input disabled="" type="checkbox"/>
+No <code>TODO</code> or <code>FIXME</code> in public APIs</li>
+<li><input disabled="" type="checkbox"/>
+Public APIs have doc comments</li>
+</ul>
+<h3 id="testing-checklist"><a class="header" href="#testing-checklist">Testing Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Dry run succeeds: <code>cargo publish --dry-run</code></li>
+<li><input disabled="" type="checkbox"/>
+Package contents verified: <code>cargo package --list</code></li>
+<li><input disabled="" type="checkbox"/>
+Package size is acceptable: check <code>target/package/*.crate</code></li>
+<li><input disabled="" type="checkbox"/>
+README renders correctly on GitHub</li>
+<li><input disabled="" type="checkbox"/>
+Examples compile and run</li>
+</ul>
+<h2 id="common-preparation-mistakes"><a class="header" href="#common-preparation-mistakes">Common Preparation Mistakes</a></h2>
+<h3 id="1-missing-readme"><a class="header" href="#1-missing-readme">1. Missing README</a></h3>
+<p><strong>Problem</strong>: No <code>README.md</code> file.</p>
+<p><strong>Error</strong>:</p>
+<pre><code>warning: manifest has no readme or documentation
+</code></pre>
+<p>Not fatal, but strongly discouraged. Users won’t know how to use your crate.</p>
+<p><strong>Fix</strong>: Write a README with installation and examples.</p>
+<h3 id="2-keywords-too-long"><a class="header" href="#2-keywords-too-long">2. Keywords Too Long</a></h3>
+<p><strong>Problem</strong>: Keywords exceed 20 characters.</p>
+<p><strong>Error</strong>:</p>
+<pre><code>error: keyword "model-context-protocol" is too long (max 20 chars)
+</code></pre>
+<p><strong>Fix</strong>: Abbreviate or rephrase. Use “mcp” instead of “model-context-protocol”.</p>
+<h3 id="3-invalid-category"><a class="header" href="#3-invalid-category">3. Invalid Category</a></h3>
+<p><strong>Problem</strong>: Category not in official list.</p>
+<p><strong>Error</strong>:</p>
+<pre><code>error: category "mcp-servers" is not a valid crates.io category
+</code></pre>
+<p><strong>Fix</strong>: Choose from https://crates.io/categories. Use “web-programming” or “development-tools”.</p>
+<h3 id="4-huge-package-size"><a class="header" href="#4-huge-package-size">4. Huge Package Size</a></h3>
+<p><strong>Problem</strong>: Accidentally including large test data files.</p>
+<p><strong>Warning</strong>:</p>
+<pre><code>warning: package size is 45.2 MB
+note: crates.io has a 10MB package size limit
+</code></pre>
+<p><strong>Fix</strong>: Use <code>exclude</code> or <code>include</code> to remove large files. Move test data to separate repository.</p>
+<h3 id="5-broken-links-in-readme"><a class="header" href="#5-broken-links-in-readme">5. Broken Links in README</a></h3>
+<p><strong>Problem</strong>: README links use relative paths that don’t work on crates.io.</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-markdown"></code></pre>
+<p>This breaks on crates.io because <code>docs/</code> isn’t included.</p>
+<p><strong>Fix</strong>: Use absolute URLs:</p>
+<pre><code class="language-markdown"></code></pre>
+<p>Or include the file:</p>
+<pre><code class="language-toml">include = ["docs/architecture.png"]
+</code></pre>
+<h2 id="automation-scripts"><a class="header" href="#automation-scripts">Automation Scripts</a></h2>
+<p>Create a script to prepare all crates:</p>
+<pre><code class="language-bash">#!/bin/bash
+# scripts/prepare-publish.sh
+
+set -e
+
+echo "Preparing crates for publication..."
+
+# Check all tests pass
+echo "Running tests..."
+cargo test --all
+
+# Check formatting
+echo "Checking formatting..."
+cargo fmt --check
+
+# Check clippy
+echo "Running clippy..."
+cargo clippy --all -- -D warnings
+
+# Build documentation
+echo "Building docs..."
+cargo doc --all --no-deps
+
+# Dry run for each publishable crate
+for crate in pforge-config pforge-macro pforge-runtime pforge-codegen pforge-cli; do
+    echo "Dry run: $crate"
+    cd "crates/$crate"
+    cargo publish --dry-run
+    cargo package --list &gt; /tmp/${crate}-files.txt
+    echo "  Files: $(wc -l &lt; /tmp/${crate}-files.txt)"
+    cd ../..
+done
+
+echo "All crates ready for publication!"
+</code></pre>
+<p>Run before publishing:</p>
+<pre><code class="language-bash">./scripts/prepare-publish.sh
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Preparing crates for publication requires:</p>
+<ol>
+<li><strong>Complete metadata</strong>: description, license, keywords, categories</li>
+<li><strong>Workspace inheritance</strong>: Share common metadata across crates</li>
+<li><strong>Correct file inclusion</strong>: Use <code>include</code> for templates/resources</li>
+<li><strong>Version specifications</strong>: Internal dependencies need <code>version</code> + <code>path</code></li>
+<li><strong>Comprehensive README</strong>: Installation, examples, features</li>
+<li><strong>Verification</strong>: Test dry runs, inspect packages, review file lists</li>
+</ol>
+<p>pforge’s preparation process caught multiple issues:</p>
+<ul>
+<li>Missing templates in CLI crate</li>
+<li>Keywords exceeding 20 characters</li>
+<li>Missing version on internal dependencies</li>
+<li>Broken documentation links</li>
+</ul>
+<p>Running thorough checks before publication saves time and prevents bad releases.</p>
+<hr />
+<p><strong>Next</strong>: <a href="ch17-02-versioning.html">Version Management</a></p>
 
                     </main>
 

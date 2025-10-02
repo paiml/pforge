@@ -158,8 +158,663 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch09-02-integration-testingmd"><a class="header" href="#ch09-02-integration-testingmd">ch09-02-integration-testing.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="integration-testing"><a class="header" href="#integration-testing">Integration Testing</a></h1>
+<p>Integration tests verify that pforge components work correctly together. With <strong>26 comprehensive integration tests</strong> covering cross-crate workflows, middleware chains, and end-to-end scenarios, integration testing ensures the system functions as a cohesive whole.</p>
+<h2 id="integration-test-philosophy"><a class="header" href="#integration-test-philosophy">Integration Test Philosophy</a></h2>
+<p>Integration tests differ from unit tests in scope and purpose:</p>
+<div class="table-wrapper"><table><thead><tr><th>Aspect</th><th>Unit Tests</th><th>Integration Tests</th></tr></thead><tbody>
+<tr><td><strong>Scope</strong></td><td>Single component</td><td>Multiple components</td></tr>
+<tr><td><strong>Speed</strong></td><td>&lt;1ms</td><td>&lt;100ms target</td></tr>
+<tr><td><strong>Dependencies</strong></td><td>None</td><td>Real implementations</td></tr>
+<tr><td><strong>Location</strong></td><td>Inline <code>#[cfg(test)]</code></td><td><code>tests/</code> directory</td></tr>
+<tr><td><strong>Purpose</strong></td><td>Verify isolation</td><td>Verify collaboration</td></tr>
+</tbody></table>
+</div>
+<p>Integration tests answer the question: “Do these components work together correctly?”</p>
+<h2 id="test-organization"><a class="header" href="#test-organization">Test Organization</a></h2>
+<p>Integration tests live in dedicated test crates:</p>
+<pre><code>pforge/
+├── crates/pforge-integration-tests/
+│   ├── Cargo.toml
+│   ├── integration_test.rs    # 18 integration tests
+│   └── property_test.rs        # 12 property-based tests
+└── crates/pforge-cli/tests/
+    └── scaffold_tests.rs       # 8 CLI integration tests
+</code></pre>
+<h3 id="integration-test-crate-structure"><a class="header" href="#integration-test-crate-structure">Integration Test Crate Structure</a></h3>
+<pre><code class="language-toml"># crates/pforge-integration-tests/Cargo.toml
+[package]
+name = "pforge-integration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+pforge-config = { path = "../pforge-config" }
+pforge-runtime = { path = "../pforge-runtime" }
+pforge-codegen = { path = "../pforge-codegen" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+tokio = { version = "1.0", features = ["full"] }
+proptest = "1.0"  # For property-based tests
+</code></pre>
+<h2 id="real-integration-test-examples"><a class="header" href="#real-integration-test-examples">Real Integration Test Examples</a></h2>
+<h3 id="example-1-config-parsing-all-tool-types"><a class="header" href="#example-1-config-parsing-all-tool-types">Example 1: Config Parsing All Tool Types</a></h3>
+<p>Tests that all tool types parse correctly from YAML:</p>
+<pre><code class="language-rust">#[test]
+fn test_config_parsing_all_tool_types() {
+    let yaml = r#"
+forge:
+  name: test-server
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: native
+    name: hello
+    description: Say hello
+    handler:
+      path: handlers::hello
+    params:
+      name:
+        type: string
+        required: true
+
+  - type: cli
+    name: echo
+    description: Echo command
+    command: echo
+    args: ["hello"]
+
+  - type: http
+    name: api_call
+    description: API call
+    endpoint: https://api.example.com
+    method: GET
+"#;
+
+    let config: ForgeConfig = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(config.forge.name, "test-server");
+    assert_eq!(config.tools.len(), 3);
+
+    // Verify each tool type parsed correctly
+    assert!(matches!(config.tools[0], ToolDef::Native { .. }));
+    assert!(matches!(config.tools[1], ToolDef::Cli { .. }));
+    assert!(matches!(config.tools[2], ToolDef::Http { .. }));
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>Cross-crate interaction: <code>pforge-config</code> types with <code>serde_yaml</code></li>
+<li>All tool variants deserialize correctly</li>
+<li>Configuration structure is valid</li>
+</ul>
+<h3 id="example-2-middleware-chain-with-recovery"><a class="header" href="#example-2-middleware-chain-with-recovery">Example 2: Middleware Chain with Recovery</a></h3>
+<p>Tests that multiple middleware components work together:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_middleware_chain_with_recovery() {
+    let mut chain = MiddlewareChain::new();
+
+    let recovery = RecoveryMiddleware::new().with_circuit_breaker(CircuitBreakerConfig {
+        failure_threshold: 3,
+        timeout: Duration::from_secs(60),
+        success_threshold: 2,
+    });
+
+    let tracker = recovery.error_tracker();
+    chain.add(Arc::new(recovery));
+
+    // Successful execution
+    let result = chain
+        .execute(json!({"input": 42}), |req| async move {
+            Ok(json!({"output": req["input"].as_i64().unwrap() * 2}))
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result["output"], 84);
+    assert_eq!(tracker.total_errors(), 0);
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>Middleware chain execution flow</li>
+<li>Recovery middleware integration</li>
+<li>Circuit breaker configuration</li>
+<li>Error tracking across components</li>
+</ul>
+<h3 id="example-3-full-middleware-stack"><a class="header" href="#example-3-full-middleware-stack">Example 3: Full Middleware Stack</a></h3>
+<p>Tests a realistic middleware stack with multiple layers:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_full_middleware_stack() {
+    use pforge_runtime::{LoggingMiddleware, ValidationMiddleware};
+
+    let mut chain = MiddlewareChain::new();
+
+    // Add validation
+    chain.add(Arc::new(ValidationMiddleware::new(vec![
+        "input".to_string(),
+    ])));
+
+    // Add logging
+    chain.add(Arc::new(LoggingMiddleware::new("test")));
+
+    // Add recovery
+    chain.add(Arc::new(RecoveryMiddleware::new()));
+
+    // Execute with valid request
+    let result = chain
+        .execute(json!({"input": 42}), |req| async move {
+            Ok(json!({"output": req["input"].as_i64().unwrap() + 1}))
+        })
+        .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap()["output"], 43);
+
+    // Execute with invalid request (missing field)
+    let result = chain
+        .execute(json!({"wrong": 42}), |req| async move {
+            Ok(json!({"output": req["input"].as_i64().unwrap() + 1}))
+        })
+        .await;
+
+    assert!(result.is_err());
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>Multiple middleware components compose correctly</li>
+<li>Validation runs before handler execution</li>
+<li>Error propagation through middleware stack</li>
+<li>Both success and failure paths</li>
+</ul>
+<h3 id="example-4-state-management-persistence"><a class="header" href="#example-4-state-management-persistence">Example 4: State Management Persistence</a></h3>
+<p>Tests state management across operations:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_state_management_persistence() {
+    let state = MemoryStateManager::new();
+
+    // Set and get
+    state.set("key1", b"value1".to_vec(), None).await.unwrap();
+    let value = state.get("key1").await.unwrap();
+    assert_eq!(value, Some(b"value1".to_vec()));
+
+    // Exists
+    assert!(state.exists("key1").await.unwrap());
+    assert!(!state.exists("key2").await.unwrap());
+
+    // Delete
+    state.delete("key1").await.unwrap();
+    assert!(!state.exists("key1").await.unwrap());
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>State operations work correctly in sequence</li>
+<li>Data persists across calls</li>
+<li>All CRUD operations integrate properly</li>
+</ul>
+<h3 id="example-5-retry-with-timeout-integration"><a class="header" href="#example-5-retry-with-timeout-integration">Example 5: Retry with Timeout Integration</a></h3>
+<p>Tests retry logic with timeouts:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_retry_with_timeout() {
+    let policy = RetryPolicy::new(3)
+        .with_backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .with_jitter(false);
+
+    let attempt_counter = Arc::new(AtomicUsize::new(0));
+    let counter_clone = attempt_counter.clone();
+
+    let result = retry_with_policy(&amp;policy, || {
+        let counter = counter_clone.clone();
+        async move {
+            let count = counter.fetch_add(1, Ordering::SeqCst);
+            if count &lt; 2 {
+                with_timeout(Duration::from_millis(10), async {
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    42
+                })
+                .await
+            } else {
+                Ok(100)
+            }
+        }
+    })
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 100);
+    assert_eq!(attempt_counter.load(Ordering::SeqCst), 3);
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>Retry policy execution</li>
+<li>Timeout integration</li>
+<li>Backoff behavior</li>
+<li>Success after multiple attempts</li>
+</ul>
+<h3 id="example-6-circuit-breaker-integration"><a class="header" href="#example-6-circuit-breaker-integration">Example 6: Circuit Breaker Integration</a></h3>
+<p>Tests circuit breaker state transitions:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_circuit_breaker_integration() {
+    let config = CircuitBreakerConfig {
+        failure_threshold: 2,
+        timeout: Duration::from_millis(100),
+        success_threshold: 2,
+    };
+
+    let cb = CircuitBreaker::new(config);
+
+    // Cause failures to open circuit
+    for _ in 0..2 {
+        let _ = cb
+            .call(|| async { Err::&lt;(), _&gt;(Error::Handler("failure".to_string())) })
+            .await;
+    }
+
+    // Circuit should be open
+    let result = cb
+        .call(|| async { Ok::&lt;_, Error&gt;(42) })
+        .await;
+    assert!(result.is_err());
+
+    // Wait for timeout
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Should transition to half-open and eventually close
+    let _ = cb.call(|| async { Ok::&lt;_, Error&gt;(1) }).await;
+    let _ = cb.call(|| async { Ok::&lt;_, Error&gt;(2) }).await;
+
+    // Now should work
+    let result = cb.call(|| async { Ok::&lt;_, Error&gt;(42) }).await;
+    assert!(result.is_ok());
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>Circuit breaker opens after threshold failures</li>
+<li>Half-open state after timeout</li>
+<li>Circuit closes after success threshold</li>
+<li>Complete state machine transitions</li>
+</ul>
+<h3 id="example-7-prompt-manager-full-workflow"><a class="header" href="#example-7-prompt-manager-full-workflow">Example 7: Prompt Manager Full Workflow</a></h3>
+<p>Tests template rendering with variable substitution:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_prompt_manager_full_workflow() {
+    let mut manager = PromptManager::new();
+
+    // Register prompts
+    let prompt = PromptDef {
+        name: "greeting".to_string(),
+        description: "Greet user".to_string(),
+        template: "Hello {{name}}, you are {{age}} years old!".to_string(),
+        arguments: HashMap::new(),
+    };
+
+    manager.register(prompt).unwrap();
+
+    // Render prompt
+    let mut args = HashMap::new();
+    args.insert("name".to_string(), json!("Alice"));
+    args.insert("age".to_string(), json!(30));
+
+    let rendered = manager.render("greeting", args).unwrap();
+    assert_eq!(rendered, "Hello Alice, you are 30 years old!");
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>Prompt registration</li>
+<li>Template variable substitution</li>
+<li>JSON value integration with templates</li>
+<li>End-to-end prompt workflow</li>
+</ul>
+<h3 id="example-8-config-validation-duplicate-tools"><a class="header" href="#example-8-config-validation-duplicate-tools">Example 8: Config Validation Duplicate Tools</a></h3>
+<p>Tests validation across components:</p>
+<pre><code class="language-rust">#[test]
+fn test_config_validation_duplicate_tools() {
+    use pforge_config::validate_config;
+
+    let yaml = r#"
+forge:
+  name: test
+  version: 1.0.0
+
+tools:
+  - type: cli
+    name: duplicate
+    description: First
+    command: echo
+    args: []
+
+  - type: cli
+    name: duplicate
+    description: Second
+    command: echo
+    args: []
+"#;
+
+    let config: ForgeConfig = serde_yaml::from_str(yaml).unwrap();
+    let result = validate_config(&amp;config);
+
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Duplicate tool name"));
+}</code></pre>
+<p><strong>What this tests</strong>:</p>
+<ul>
+<li>YAML parsing → config validation pipeline</li>
+<li>Error detection at validation layer</li>
+<li>Error message formatting</li>
+</ul>
+<h2 id="quality-gate-integration-tests"><a class="header" href="#quality-gate-integration-tests">Quality Gate Integration Tests</a></h2>
+<p>pforge includes 8 dedicated tests for PMAT quality gate integration:</p>
+<h3 id="example-9-pmat-quality-gate-exists"><a class="header" href="#example-9-pmat-quality-gate-exists">Example 9: PMAT Quality Gate Exists</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_pmat_quality_gate_exists() {
+    let output = Command::new("pmat")
+        .arg("quality-gate")
+        .arg("--help")
+        .output()
+        .expect("pmat should be installed");
+
+    assert!(
+        output.status.success(),
+        "pmat quality-gate should be available"
+    );
+}</code></pre>
+<h3 id="example-10-complexity-enforcement"><a class="header" href="#example-10-complexity-enforcement">Example 10: Complexity Enforcement</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_complexity_enforcement() {
+    let output = Command::new("pmat")
+        .arg("analyze")
+        .arg("complexity")
+        .arg("--max-cyclomatic")
+        .arg("20")
+        .arg("--format")
+        .arg("summary")
+        .current_dir("../../")
+        .output()
+        .expect("pmat analyze complexity should work");
+
+    assert!(
+        output.status.success(),
+        "Complexity should be under 20: {}",
+        String::from_utf8_lossy(&amp;output.stderr)
+    );
+}</code></pre>
+<h3 id="example-11-coverage-tracking"><a class="header" href="#example-11-coverage-tracking">Example 11: Coverage Tracking</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_coverage_tracking() {
+    let has_llvm_cov = Command::new("cargo")
+        .arg("llvm-cov")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let has_tarpaulin = Command::new("cargo")
+        .arg("tarpaulin")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    assert!(
+        has_llvm_cov || has_tarpaulin,
+        "At least one coverage tool should be installed"
+    );
+}</code></pre>
+<h2 id="cli-integration-tests"><a class="header" href="#cli-integration-tests">CLI Integration Tests</a></h2>
+<p>From <code>crates/pforge-cli/tests/scaffold_tests.rs</code>:</p>
+<h3 id="example-12-workspace-compiles"><a class="header" href="#example-12-workspace-compiles">Example 12: Workspace Compiles</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_workspace_compiles() {
+    let output = Command::new("cargo")
+        .arg("build")
+        .arg("--release")
+        .output()
+        .expect("Failed to run cargo build");
+
+    assert!(output.status.success(), "Workspace should compile");
+}</code></pre>
+<h3 id="example-13-all-crates-exist"><a class="header" href="#example-13-all-crates-exist">Example 13: All Crates Exist</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_all_crates_exist() {
+    let root = workspace_root();
+    let crates = vec![
+        "crates/pforge-cli",
+        "crates/pforge-runtime",
+        "crates/pforge-codegen",
+        "crates/pforge-config",
+        "crates/pforge-macro",
+    ];
+
+    for crate_path in crates {
+        let path = root.join(crate_path);
+        assert!(path.exists(), "Crate {} should exist", crate_path);
+
+        let cargo_toml = path.join("Cargo.toml");
+        assert!(
+            cargo_toml.exists(),
+            "Cargo.toml should exist in {}",
+            crate_path
+        );
+    }
+}</code></pre>
+<h2 id="integration-test-patterns"><a class="header" href="#integration-test-patterns">Integration Test Patterns</a></h2>
+<h3 id="testing-async-workflows"><a class="header" href="#testing-async-workflows">Testing Async Workflows</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_async_workflow() {
+    // Setup
+    let registry = HandlerRegistry::new();
+    let state = MemoryStateManager::new();
+
+    // Execute workflow
+    state.set("config", b"data".to_vec(), None).await.unwrap();
+    let config = state.get("config").await.unwrap();
+
+    // Verify
+    assert!(config.is_some());
+}</code></pre>
+<h3 id="testing-error-propagation"><a class="header" href="#testing-error-propagation">Testing Error Propagation</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_error_propagation_through_middleware() {
+    let mut chain = MiddlewareChain::new();
+    chain.add(Arc::new(ValidationMiddleware::new(vec!["required".to_string()])));
+
+    let result = chain
+        .execute(json!({"wrong_field": 1}), |_| async { Ok(json!({})) })
+        .await;
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Missing required field"));
+}</code></pre>
+<h3 id="testing-state-transitions"><a class="header" href="#testing-state-transitions">Testing State Transitions</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_circuit_breaker_state_transitions() {
+    let cb = CircuitBreaker::new(config);
+
+    // Initial: Closed
+    assert_eq!(cb.state(), CircuitBreakerState::Closed);
+
+    // After failures: Open
+    for _ in 0..3 {
+        let _ = cb.call(|| async { Err::&lt;(), _&gt;(Error::Handler("fail".into())) }).await;
+    }
+    assert_eq!(cb.state(), CircuitBreakerState::Open);
+
+    // After timeout: HalfOpen
+    tokio::time::sleep(timeout_duration).await;
+    assert_eq!(cb.state(), CircuitBreakerState::HalfOpen);
+}</code></pre>
+<h2 id="running-integration-tests"><a class="header" href="#running-integration-tests">Running Integration Tests</a></h2>
+<h3 id="quick-commands"><a class="header" href="#quick-commands">Quick Commands</a></h3>
+<pre><code class="language-bash"># Run all integration tests
+cargo test --test integration_test
+
+# Run specific integration test
+cargo test --test integration_test test_middleware_chain
+
+# Run all tests in integration test crate
+cargo test -p pforge-integration-tests
+
+# Run with output
+cargo test --test integration_test -- --nocapture
+</code></pre>
+<h3 id="performance-monitoring"><a class="header" href="#performance-monitoring">Performance Monitoring</a></h3>
+<pre><code class="language-bash"># Run with timing
+cargo test --test integration_test -- --nocapture --test-threads=1
+
+# Profile integration tests
+cargo flamegraph --test integration_test
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="1-test-realistic-scenarios"><a class="header" href="#1-test-realistic-scenarios">1. Test Realistic Scenarios</a></h3>
+<pre><code class="language-rust">// Good: Tests real workflow
+#[tokio::test]
+async fn test_complete_request_lifecycle() {
+    let config = load_config();
+    let registry = build_registry(&amp;config);
+    let middleware = setup_middleware();
+
+    let result = process_request(&amp;registry, &amp;middleware, request).await;
+    assert!(result.is_ok());
+}</code></pre>
+<h3 id="2-use-real-dependencies"><a class="header" href="#2-use-real-dependencies">2. Use Real Dependencies</a></h3>
+<pre><code class="language-rust">// Good: Uses real MemoryStateManager
+#[tokio::test]
+async fn test_state_integration() {
+    let state = MemoryStateManager::new();
+    // ... test with real implementation
+}
+
+// Avoid: Mock when testing integration
+// let state = MockStateManager::new(); // Save mocks for unit tests</code></pre>
+<h3 id="3-test-error-recovery"><a class="header" href="#3-test-error-recovery">3. Test Error Recovery</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_recovery_from_transient_failures() {
+    let policy = RetryPolicy::new(3);
+
+    let mut attempts = 0;
+    let result = retry_with_policy(&amp;policy, || async {
+        attempts += 1;
+        if attempts &lt; 2 {
+            Err(Error::Handler("transient".into()))
+        } else {
+            Ok(42)
+        }
+    }).await;
+
+    assert_eq!(result.unwrap(), 42);
+    assert_eq!(attempts, 2);
+}</code></pre>
+<h3 id="4-keep-tests-independent"><a class="header" href="#4-keep-tests-independent">4. Keep Tests Independent</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_a() {
+    let state = MemoryStateManager::new();  // Fresh state
+    // ... test logic
+}
+
+#[tokio::test]
+async fn test_b() {
+    let state = MemoryStateManager::new();  // Fresh state
+    // ... test logic
+}</code></pre>
+<h3 id="5-target-100ms-per-test"><a class="header" href="#5-target-100ms-per-test">5. Target &lt;100ms Per Test</a></h3>
+<pre><code class="language-rust">// Good: Fast integration test
+#[tokio::test]
+async fn test_handler_dispatch() {
+    let registry = create_registry();
+    let result = registry.dispatch("tool", params).await;
+    assert!(result.is_ok());
+}  // ~10-20ms
+
+// If slower, consider:
+// - Reducing setup complexity
+// - Removing unnecessary waits
+// - Moving to E2E tests if &gt;100ms</code></pre>
+<h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common Pitfalls</a></h2>
+<h3 id="avoid-shared-state"><a class="header" href="#avoid-shared-state">Avoid Shared State</a></h3>
+<pre><code class="language-rust">// Bad: Global state causes test interference
+static REGISTRY: Lazy&lt;HandlerRegistry&gt; = Lazy::new(|| {
+    HandlerRegistry::new()
+});
+
+#[test]
+fn test_a() {
+    REGISTRY.register("test", handler);  // Affects other tests!
+}
+
+// Good: Each test creates its own instance
+#[test]
+fn test_a() {
+    let mut registry = HandlerRegistry::new();
+    registry.register("test", handler);
+}</code></pre>
+<h3 id="test-both-success-and-failure"><a class="header" href="#test-both-success-and-failure">Test Both Success and Failure</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_middleware_success_path() {
+    let result = middleware.execute(valid_request, handler).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_middleware_failure_path() {
+    let result = middleware.execute(invalid_request, handler).await;
+    assert!(result.is_err());
+}</code></pre>
+<h3 id="clean-up-resources"><a class="header" href="#clean-up-resources">Clean Up Resources</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_file_operations() {
+    let temp_file = create_temp_file();
+
+    // Test logic...
+
+    // Cleanup
+    std::fs::remove_file(&amp;temp_file).ok();
+}</code></pre>
+<h2 id="debugging-integration-tests"><a class="header" href="#debugging-integration-tests">Debugging Integration Tests</a></h2>
+<h3 id="enable-logging"><a class="header" href="#enable-logging">Enable Logging</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_with_logging() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .try_init();
+
+    // Test will now show RUST_LOG output
+}</code></pre>
+<h3 id="use-descriptive-assertions"><a class="header" href="#use-descriptive-assertions">Use Descriptive Assertions</a></h3>
+<pre><code class="language-rust">// Bad: Unclear failure
+assert!(result.is_ok());
+
+// Good: Clear failure message
+assert!(
+    result.is_ok(),
+    "Middleware chain failed: {:?}",
+    result.unwrap_err()
+);</code></pre>
+<h3 id="test-in-isolation"><a class="header" href="#test-in-isolation">Test in Isolation</a></h3>
+<pre><code class="language-bash"># Run single test to debug
+cargo test --test integration_test test_specific_test -- --nocapture --test-threads=1
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Integration tests ensure pforge components work together correctly:</p>
+<ul>
+<li><strong>26 integration tests</strong> covering cross-crate workflows</li>
+<li><strong>&lt;100ms target</strong> for fast feedback</li>
+<li><strong>Real dependencies</strong> not mocks or stubs</li>
+<li><strong>Quality gates</strong> verified through integration tests</li>
+<li><strong>Complete workflows</strong> from config to execution</li>
+</ul>
+<p>Integration tests sit between unit tests (Chapter 9.1) and property-based tests (Chapter 9.3), providing confidence that pforge’s architecture enables robust, reliable MCP server development.</p>
+<p>Key takeaways:</p>
+<ol>
+<li>Test realistic scenarios with real dependencies</li>
+<li>Keep tests fast (&lt;100ms) and independent</li>
+<li>Test both success and failure paths</li>
+<li>Use integration tests to verify cross-crate workflows</li>
+<li>Quality gates integration ensures PMAT enforcement works</li>
+</ol>
+<p>Together with unit tests, property-based tests, and mutation testing, integration tests form a comprehensive quality assurance strategy that ensures pforge remains production-ready.</p>
 
                     </main>
 

@@ -158,8 +158,577 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch08-04-coveragemd"><a class="header" href="#ch08-04-coveragemd">ch08-04-coverage.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="code-coverage-measuring-test-quality"><a class="header" href="#code-coverage-measuring-test-quality">Code Coverage: Measuring Test Quality</a></h1>
+<p>You can’t improve what you don’t measure. Code coverage reveals what your tests actually test—and more importantly, what they don’t.</p>
+<p>pforge requires <strong>≥80% line coverage</strong> before allowing commits. This isn’t about hitting an arbitrary number—it’s about ensuring critical code paths are exercised by tests.</p>
+<p>This chapter explains what coverage is, how to measure it, how to interpret coverage reports, and how to achieve meaningful coverage (not just high percentages).</p>
+<h2 id="what-is-code-coverage"><a class="header" href="#what-is-code-coverage">What is Code Coverage?</a></h2>
+<p>Code coverage measures the percentage of your code executed during tests. If your tests run 800 of 1000 lines, you have 80% line coverage.</p>
+<h3 id="types-of-coverage"><a class="header" href="#types-of-coverage">Types of Coverage</a></h3>
+<p><strong>1. Line Coverage</strong></p>
+<p><strong>Definition</strong>: Percentage of lines executed by tests</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">fn divide(a: i32, b: i32) -&gt; Result&lt;i32, String&gt; {
+    if b == 0 {                        // Line 1 ✅ covered
+        return Err("division by zero".into());  // Line 2 ❌ not covered
+    }
+    Ok(a / b)                          // Line 3 ✅ covered
+}
+
+#[test]
+fn test_divide() {
+    assert_eq!(divide(10, 2), Ok(5));  // Covers lines 1 and 3, not 2
+}</code></pre>
+<p>Line coverage: 66% (2 of 3 lines covered)</p>
+<p>To hit 100%: add a test for <code>b == 0</code> case.</p>
+<p><strong>2. Branch Coverage</strong></p>
+<p><strong>Definition</strong>: Percentage of decision branches taken by tests</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">fn classify(age: i32) -&gt; &amp;'static str {
+    if age &lt; 18 {
+        "minor"   // Branch A
+    } else {
+        "adult"   // Branch B
+    }
+}
+
+#[test]
+fn test_classify() {
+    assert_eq!(classify(16), "minor");  // Tests branch A only
+}</code></pre>
+<p>Branch coverage: 50% (1 of 2 branches covered)</p>
+<p>To hit 100%: add a test for <code>age &gt;= 18</code> case.</p>
+<p><strong>3. Function Coverage</strong></p>
+<p><strong>Definition</strong>: Percentage of functions called by tests</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">fn add(a: i32, b: i32) -&gt; i32 { a + b }      // ✅ called by tests
+fn multiply(a: i32, b: i32) -&gt; i32 { a * b } // ❌ never called
+
+#[test]
+fn test_add() {
+    assert_eq!(add(2, 3), 5);  // Only tests add()
+}</code></pre>
+<p>Function coverage: 50% (1 of 2 functions covered)</p>
+<p><strong>4. Statement Coverage</strong></p>
+<p><strong>Definition</strong>: Percentage of statements executed (similar to line coverage, but counts logical statements, not lines)</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">// One line, two statements
+let x = if condition { 5 } else { 10 }; y = x * 2;</code></pre>
+<p>Line coverage might show 100%, but statement coverage reveals if both statements executed.</p>
+<h3 id="pforges-coverage-requirements"><a class="header" href="#pforges-coverage-requirements">pforge’s Coverage Requirements</a></h3>
+<p>pforge enforces:</p>
+<ul>
+<li><strong>Line coverage ≥ 80%</strong>: Most code must be tested</li>
+<li><strong>Branch coverage ≥ 75%</strong>: Most decision paths must be tested</li>
+</ul>
+<p>These thresholds catch the majority of bugs while avoiding diminishing returns (95%+ coverage requires exponentially more test effort).</p>
+<h2 id="measuring-coverage"><a class="header" href="#measuring-coverage">Measuring Coverage</a></h2>
+<h3 id="using-cargo-llvm-cov"><a class="header" href="#using-cargo-llvm-cov">Using cargo-llvm-cov</a></h3>
+<p>pforge uses <code>cargo-llvm-cov</code> for coverage analysis:</p>
+<pre><code class="language-bash"># Install cargo-llvm-cov
+cargo install cargo-llvm-cov
+
+# Run coverage
+cargo llvm-cov --all-features --workspace
+</code></pre>
+<p><strong>Or use the Makefile</strong>:</p>
+<pre><code class="language-bash">make coverage
+</code></pre>
+<p>This runs a two-phase process:</p>
+<ol>
+<li><strong>Phase 1</strong>: Run tests with instrumentation (no report)</li>
+<li><strong>Phase 2</strong>: Generate HTML and LCOV reports</li>
+</ol>
+<p><strong>Output</strong>:</p>
+<pre><code>📊 Running comprehensive test coverage analysis...
+🔍 Checking for cargo-llvm-cov and cargo-nextest...
+🧹 Cleaning old coverage data...
+⚙️  Temporarily disabling global cargo config (mold breaks coverage)...
+🧪 Phase 1: Running tests with instrumentation (no report)...
+📊 Phase 2: Generating coverage reports...
+⚙️  Restoring global cargo config...
+
+📊 Coverage Summary:
+==================
+Filename                      Lines    Covered    Uncovered    %
+------------------------------------------------------------
+src/handler.rs                234      198        36          84.6%
+src/registry.rs               189      167        22          88.4%
+src/config.rs                 145      109        36          75.2%
+src/server.rs                 178      156        22          87.6%
+src/error.rs                  45       45         0           100%
+------------------------------------------------------------
+TOTAL                         1247     1021       226         81.9%
+
+💡 COVERAGE INSIGHTS:
+- HTML report: target/coverage/html/index.html
+- LCOV file: target/coverage/lcov.info
+- Open HTML: make coverage-open
+</code></pre>
+<h3 id="coverage-summary"><a class="header" href="#coverage-summary">Coverage Summary</a></h3>
+<p>Quick coverage check without full report:</p>
+<pre><code class="language-bash">make coverage-summary
+
+# or
+cargo llvm-cov report --summary-only
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code>Filename                Lines    Covered    Uncovered    %
+----------------------------------------------------------
+TOTAL                   1247     1021       226         81.9%
+</code></pre>
+<h3 id="html-coverage-report"><a class="header" href="#html-coverage-report">HTML Coverage Report</a></h3>
+<p>Open the interactive HTML report:</p>
+<pre><code class="language-bash">make coverage-open
+</code></pre>
+<p>This opens <code>target/coverage/html/index.html</code> in your browser, showing:</p>
+<ul>
+<li><strong>File-level coverage</strong>: Which files have low coverage</li>
+<li><strong>Line-by-line highlighting</strong>: Which lines are covered (green) vs. uncovered (red)</li>
+<li><strong>Branch visualization</strong>: Which branches are tested</li>
+</ul>
+<p><strong>Example report structure</strong>:</p>
+<pre><code>pforge Coverage Report
+├── src/
+│   ├── handler.rs       84.6%  ⚠️
+│   ├── registry.rs      88.4%  ✅
+│   ├── config.rs        75.2%  ❌
+│   ├── server.rs        87.6%  ✅
+│   └── error.rs         100%   ✅
+└── TOTAL                81.9%  ✅
+</code></pre>
+<p>Click any file to see line-by-line coverage.</p>
+<h2 id="interpreting-coverage-reports"><a class="header" href="#interpreting-coverage-reports">Interpreting Coverage Reports</a></h2>
+<h3 id="reading-line-by-line-coverage"><a class="header" href="#reading-line-by-line-coverage">Reading Line-by-Line Coverage</a></h3>
+<p><strong>HTML report shows</strong>:</p>
+<pre><code class="language-rust">// handler.rs
+1  ✅  pub fn process(req: &amp;Request) -&gt; Result&lt;Response&gt; {
+2  ✅      validate_request(req)?;
+3  ✅      let user = authorize_request(req)?;
+4  ❌      if req.is_admin_action() {
+5  ❌          audit_log(&amp;req);
+6  ❌      }
+7  ✅      let result = execute_action(req, &amp;user)?;
+8  ✅      Ok(Response::new(result))
+9  ✅  }</code></pre>
+<p><strong>Green (✅)</strong>: Line was executed by at least one test
+<strong>Red (❌)</strong>: Line was never executed</p>
+<p>Lines 4-6 are uncovered. Need a test for admin actions.</p>
+<h3 id="understanding-coverage-gaps"><a class="header" href="#understanding-coverage-gaps">Understanding Coverage Gaps</a></h3>
+<p><strong>Gap 1: Error Handling</strong></p>
+<pre><code class="language-rust">fn parse_config(path: &amp;str) -&gt; Result&lt;Config&gt; {
+    let file = File::open(path)?;           // ✅ covered
+    let mut contents = String::new();       // ✅ covered
+    file.read_to_string(&amp;mut contents)?;    // ✅ covered
+
+    serde_yaml::from_str(&amp;contents)         // ❌ error path not covered
+        .map_err(|e| Error::InvalidConfig(e))
+}
+
+#[test]
+fn test_parse_config() {
+    // Only tests happy path
+    let config = parse_config("valid.yaml").unwrap();
+    assert!(config.is_valid());
+}</code></pre>
+<p>Coverage shows <code>serde_yaml</code> line is covered, but the error path (<code>map_err</code>) isn’t. Add a test with invalid YAML.</p>
+<p><strong>Gap 2: Edge Cases</strong></p>
+<pre><code class="language-rust">fn calculate_discount(price: f64, percent: f64) -&gt; f64 {
+    if percent &lt; 0.0 || percent &gt; 100.0 {   // ❌ not covered
+        return 0.0;
+    }
+    price * (percent / 100.0)               // ✅ covered
+}
+
+#[test]
+fn test_calculate_discount() {
+    assert_eq!(calculate_discount(100.0, 10.0), 10.0);
+}</code></pre>
+<p>Edge case (invalid percent) isn’t tested. Add tests for <code>percent &lt; 0</code> and <code>percent &gt; 100</code>.</p>
+<p><strong>Gap 3: Conditional Branches</strong></p>
+<pre><code class="language-rust">fn should_notify(user: &amp;User, event: &amp;Event) -&gt; bool {
+    user.is_subscribed()                    // ✅ covered (both branches)
+        &amp;&amp; event.is_important()             // ❌ only true branch covered
+        &amp;&amp; !user.is_snoozed()              // ❌ not reached
+}
+
+#[test]
+fn test_should_notify() {
+    let user = User { subscribed: true, snoozed: false };
+    let event = Event { important: true };
+    assert!(should_notify(&amp;user, &amp;event));  // Only tests all true
+}</code></pre>
+<p>Short-circuit evaluation means <code>is_snoozed()</code> is only called if previous conditions are true. Need tests where <code>is_important() == false</code>.</p>
+<p><strong>Gap 4: Dead Code</strong></p>
+<pre><code class="language-rust">fn legacy_handler(req: &amp;Request) -&gt; Response {  // ❌ never called
+    // Old code path, replaced but not deleted
+    Response::new("legacy")
+}</code></pre>
+<p>0% coverage on this function. Either test it or delete it.</p>
+<h3 id="coverage-metrics-interpretation"><a class="header" href="#coverage-metrics-interpretation">Coverage Metrics Interpretation</a></h3>
+<p><strong>80%+ coverage</strong>: Healthy baseline. Most code paths tested.</p>
+<p><strong>Example</strong>:</p>
+<pre><code>TOTAL    1247     1021       226         81.9%  ✅
+</code></pre>
+<p><strong>70-79% coverage</strong>: Needs improvement. Many untested paths.</p>
+<p><strong>Example</strong>:</p>
+<pre><code>TOTAL    1247     921        326         73.8%  ⚠️
+</code></pre>
+<p>Action: Identify uncovered critical paths and add tests.</p>
+<p><strong>&lt; 70% coverage</strong>: Poor. Significant portions untested.</p>
+<p><strong>Example</strong>:</p>
+<pre><code>TOTAL    1247     748        499         60.0%  ❌
+</code></pre>
+<p>Action: Audit all uncovered code. Either test it or justify why it’s untestable.</p>
+<p><strong>100% coverage</strong>: Often a red flag. Either:</p>
+<ul>
+<li>Very simple codebase (rare)</li>
+<li>Tests are testing trivial code (waste of effort)</li>
+<li>Coverage gaming (hitting lines without meaningful assertions)</li>
+</ul>
+<p>Aim for 80-90%, not 100%.</p>
+<h2 id="improving-coverage"><a class="header" href="#improving-coverage">Improving Coverage</a></h2>
+<h3 id="strategy-1-test-error-paths"><a class="header" href="#strategy-1-test-error-paths">Strategy 1: Test Error Paths</a></h3>
+<p><strong>Before</strong> (50% coverage):</p>
+<pre><code class="language-rust">fn divide(a: i32, b: i32) -&gt; Result&lt;i32, String&gt; {
+    if b == 0 {                                // ❌ not covered
+        return Err("division by zero".into()); // ❌ not covered
+    }
+    Ok(a / b)                                  // ✅ covered
+}
+
+#[test]
+fn test_divide() {
+    assert_eq!(divide(10, 2), Ok(5));
+}</code></pre>
+<p><strong>After</strong> (100% coverage):</p>
+<pre><code class="language-rust">#[test]
+fn test_divide() {
+    // Happy path
+    assert_eq!(divide(10, 2), Ok(5));
+
+    // Error path
+    assert_eq!(divide(10, 0), Err("division by zero".into()));
+}</code></pre>
+<p><strong>Result</strong>: Coverage 50% → 100%</p>
+<h3 id="strategy-2-test-all-branches"><a class="header" href="#strategy-2-test-all-branches">Strategy 2: Test All Branches</a></h3>
+<p><strong>Before</strong> (60% branch coverage):</p>
+<pre><code class="language-rust">fn classify(age: i32) -&gt; &amp;'static str {
+    if age &lt; 13 {                       // ✅ true branch covered
+        "child"                         // ✅ covered
+    } else if age &lt; 20 {                // ❌ true branch not covered
+        "teenager"                      // ❌ not covered
+    } else {                            // ✅ false branch covered
+        "adult"                         // ✅ covered
+    }
+}
+
+#[test]
+fn test_classify() {
+    assert_eq!(classify(10), "child");
+    assert_eq!(classify(25), "adult");
+}</code></pre>
+<p><strong>After</strong> (100% branch coverage):</p>
+<pre><code class="language-rust">#[test]
+fn test_classify() {
+    // All branches
+    assert_eq!(classify(10), "child");    // age &lt; 13
+    assert_eq!(classify(16), "teenager"); // 13 &lt;= age &lt; 20
+    assert_eq!(classify(25), "adult");    // age &gt;= 20
+}</code></pre>
+<p><strong>Result</strong>: Branch coverage 60% → 100%</p>
+<h3 id="strategy-3-test-match-arms"><a class="header" href="#strategy-3-test-match-arms">Strategy 3: Test Match Arms</a></h3>
+<p><strong>Before</strong> (40% match arm coverage):</p>
+<pre><code class="language-rust">fn handle_command(cmd: Command) -&gt; Result&lt;String&gt; {
+    match cmd {
+        Command::Read(id) =&gt; db.read(&amp;id),     // ✅ covered
+        Command::Write(id, data) =&gt; {          // ❌ not covered
+            db.write(&amp;id, &amp;data)
+        }
+        Command::Delete(id) =&gt; db.delete(&amp;id), // ❌ not covered
+        Command::List =&gt; db.list(),            // ❌ not covered
+    }
+}
+
+#[test]
+fn test_handle_command() {
+    assert!(handle_command(Command::Read("123")).is_ok());
+}</code></pre>
+<p><strong>After</strong> (100% match arm coverage):</p>
+<pre><code class="language-rust">#[test]
+fn test_handle_command() {
+    assert!(handle_command(Command::Read("123")).is_ok());
+    assert!(handle_command(Command::Write("123", "data")).is_ok());
+    assert!(handle_command(Command::Delete("123")).is_ok());
+    assert!(handle_command(Command::List).is_ok());
+}</code></pre>
+<p><strong>Result</strong>: Match arm coverage 25% → 100%</p>
+<h3 id="strategy-4-parametric-tests"><a class="header" href="#strategy-4-parametric-tests">Strategy 4: Parametric Tests</a></h3>
+<p>Test many cases efficiently:</p>
+<p><strong>Before</strong> (3 tests, repetitive):</p>
+<pre><code class="language-rust">#[test]
+fn test_validate_empty() {
+    assert!(validate("").is_err());
+}
+
+#[test]
+fn test_validate_too_long() {
+    assert!(validate(&amp;"x".repeat(101)).is_err());
+}
+
+#[test]
+fn test_validate_invalid_chars() {
+    assert!(validate("hello@world").is_err());
+}</code></pre>
+<p><strong>After</strong> (1 parametric test):</p>
+<pre><code class="language-rust">#[test]
+fn test_validate() {
+    let invalid_cases = vec![
+        ("", "empty"),
+        (&amp;"x".repeat(101), "too long"),
+        ("hello@world", "invalid chars"),
+        ("123start", "starts with digit"),
+    ];
+
+    for (input, reason) in invalid_cases {
+        assert!(validate(input).is_err(), "Should reject: {}", reason);
+    }
+
+    let valid_cases = vec!["hello", "user123", "validName"];
+    for input in valid_cases {
+        assert!(validate(input).is_ok(), "Should accept: {}", input);
+    }
+}</code></pre>
+<p><strong>Result</strong>: More coverage with less code duplication.</p>
+<h3 id="strategy-5-property-based-testing"><a class="header" href="#strategy-5-property-based-testing">Strategy 5: Property-Based Testing</a></h3>
+<p>Use <code>proptest</code> to generate test cases:</p>
+<pre><code class="language-rust">use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn test_divide_properties(a in -1000i32..1000, b in -1000i32..1000) {
+        if b == 0 {
+            // Error path always covered
+            assert!(divide(a, b).is_err());
+        } else {
+            // Success path always covered
+            let result = divide(a, b).unwrap();
+            assert_eq!(result, a / b);
+        }
+    }
+}</code></pre>
+<p>Proptest generates hundreds of test cases, ensuring high coverage.</p>
+<h2 id="coverage-anti-patterns"><a class="header" href="#coverage-anti-patterns">Coverage Anti-Patterns</a></h2>
+<h3 id="anti-pattern-1-coverage-gaming"><a class="header" href="#anti-pattern-1-coverage-gaming">Anti-Pattern 1: Coverage Gaming</a></h3>
+<p><strong>Bad</strong>:</p>
+<pre><code class="language-rust">fn complex_logic(input: &amp;str) -&gt; Result&lt;String&gt; {
+    if input.is_empty() {
+        return Err("empty".into());
+    }
+    // ... complex processing
+    Ok(result)
+}
+
+#[test]
+fn test_complex_logic() {
+    // Hits all lines but doesn't verify correctness
+    let _ = complex_logic("test");
+    let _ = complex_logic("");
+}</code></pre>
+<p>Lines are covered, but test has no assertions. It’s not really testing anything.</p>
+<p><strong>Good</strong>:</p>
+<pre><code class="language-rust">#[test]
+fn test_complex_logic() {
+    // Meaningful assertions
+    assert_eq!(complex_logic("test"), Ok("processed: test".into()));
+    assert_eq!(complex_logic(""), Err("empty".into()));
+}</code></pre>
+<h3 id="anti-pattern-2-testing-trivial-code"><a class="header" href="#anti-pattern-2-testing-trivial-code">Anti-Pattern 2: Testing Trivial Code</a></h3>
+<p><strong>Bad</strong>:</p>
+<pre><code class="language-rust">// Trivial getter - doesn't need a test
+fn name(&amp;self) -&gt; &amp;str {
+    &amp;self.name
+}
+
+#[test]
+fn test_name() {
+    let obj = Object { name: "test".into() };
+    assert_eq!(obj.name(), "test");
+}</code></pre>
+<p>This inflates coverage without adding value. Focus tests on logic, not boilerplate.</p>
+<p><strong>Good</strong>: Skip trivial getters. Test complex logic instead.</p>
+<h3 id="anti-pattern-3-ignoring-untestable-code"><a class="header" href="#anti-pattern-3-ignoring-untestable-code">Anti-Pattern 3: Ignoring Untestable Code</a></h3>
+<p><strong>Bad</strong>:</p>
+<pre><code class="language-rust">fn production_logic() {
+    #[cfg(test)]
+    {
+        // Unreachable in production, but shows as covered
+        panic!("test-only panic");
+    }
+
+    // Actual logic
+}</code></pre>
+<p>Coverage shows test-only code as covered, hiding gaps in production code.</p>
+<p><strong>Good</strong>: Separate test-only code into test modules.</p>
+<h3 id="anti-pattern-4-high-coverage-low-quality"><a class="header" href="#anti-pattern-4-high-coverage-low-quality">Anti-Pattern 4: High Coverage, Low Quality</a></h3>
+<p><strong>Bad</strong>:</p>
+<pre><code class="language-rust">fn authenticate(username: &amp;str, password: &amp;str) -&gt; Result&lt;User&gt; {
+    let user = db.get_user(username)?;
+    if user.password_hash == hash(password) {
+        Ok(user)
+    } else {
+        Err(Error::InvalidCredentials)
+    }
+}
+
+#[test]
+fn test_authenticate() {
+    // Only tests happy path, but achieves 75% line coverage
+    let user = authenticate("alice", "password123").unwrap();
+    assert_eq!(user.username, "alice");
+}</code></pre>
+<p>High coverage (75%) but critical error path (<code>Err(Error::InvalidCredentials)</code>) is untested.</p>
+<p><strong>Good</strong>: Test both happy and error paths:</p>
+<pre><code class="language-rust">#[test]
+fn test_authenticate() {
+    // Happy path
+    assert!(authenticate("alice", "password123").is_ok());
+
+    // Error paths
+    assert!(authenticate("alice", "wrong").is_err());
+    assert!(authenticate("nonexistent", "password").is_err());
+}</code></pre>
+<h2 id="coverage-in-cicd"><a class="header" href="#coverage-in-cicd">Coverage in CI/CD</a></h2>
+<p>Enforce coverage in CI:</p>
+<pre><code class="language-yaml"># .github/workflows/coverage.yml
+name: Coverage
+
+on: [push, pull_request]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Run coverage
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(cargo llvm-cov report --summary-only | grep -oP '\d+\.\d+(?=%)')
+          echo "Coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE &lt; 80.0" | bc -l) )); then
+            echo "Coverage $COVERAGE% is below minimum 80%"
+            exit 1
+          fi
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+</code></pre>
+<p>This blocks PRs with coverage &lt; 80%.</p>
+<h2 id="coverage-best-practices"><a class="header" href="#coverage-best-practices">Coverage Best Practices</a></h2>
+<h3 id="1-focus-on-critical-paths"><a class="header" href="#1-focus-on-critical-paths">1. Focus on Critical Paths</a></h3>
+<p>Not all code needs equal coverage:</p>
+<ul>
+<li><strong>100% coverage</strong>: Authentication, authorization, payment processing, security-critical code</li>
+<li><strong>80-90% coverage</strong>: Business logic, data processing</li>
+<li><strong>50-70% coverage</strong>: UI code, configuration parsing</li>
+<li><strong>0% coverage acceptable</strong>: Generated code, vendored dependencies, truly trivial code</li>
+</ul>
+<h3 id="2-test-behavior-not-implementation"><a class="header" href="#2-test-behavior-not-implementation">2. Test Behavior, Not Implementation</a></h3>
+<p><strong>Bad</strong>:</p>
+<pre><code class="language-rust">#[test]
+fn test_sort_uses_quicksort() {
+    // Tests implementation detail
+    let mut arr = vec![3, 1, 2];
+    sort(&amp;mut arr);
+    // ... somehow verify quicksort was used
+}</code></pre>
+<p><strong>Good</strong>:</p>
+<pre><code class="language-rust">#[test]
+fn test_sort_correctness() {
+    // Tests behavior
+    let mut arr = vec![3, 1, 2];
+    sort(&amp;mut arr);
+    assert_eq!(arr, vec![1, 2, 3]);
+}</code></pre>
+<p>Coverage should reflect behavioral tests, not implementation tests.</p>
+<h3 id="3-measure-trend-not-just-snapshot"><a class="header" href="#3-measure-trend-not-just-snapshot">3. Measure Trend, Not Just Snapshot</a></h3>
+<p>Track coverage over time:</p>
+<pre><code class="language-bash"># Log coverage daily
+echo "$(date),$(cargo llvm-cov report --summary-only | grep -oP '\d+\.\d+(?=%)')" &gt;&gt; coverage.csv
+</code></pre>
+<p>If coverage trends downward, intervene:</p>
+<pre><code>Week 1: 85%  ✅
+Week 2: 83%  ⚠️
+Week 3: 79%  ❌  (below threshold)
+</code></pre>
+<h3 id="4-use-coverage-to-find-gaps-not-drive-development"><a class="header" href="#4-use-coverage-to-find-gaps-not-drive-development">4. Use Coverage to Find Gaps, Not Drive Development</a></h3>
+<p><strong>Bad approach</strong>: “We need 80% coverage, so let’s write tests until we hit it.”</p>
+<p><strong>Good approach</strong>: “Let’s test all critical functionality. Coverage will tell us what we missed.”</p>
+<p>Coverage is a diagnostic tool, not a goal.</p>
+<h3 id="5-combine-with-other-metrics"><a class="header" href="#5-combine-with-other-metrics">5. Combine with Other Metrics</a></h3>
+<p>Coverage alone is insufficient. Combine with:</p>
+<ul>
+<li><strong>Mutation testing</strong>: Do tests detect bugs when code is changed?</li>
+<li><strong>Complexity</strong>: Are complex functions tested thoroughly?</li>
+<li><strong>TDG</strong>: Is overall code quality maintained?</li>
+</ul>
+<h2 id="coverage-exceptions"><a class="header" href="#coverage-exceptions">Coverage Exceptions</a></h2>
+<p>Some code is legitimately hard to test:</p>
+<h3 id="1-platform-specific-code"><a class="header" href="#1-platform-specific-code">1. Platform-Specific Code</a></h3>
+<pre><code class="language-rust">#[cfg(target_os = "linux")]
+fn linux_specific() {
+    // Can only test on Linux
+}</code></pre>
+<p>Solution: Test on multiple platforms in CI, or use mocks.</p>
+<h3 id="2-initialization-code"><a class="header" href="#2-initialization-code">2. Initialization Code</a></h3>
+<pre><code class="language-rust">fn main() {
+    // Hard to test main() directly
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(async { run_server().await });
+}</code></pre>
+<p>Solution: Extract logic into testable functions. Keep <code>main()</code> minimal.</p>
+<h3 id="3-external-dependencies"><a class="header" href="#3-external-dependencies">3. External Dependencies</a></h3>
+<pre><code class="language-rust">fn fetch_from_api(url: &amp;str) -&gt; Result&lt;Data&gt; {
+    // Relies on external API
+    let response = reqwest::blocking::get(url)?;
+    // ...
+}</code></pre>
+<p>Solution: Use mocks or integration tests with test servers.</p>
+<h3 id="4-compile-time-configuration"><a class="header" href="#4-compile-time-configuration">4. Compile-Time Configuration</a></h3>
+<pre><code class="language-rust">#[cfg(feature = "encryption")]
+fn encrypt(data: &amp;[u8]) -&gt; Vec&lt;u8&gt; {
+    // Only compiled with "encryption" feature
+}</code></pre>
+<p>Solution: Test with all feature combinations in CI.</p>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Code coverage is a powerful diagnostic tool that reveals what your tests actually test. pforge requires ≥80% line coverage to ensure critical code paths are exercised.</p>
+<p><strong>Key takeaways</strong>:</p>
+<ol>
+<li><strong>Coverage types</strong>: Line, branch, function, statement</li>
+<li><strong>pforge thresholds</strong>: ≥80% line coverage, ≥75% branch coverage</li>
+<li><strong>Measure with</strong>: <code>cargo llvm-cov</code> or <code>make coverage</code></li>
+<li><strong>Interpret reports</strong>: Focus on uncovered critical paths, not just percentages</li>
+<li><strong>Improve coverage</strong>: Test error paths, all branches, match arms</li>
+<li><strong>Avoid anti-patterns</strong>: Coverage gaming, testing trivial code, high coverage but low quality</li>
+<li><strong>Best practices</strong>: Focus on critical paths, test behavior not implementation, track trends</li>
+</ol>
+<p>Coverage reveals gaps. Use it to find untested code, then write meaningful tests—not just to hit a number.</p>
+<p>Quality is built in, not tested in. But coverage helps verify you’ve built it right.</p>
 
                     </main>
 

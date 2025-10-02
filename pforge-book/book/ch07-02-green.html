@@ -158,8 +158,473 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch07-02-greenmd"><a class="header" href="#ch07-02-greenmd">ch07-02-green.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="green-minimum-code"><a class="header" href="#green-minimum-code">GREEN: Minimum Code</a></h1>
+<p>The GREEN phase has one singular goal: make the test pass using the absolute minimum code necessary. You have 2 minutes. Nothing else matters—not elegance, not performance, not extensibility. Just make it GREEN.</p>
+<h2 id="the-minimum-code-principle"><a class="header" href="#the-minimum-code-principle">The Minimum Code Principle</a></h2>
+<p>“Minimum code” doesn’t mean “bad code” or “throw quality out the window.” It means <strong>the simplest implementation that satisfies the test specification</strong>.</p>
+<h3 id="what-minimum-means"><a class="header" href="#what-minimum-means">What Minimum Means</a></h3>
+<p><strong>Minimum</strong> means:</p>
+<ul>
+<li>No extra features beyond what the test requires</li>
+<li>No “just in case” code</li>
+<li>No premature optimization</li>
+<li>No architectural patterns unless necessary</li>
+<li>Hard-coded values are acceptable if they make the test pass</li>
+</ul>
+<p><strong>Minimum does NOT mean</strong>:</p>
+<ul>
+<li>Skipping error handling required by the test</li>
+<li>Using <code>unwrap()</code> instead of proper error propagation</li>
+<li>Introducing compiler warnings</li>
+<li>Violating Rust safety rules</li>
+</ul>
+<h3 id="why-minimum-first"><a class="header" href="#why-minimum-first">Why Minimum First?</a></h3>
+<p><strong>Speed</strong>: Get to GREEN fast. Every second you spend on cleverness is a second not spent on the next feature.</p>
+<p><strong>Correctness</strong>: Simple implementations are easier to verify. You can see at a glance if they match the test.</p>
+<p><strong>Deferral</strong>: Complex design emerges from refactoring multiple simple implementations, not from upfront architecture.</p>
+<p><strong>Safety Net</strong>: Once tests pass, you have a safety net for refactoring. You can make it better without fear of breaking it.</p>
+<h2 id="the-2-minute-green-budget"><a class="header" href="#the-2-minute-green-budget">The 2-Minute GREEN Budget</a></h2>
+<p>Two minutes to implement and verify:</p>
+<ul>
+<li><strong>0:00-1:30</strong>: Write implementation</li>
+<li><strong>1:30-1:50</strong>: Run test</li>
+<li><strong>1:50-2:00</strong>: Verify GREEN (all tests pass)</li>
+</ul>
+<p>If the test doesn’t pass by 2:00, you have 3 more minutes (until 5:00) to either fix it or RESET.</p>
+<h2 id="example-green-phase-walkthrough"><a class="header" href="#example-green-phase-walkthrough">Example: GREEN Phase Walkthrough</a></h2>
+<p>Continuing from our RED phase <code>clamp</code> function example:</p>
+<h3 id="minute-200---begin-green-phase"><a class="header" href="#minute-200---begin-green-phase">Minute 2:00 - Begin GREEN Phase</a></h3>
+<p>We have a failing test:</p>
+<pre><code class="language-rust">#[test]
+fn test_clamp_returns_min_when_below_range() {
+    let result = clamp(5, 10, 20);
+    assert_eq!(result, 10);
+}</code></pre>
+<p>Error: <code>cannot find function 'clamp' in this scope</code></p>
+<h3 id="minute-210---write-minimal-implementation"><a class="header" href="#minute-210---write-minimal-implementation">Minute 2:10 - Write Minimal Implementation</a></h3>
+<pre><code class="language-rust">// src/lib.rs
+pub fn clamp(value: i32, min: i32, max: i32) -&gt; i32 {
+    if value &lt; min {
+        return min;
+    }
+    value  // Return value for now
+}</code></pre>
+<p><strong>Why this is minimum</strong>:</p>
+<ul>
+<li>Only handles the case tested (value &lt; min)</li>
+<li>Doesn’t handle value &gt; max (not tested yet)</li>
+<li>Doesn’t handle value in range perfectly (but passes test)</li>
+</ul>
+<h3 id="minute-345---run-test"><a class="header" href="#minute-345---run-test">Minute 3:45 - Run Test</a></h3>
+<pre><code class="language-bash">cargo test test_clamp_returns_min_when_below_range
+</code></pre>
+<p>Output:</p>
+<pre><code>test test_clamp_returns_min_when_below_range ... ok
+</code></pre>
+<p>GREEN! Test passes.</p>
+<h3 id="minute-400---enter-refactor-phase"><a class="header" href="#minute-400---enter-refactor-phase">Minute 4:00 - Enter REFACTOR Phase</a></h3>
+<p>We’re GREEN ahead of schedule. Now we can refactor.</p>
+<h2 id="hard-coding-is-acceptable"><a class="header" href="#hard-coding-is-acceptable">Hard-Coding Is Acceptable</a></h2>
+<p>One of TDD’s most controversial practices: hard-coding return values is acceptable in GREEN.</p>
+<h3 id="the-hard-coding-example"><a class="header" href="#the-hard-coding-example">The Hard-Coding Example</a></h3>
+<pre><code class="language-rust">// RED: Test expects specific output
+#[tokio::test]
+async fn test_greet_returns_hello_world() {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "World".to_string(),
+    };
+
+    let result = handler.handle(input).await.unwrap();
+
+    assert_eq!(result.message, "Hello, World!");
+}</code></pre>
+<pre><code class="language-rust">// GREEN: Hard-coded return value
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, _input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: "Hello, World!".to_string(),
+        })
+    }
+}</code></pre>
+<p><strong>This makes the test pass</strong>. It’s valid GREEN code.</p>
+<h3 id="why-hard-coding-is-acceptable"><a class="header" href="#why-hard-coding-is-acceptable">Why Hard-Coding Is Acceptable</a></h3>
+<p><strong>Proves the test works</strong>: If the hard-coded value makes the test pass, you know the test verifies behavior correctly.</p>
+<p><strong>Forces more tests</strong>: The hard-coded implementation is obviously incomplete. You must write more tests to drive out the real logic.</p>
+<p><strong>Defers complexity</strong>: You don’t jump to complex string interpolation until tests demand it.</p>
+<h3 id="when-to-use-real-implementation"><a class="header" href="#when-to-use-real-implementation">When to Use Real Implementation</a></h3>
+<p>As soon as you write a second test that requires different behavior, hard-coding stops working:</p>
+<pre><code class="language-rust">// Second test
+#[tokio::test]
+async fn test_greet_returns_personalized_greeting() {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "Alice".to_string(),
+    };
+
+    let result = handler.handle(input).await.unwrap();
+
+    assert_eq!(result.message, "Hello, Alice!");
+}</code></pre>
+<p>Now the hard-coded implementation fails. Time for real logic:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(GreetOutput {
+        message: format!("Hello, {}!", input.name),
+    })
+}</code></pre>
+<p>This is the <strong>rule of three</strong>: Hard-code for one test, use real logic after two tests require different behavior.</p>
+<h2 id="minimum-implementation-patterns"><a class="header" href="#minimum-implementation-patterns">Minimum Implementation Patterns</a></h2>
+<h3 id="pattern-1-return-literal"><a class="header" href="#pattern-1-return-literal">Pattern 1: Return Literal</a></h3>
+<p>Simplest possible—return a literal value:</p>
+<pre><code class="language-rust">// Test expects specific value
+async fn handle(&amp;self, _input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(GreetOutput {
+        message: "Hello, World!".to_string(),
+    })
+}</code></pre>
+<p><strong>When to use</strong>: First test for a handler, specific expected value.</p>
+<h3 id="pattern-2-pass-through-input"><a class="header" href="#pattern-2-pass-through-input">Pattern 2: Pass Through Input</a></h3>
+<p>Return input directly or with minimal transformation:</p>
+<pre><code class="language-rust">// Test expects input echoed back
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(EchoOutput {
+        message: input.message,
+    })
+}</code></pre>
+<p><strong>When to use</strong>: Echo, copy, or identity operations.</p>
+<h3 id="pattern-3-conditional"><a class="header" href="#pattern-3-conditional">Pattern 3: Conditional</a></h3>
+<p>Single if-statement for simple branching:</p>
+<pre><code class="language-rust">// Test expects validation
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.age &lt; 0 {
+        return Err(Error::Validation("Age cannot be negative".to_string()));
+    }
+
+    Ok(AgeOutput {
+        category: "adult".to_string(),  // Hard-coded for now
+    })
+}</code></pre>
+<p><strong>When to use</strong>: Validation, error cases, simple branching.</p>
+<h3 id="pattern-4-simple-calculation"><a class="header" href="#pattern-4-simple-calculation">Pattern 4: Simple Calculation</a></h3>
+<p>Direct calculation without helper functions:</p>
+<pre><code class="language-rust">// Test expects arithmetic
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(AddOutput {
+        sum: input.a + input.b,
+    })
+}</code></pre>
+<p><strong>When to use</strong>: Arithmetic, string formatting, basic transformations.</p>
+<h3 id="pattern-5-delegation"><a class="header" href="#pattern-5-delegation">Pattern 5: Delegation</a></h3>
+<p>Call existing function or library:</p>
+<pre><code class="language-rust">// Test expects file reading
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let contents = tokio::fs::read_to_string(&amp;input.path).await
+        .map_err(|e| Error::Handler(e.to_string()))?;
+
+    Ok(ReadOutput { contents })
+}</code></pre>
+<p><strong>When to use</strong>: File I/O, HTTP requests, database queries (real or mocked).</p>
+<h2 id="common-green-phase-mistakes"><a class="header" href="#common-green-phase-mistakes">Common GREEN Phase Mistakes</a></h2>
+<h3 id="mistake-1-over-engineering"><a class="header" href="#mistake-1-over-engineering">Mistake 1: Over-Engineering</a></h3>
+<pre><code class="language-rust">// BAD - Too complex for first test
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Generic calculation engine
+    let calculator = CalculatorBuilder::new()
+        .with_operator(input.operator.parse()?)
+        .with_precision(input.precision.unwrap_or(2))
+        .with_rounding_mode(RoundingMode::HalfUp)
+        .build()?;
+
+    let result = calculator.compute(input.operands)?;
+
+    Ok(CalculatorOutput { result })
+}</code></pre>
+<p><strong>Why it’s bad</strong>: You’ve written 20 lines of infrastructure for a test that just needs <code>2 + 2 = 4</code>.</p>
+<p><strong>Fix</strong>: Start simple, add complexity when tests demand it:</p>
+<pre><code class="language-rust">// GOOD - Minimal for first test
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(CalculatorOutput {
+        result: input.a + input.b,
+    })
+}</code></pre>
+<p>When you need multiplication, add it:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let result = match input.operator.as_str() {
+        "+" =&gt; input.a + input.b,
+        "*" =&gt; input.a * input.b,
+        _ =&gt; return Err(Error::Validation("Unknown operator".to_string())),
+    };
+
+    Ok(CalculatorOutput { result })
+}</code></pre>
+<h3 id="mistake-2-premature-optimization"><a class="header" href="#mistake-2-premature-optimization">Mistake 2: Premature Optimization</a></h3>
+<pre><code class="language-rust">// BAD - Optimizing before necessary
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Pre-allocate with capacity
+    let mut results = Vec::with_capacity(input.items.len());
+
+    // Parallel processing
+    let handles: Vec&lt;_&gt; = input.items
+        .into_iter()
+        .map(|item| tokio::spawn(async move { process(item) }))
+        .collect();
+
+    for handle in handles {
+        results.push(handle.await??);
+    }
+
+    Ok(Output { results })
+}</code></pre>
+<p><strong>Why it’s bad</strong>: You’re optimizing before knowing if there’s a performance problem. This adds complexity and time.</p>
+<p><strong>Fix</strong>: Start sequential, optimize when benchmarks show a problem:</p>
+<pre><code class="language-rust">// GOOD - Simple sequential processing
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let mut results = Vec::new();
+
+    for item in input.items {
+        results.push(process(item).await?);
+    }
+
+    Ok(Output { results })
+}</code></pre>
+<h3 id="mistake-3-adding-untested-features"><a class="header" href="#mistake-3-adding-untested-features">Mistake 3: Adding Untested Features</a></h3>
+<pre><code class="language-rust">// BAD - Features not required by test
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Test only requires division
+    let quotient = input.numerator / input.denominator;
+
+    // But we're also adding:
+    let remainder = input.numerator % input.denominator;
+    let is_exact = remainder == 0.0;
+    let sign = if quotient &lt; 0.0 { -1 } else { 1 };
+
+    Ok(DivideOutput {
+        quotient,
+        remainder,      // Not tested
+        is_exact,       // Not tested
+        sign,           // Not tested
+    })
+}</code></pre>
+<p><strong>Why it’s bad</strong>: Untested code is unverified code. It might have bugs. It definitely wastes time.</p>
+<p><strong>Fix</strong>: Only implement what tests require:</p>
+<pre><code class="language-rust">// GOOD - Only what the test needs
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(DivideOutput {
+        quotient: input.numerator / input.denominator,
+    })
+}</code></pre>
+<p>If you need remainder later, a test will drive it out.</p>
+<h3 id="mistake-4-skipping-error-handling"><a class="header" href="#mistake-4-skipping-error-handling">Mistake 4: Skipping Error Handling</a></h3>
+<pre><code class="language-rust">// BAD - Using unwrap() instead of proper error handling
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let file = tokio::fs::read_to_string(&amp;input.path).await.unwrap();
+    Ok(ReadOutput { contents: file })
+}</code></pre>
+<p><strong>Why it’s bad</strong>: This violates pforge quality standards. <code>unwrap()</code> causes panics in production.</p>
+<p><strong>Fix</strong>: Proper error propagation:</p>
+<pre><code class="language-rust">// GOOD - Proper error handling
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let file = tokio::fs::read_to_string(&amp;input.path).await
+        .map_err(|e| Error::Handler(format!("Failed to read file: {}", e)))?;
+
+    Ok(ReadOutput { contents: file })
+}</code></pre>
+<p>The <code>?</code> operator and <code>.map_err()</code> are just as fast to type as <code>.unwrap()</code>.</p>
+<h2 id="type-driven-green"><a class="header" href="#type-driven-green">Type-Driven GREEN</a></h2>
+<p>Rust’s type system guides you toward correct implementations:</p>
+<h3 id="follow-the-types"><a class="header" href="#follow-the-types">Follow the Types</a></h3>
+<pre><code class="language-rust">// You have: input: DivideInput
+// You need: Result&lt;DivideOutput&gt;
+
+// Types guide you:
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // input has: numerator (f64), denominator (f64)
+    // Output needs: quotient (f64)
+
+    // Types tell you: divide numerator by denominator
+    let quotient = input.numerator / input.denominator;
+
+    // Wrap in Output struct
+    Ok(DivideOutput { quotient })
+}</code></pre>
+<p><strong>Follow the types from input to output</strong>. The compiler tells you what’s needed.</p>
+<h3 id="let-compiler-guide-you"><a class="header" href="#let-compiler-guide-you">Let Compiler Guide You</a></h3>
+<p>When the compiler complains, listen:</p>
+<pre><code>error[E0308]: mismatched types
+  --&gt; src/handlers/calculate.rs:15:12
+   |
+15 |         Ok(quotient)
+   |            ^^^^^^^^ expected struct `DivideOutput`, found `f64`
+</code></pre>
+<p>Compiler says: “You returned <code>f64</code>, but function expects <code>DivideOutput</code>.”</p>
+<p>Fix:</p>
+<pre><code class="language-rust">Ok(DivideOutput { quotient })</code></pre>
+<p>The compiler is your pair programmer during GREEN.</p>
+<h2 id="testing-your-green-implementation"><a class="header" href="#testing-your-green-implementation">Testing Your GREEN Implementation</a></h2>
+<p>After writing implementation, verify GREEN:</p>
+<pre><code class="language-bash"># Run the specific test
+cargo test test_divide_returns_quotient
+
+# Expected output:
+# test test_divide_returns_quotient ... ok
+</code></pre>
+<p>If test fails, you have 3 options:</p>
+<h3 id="option-1-quick-fix-under-30-seconds"><a class="header" href="#option-1-quick-fix-under-30-seconds">Option 1: Quick Fix (Under 30 Seconds)</a></h3>
+<p>Typo or minor mistake:</p>
+<pre><code class="language-rust">// Wrong
+Ok(DivideOutput { quotient: input.numerator * input.denominator })
+
+// Fixed
+Ok(DivideOutput { quotient: input.numerator / input.denominator })</code></pre>
+<p>If you can spot and fix in &lt; 30 seconds, do it.</p>
+<h3 id="option-2-continue-to-refactor-test-passes"><a class="header" href="#option-2-continue-to-refactor-test-passes">Option 2: Continue to REFACTOR (Test Passes)</a></h3>
+<p>Test passes? Move to REFACTOR phase even if implementation feels ugly. You’ll clean it up next.</p>
+<h3 id="option-3-reset-cant-fix-before-500"><a class="header" href="#option-3-reset-cant-fix-before-500">Option 3: RESET (Can’t Fix Before 5:00)</a></h3>
+<p>If you’re at 4:30 and tests still fail with no clear fix, RESET:</p>
+<pre><code class="language-bash">git checkout .
+</code></pre>
+<p>Reflect: What went wrong?</p>
+<ul>
+<li>Implementation more complex than expected → Break into smaller tests</li>
+<li>Wrong algorithm → Research before next cycle</li>
+<li>Missing dependencies → Add to setup before next cycle</li>
+</ul>
+<h2 id="green--quality-gates"><a class="header" href="#green--quality-gates">GREEN + Quality Gates</a></h2>
+<p>Even in GREEN phase, pforge quality standards apply:</p>
+<h3 id="must-pass"><a class="header" href="#must-pass">Must Pass:</a></h3>
+<ul>
+<li><strong>Compilation</strong>: Code must compile</li>
+<li><strong>No warnings</strong>: Zero compiler warnings</li>
+<li><strong>No unwrap()</strong>: Proper error handling</li>
+<li><strong>No panic!()</strong>: Return errors, don’t panic</li>
+</ul>
+<h3 id="deferred-to-refactor"><a class="header" href="#deferred-to-refactor">Deferred to REFACTOR:</a></h3>
+<ul>
+<li><strong>Clippy lints</strong>: Fix in REFACTOR</li>
+<li><strong>Formatting</strong>: Auto-format in REFACTOR</li>
+<li><strong>Complexity</strong>: Simplify in REFACTOR</li>
+<li><strong>Duplication</strong>: Extract in REFACTOR</li>
+</ul>
+<p>The line: GREEN code must be <strong>correct</strong> but not necessarily <strong>clean</strong>.</p>
+<h2 id="example-full-green-phase"><a class="header" href="#example-full-green-phase">Example: Full GREEN Phase</a></h2>
+<p>Let’s implement division with error handling.</p>
+<h3 id="test-from-red-phase"><a class="header" href="#test-from-red-phase">Test (From RED Phase)</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_divide_handles_zero_denominator() {
+    let handler = DivideHandler;
+    let input = DivideInput {
+        numerator: 10.0,
+        denominator: 0.0,
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::Validation(msg) =&gt; {
+            assert!(msg.contains("Division by zero"));
+        }
+        _ =&gt; panic!("Wrong error type"),
+    }
+}</code></pre>
+<h3 id="minute-200---begin-green"><a class="header" href="#minute-200---begin-green">Minute 2:00 - Begin GREEN</a></h3>
+<p>Current implementation:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(DivideOutput {
+        quotient: input.numerator / input.denominator,
+    })
+}</code></pre>
+<p>Test fails: no division-by-zero check.</p>
+<h3 id="minute-210---add-zero-check"><a class="header" href="#minute-210---add-zero-check">Minute 2:10 - Add Zero Check</a></h3>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.denominator == 0.0 {
+        return Err(Error::Validation(
+            "Division by zero: denominator must be non-zero".to_string()
+        ));
+    }
+
+    Ok(DivideOutput {
+        quotient: input.numerator / input.denominator,
+    })
+}</code></pre>
+<h3 id="minute-340---test-passes"><a class="header" href="#minute-340---test-passes">Minute 3:40 - Test Passes</a></h3>
+<pre><code class="language-bash">cargo test test_divide_handles_zero_denominator
+# test test_divide_handles_zero_denominator ... ok
+</code></pre>
+<p>GREEN!</p>
+<h3 id="minute-400---enter-refactor"><a class="header" href="#minute-400---enter-refactor">Minute 4:00 - Enter REFACTOR</a></h3>
+<p>We have a working, tested implementation. Now we can refactor.</p>
+<h2 id="minimum-vs-simplest"><a class="header" href="#minimum-vs-simplest">Minimum vs. Simplest</a></h2>
+<p>There’s a subtle but important distinction:</p>
+<p><strong>Minimum</strong>: Least code to pass the test
+<strong>Simplest</strong>: Easiest to understand</p>
+<p>Usually they’re the same, but sometimes minimum is <em>less</em> simple:</p>
+<pre><code class="language-rust">// Minimum (hard-coded)
+async fn handle(&amp;self, _input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(Output { value: 42 })
+}
+
+// Simplest (obvious logic)
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(Output { value: input.a + input.b })
+}</code></pre>
+<p>If the simplest implementation is just as fast to write, prefer it over minimum. But if simplest requires significant design, stick with minimum and let tests drive out the design.</p>
+<h2 id="when-green-takes-longer-than-2-minutes"><a class="header" href="#when-green-takes-longer-than-2-minutes">When GREEN Takes Longer Than 2 Minutes</a></h2>
+<p>If you reach minute 4:00 (2 minutes into GREEN) and tests don’t pass:</p>
+<h3 id="you-have-1-minute-left"><a class="header" href="#you-have-1-minute-left">You Have 1 Minute Left</a></h3>
+<p>Use it to either:</p>
+<ol>
+<li>Fix the implementation</li>
+<li>Debug the failure</li>
+<li>Decide to RESET</li>
+</ol>
+<h3 id="dont-rush"><a class="header" href="#dont-rush">Don’t Rush</a></h3>
+<p>Rushing leads to mistakes. Better to RESET and start clean than to force broken code through quality gates.</p>
+<h3 id="common-reasons-for-slow-green"><a class="header" href="#common-reasons-for-slow-green">Common Reasons for Slow GREEN</a></h3>
+<p><strong>Algorithm complexity</strong>: Chose complex approach. Next cycle, try simpler algorithm.</p>
+<p><strong>Missing knowledge</strong>: Don’t know how to implement. Research before next cycle.</p>
+<p><strong>Wrong abstraction</strong>: Fighting the types. Rethink approach.</p>
+<p><strong>Test too large</strong>: Test requires too much code. Break into smaller tests.</p>
+<h2 id="green-phase-checklist"><a class="header" href="#green-phase-checklist">GREEN Phase Checklist</a></h2>
+<p>Before moving to REFACTOR:</p>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Test passes (verify by running)</li>
+<li><input disabled="" type="checkbox"/>
+All existing tests still pass (no regressions)</li>
+<li><input disabled="" type="checkbox"/>
+Code compiles without warnings</li>
+<li><input disabled="" type="checkbox"/>
+No <code>unwrap()</code> or <code>panic!()</code> in production code</li>
+<li><input disabled="" type="checkbox"/>
+Proper error handling for error cases</li>
+<li><input disabled="" type="checkbox"/>
+Timer shows less than 4:00 elapsed</li>
+</ul>
+<p>If any item is unchecked and you can’t fix in 1 minute, RESET.</p>
+<h2 id="the-joy-of-green"><a class="header" href="#the-joy-of-green">The Joy of GREEN</a></h2>
+<p>There’s a dopamine hit when tests turn green:</p>
+<pre><code>test test_divide_returns_quotient ... ok
+</code></pre>
+<p>That “ok” is immediate positive feedback. You’ve made progress. The feature works.</p>
+<p>TDD’s tight feedback loop (minutes, not hours) creates frequent positive reinforcement, which:</p>
+<ul>
+<li>Maintains motivation</li>
+<li>Builds momentum</li>
+<li>Reduces stress</li>
+<li>Makes coding addictive (in a good way)</li>
+</ul>
+<h2 id="next-phase-refactor"><a class="header" href="#next-phase-refactor">Next Phase: REFACTOR</a></h2>
+<p>You have working code. Tests pass. Now you have 1 minute to make it clean.</p>
+<p>REFACTOR is where you transform minimum code into maintainable code, with the safety net of passing tests.</p>
+<hr />
+<p>Previous: <a href="ch07-01-red.html">RED: Write Failing Test</a>
+Next: <a href="ch07-03-refactor.html">REFACTOR: Clean Up</a></p>
 
                     </main>
 

@@ -158,8 +158,467 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch07-01-redmd"><a class="header" href="#ch07-01-redmd">ch07-01-red.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="red-write-failing-test"><a class="header" href="#red-write-failing-test">RED: Write Failing Test</a></h1>
+<p>The RED phase is where you define what success looks like before writing any production code. You have exactly 2 minutes to write a failing test that clearly specifies the next increment of behavior.</p>
+<h2 id="the-purpose-of-red"><a class="header" href="#the-purpose-of-red">The Purpose of RED</a></h2>
+<p>RED is about <strong>specification, not testing</strong>. The test you write answers the question: “What should the next tiny piece of functionality do?”</p>
+<h3 id="why-tests-come-first"><a class="header" href="#why-tests-come-first">Why Tests Come First</a></h3>
+<p><strong>Design Pressure</strong>: Writing tests first forces you to think from the caller’s perspective. You design interfaces that are pleasant to use, not convenient to implement.</p>
+<p><strong>Clear Goal</strong>: Before writing implementation, you have a concrete, executable definition of “done.” The test passes = you’re finished.</p>
+<p><strong>Prevents Scope Creep</strong>: Writing tests first forces you to commit to a small scope before getting distracted by implementation details.</p>
+<p><strong>Living Documentation</strong>: Tests document intent better than comments. Comments lie; tests are executable and must stay accurate.</p>
+<h2 id="the-2-minute-budget"><a class="header" href="#the-2-minute-budget">The 2-Minute Budget</a></h2>
+<p>Two minutes to write a test feels tight. It is. This constraint forces several good practices:</p>
+<p><strong>Small Increments</strong>: If you can’t write a test in 2 minutes, your increment is too large. Break it down.</p>
+<p><strong>Test Template Reuse</strong>: You’ll develop a library of test patterns that you can copy and adapt quickly.</p>
+<p><strong>No Overthinking</strong>: Two minutes prevents analysis paralysis. Write the simplest test that fails for the right reason.</p>
+<h2 id="anatomy-of-a-good-red-test"><a class="header" href="#anatomy-of-a-good-red-test">Anatomy of a Good RED Test</a></h2>
+<p>A good RED test has three characteristics:</p>
+<h3 id="1-compiles-if-possible"><a class="header" href="#1-compiles-if-possible">1. Compiles (If Possible)</a></h3>
+<p>In typed languages like Rust, the test should compile even if types don’t exist yet. Use comments or temporary stubs:</p>
+<pre><code class="language-rust">// COMPILES - Types exist
+#[tokio::test]
+async fn test_greet_returns_greeting() {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "Alice".to_string(),
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_ok());
+}</code></pre>
+<p>If types don’t exist:</p>
+<pre><code class="language-rust">// DOESN'T COMPILE YET - Types will be created in GREEN
+#[tokio::test]
+async fn test_divide_handles_zero() {
+    let handler = DivideHandler;
+    let input = DivideInput {
+        numerator: 10.0,
+        denominator: 0.0,
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_err());
+    // Will be: Error::Validation("Division by zero")
+}</code></pre>
+<p>Both are valid RED tests. The first runs and fails (returns wrong value). The second doesn’t compile (types missing). Either way, you’re RED.</p>
+<h3 id="2-fails-for-the-right-reason"><a class="header" href="#2-fails-for-the-right-reason">2. Fails for the Right Reason</a></h3>
+<p>The test must fail because the feature doesn’t exist, not because of typos or wrong imports:</p>
+<pre><code class="language-rust">// GOOD - Fails because feature missing
+#[tokio::test]
+async fn test_calculate_mean() {
+    let handler = StatisticsHandler;
+    let input = StatsInput {
+        data: vec![1.0, 2.0, 3.0, 4.0, 5.0],
+    };
+
+    let result = handler.handle(input).await.unwrap();
+
+    assert_eq!(result.mean, 3.0);
+}
+// Fails: field `mean` does not exist in `StatsOutput`</code></pre>
+<pre><code class="language-rust">// BAD - Fails because of typo
+#[tokio::test]
+async fn test_calculate_mean() {
+    let handler = StatisticsHander;  // typo!
+    // ...
+}
+// Fails: cannot find struct `StatisticsHander`</code></pre>
+<p>Run your test immediately after writing it to verify it fails correctly.</p>
+<h3 id="3-tests-one-thing"><a class="header" href="#3-tests-one-thing">3. Tests One Thing</a></h3>
+<p>Each test should verify one specific behavior:</p>
+<pre><code class="language-rust">// GOOD - One behavior
+#[tokio::test]
+async fn test_divide_returns_quotient() {
+    let handler = DivideHandler;
+    let input = DivideInput {
+        numerator: 10.0,
+        denominator: 2.0,
+    };
+
+    let result = handler.handle(input).await.unwrap();
+
+    assert_eq!(result.quotient, 5.0);
+}
+
+// GOOD - Different behavior, separate test
+#[tokio::test]
+async fn test_divide_rejects_zero_denominator() {
+    let handler = DivideHandler;
+    let input = DivideInput {
+        numerator: 10.0,
+        denominator: 0.0,
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_err());
+}</code></pre>
+<pre><code class="language-rust">// BAD - Multiple behaviors in one test
+#[tokio::test]
+async fn test_divide_everything() {
+    // Tests division
+    let result1 = handler.handle(DivideInput { ... }).await.unwrap();
+    assert_eq!(result1.quotient, 5.0);
+
+    // Tests zero handling
+    let result2 = handler.handle(DivideInput { denominator: 0.0, ... }).await;
+    assert!(result2.is_err());
+
+    // Tests negative numbers
+    let result3 = handler.handle(DivideInput { numerator: -10.0, ... }).await.unwrap();
+    assert_eq!(result3.quotient, -5.0);
+}</code></pre>
+<p>Multiple assertions are fine if they verify the same behavior. Multiple behaviors require separate tests.</p>
+<h2 id="test-naming-conventions"><a class="header" href="#test-naming-conventions">Test Naming Conventions</a></h2>
+<p>Test names should read as specifications:</p>
+<pre><code class="language-rust">// GOOD - Reads as specification
+test_greet_returns_personalized_message()
+test_divide_rejects_zero_denominator()
+test_statistics_calculates_mean_correctly()
+test_file_read_handles_missing_file()
+test_http_call_retries_on_timeout()
+
+// BAD - Vague or implementation-focused
+test_greet()
+test_division()
+test_math_works()
+test_error_case()
+test_function_1()</code></pre>
+<p>Pattern: <code>test_&lt;subject&gt;_&lt;behavior&gt;_&lt;condition&gt;</code></p>
+<p>Examples:</p>
+<ul>
+<li><code>test_calculator_adds_positive_numbers</code></li>
+<li><code>test_file_handler_creates_missing_directory</code></li>
+<li><code>test_api_client_refreshes_expired_token</code></li>
+</ul>
+<h2 id="quick-test-templates-for-pforge"><a class="header" href="#quick-test-templates-for-pforge">Quick Test Templates for pforge</a></h2>
+<h3 id="handler-happy-path-template"><a class="header" href="#handler-happy-path-template">Handler Happy Path Template</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_HANDLER_NAME_returns_OUTPUT() {
+    let handler = HandlerStruct;
+    let input = InputStruct {
+        field: value,
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    assert_eq!(output.field, expected_value);
+}</code></pre>
+<h3 id="handler-error-case-template"><a class="header" href="#handler-error-case-template">Handler Error Case Template</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_HANDLER_NAME_rejects_INVALID_INPUT() {
+    let handler = HandlerStruct;
+    let input = InputStruct {
+        field: invalid_value,
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        Error::Validation(msg) =&gt; assert!(msg.contains("expected error substring")),
+        _ =&gt; panic!("Wrong error type"),
+    }
+}</code></pre>
+<h3 id="handler-async-operation-template"><a class="header" href="#handler-async-operation-template">Handler Async Operation Template</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_HANDLER_NAME_completes_within_timeout() {
+    let handler = HandlerStruct;
+    let input = InputStruct { /* ... */ };
+
+    let timeout_duration = std::time::Duration::from_secs(5);
+
+    let result = tokio::time::timeout(
+        timeout_duration,
+        handler.handle(input)
+    ).await;
+
+    assert!(result.is_ok(), "Handler timed out");
+    assert!(result.unwrap().is_ok());
+}</code></pre>
+<p>Copy these templates, replace the placeholders, and you have a test in under 2 minutes.</p>
+<h2 id="the-red-checklist"><a class="header" href="#the-red-checklist">The RED Checklist</a></h2>
+<p>Before moving to GREEN, verify:</p>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Test compiles OR fails to compile for the right reason (missing types)</li>
+<li><input disabled="" type="checkbox"/>
+Test runs and fails OR doesn’t compile</li>
+<li><input disabled="" type="checkbox"/>
+Test name clearly describes the behavior being specified</li>
+<li><input disabled="" type="checkbox"/>
+Test is focused on one specific behavior</li>
+<li><input disabled="" type="checkbox"/>
+Timer shows less than 2:00 minutes elapsed</li>
+</ul>
+<p>If any item is unchecked, refine the test. If the timer exceeds 2:00, RESET.</p>
+<h2 id="common-red-phase-mistakes"><a class="header" href="#common-red-phase-mistakes">Common RED Phase Mistakes</a></h2>
+<h3 id="mistake-1-testing-too-much-at-once"><a class="header" href="#mistake-1-testing-too-much-at-once">Mistake 1: Testing Too Much at Once</a></h3>
+<pre><code class="language-rust">// BAD - Too much for one test
+#[tokio::test]
+async fn test_calculator_all_operations() {
+    // Addition
+    assert_eq!(calc.add(2, 3).await.unwrap(), 5);
+
+    // Subtraction
+    assert_eq!(calc.subtract(5, 3).await.unwrap(), 2);
+
+    // Multiplication
+    assert_eq!(calc.multiply(2, 3).await.unwrap(), 6);
+
+    // Division
+    assert_eq!(calc.divide(6, 3).await.unwrap(), 2);
+}</code></pre>
+<p><strong>Why it’s bad</strong>: If this test fails, you don’t know which operation broke. Also, implementing all four operations takes more than 2 minutes (GREEN phase).</p>
+<p><strong>Fix</strong>: One test per operation.</p>
+<h3 id="mistake-2-testing-implementation-details"><a class="header" href="#mistake-2-testing-implementation-details">Mistake 2: Testing Implementation Details</a></h3>
+<pre><code class="language-rust">// BAD - Tests internal structure
+#[tokio::test]
+async fn test_handler_uses_hashmap_internally() {
+    let handler = CacheHandler::new();
+    // Somehow peek into internals
+    assert!(handler.storage.is_hashmap());
+}</code></pre>
+<p><strong>Why it’s bad</strong>: Tests should verify behavior, not implementation. If you refactor from HashMap to BTreeMap, this test breaks even though behavior is unchanged.</p>
+<p><strong>Fix</strong>: Test observable behavior only.</p>
+<pre><code class="language-rust">// GOOD - Tests behavior
+#[tokio::test]
+async fn test_cache_retrieves_stored_value() {
+    let handler = CacheHandler::new();
+
+    handler.store("key", "value").await.unwrap();
+    let result = handler.retrieve("key").await.unwrap();
+
+    assert_eq!(result, "value");
+}</code></pre>
+<h3 id="mistake-3-complex-test-setup"><a class="header" href="#mistake-3-complex-test-setup">Mistake 3: Complex Test Setup</a></h3>
+<pre><code class="language-rust">// BAD - Setup takes too long
+#[tokio::test]
+async fn test_user_registration() {
+    // Too much setup
+    let db = setup_test_database().await;
+    let email_service = MockEmailService::new();
+    let password_hasher = Argon2::default();
+    let config = load_test_config("config.yaml");
+    let logger = setup_test_logger();
+    let handler = RegistrationHandler::new(db, email_service, password_hasher, config, logger);
+
+    // Test starts here...
+}</code></pre>
+<p><strong>Why it’s bad</strong>: You’ve exceeded 2 minutes just on setup. The test hasn’t even run yet.</p>
+<p><strong>Fix</strong>: Extract setup to a helper function or use test fixtures:</p>
+<pre><code class="language-rust">// GOOD - Fast setup
+#[tokio::test]
+async fn test_user_registration() {
+    let handler = create_test_registration_handler().await;
+
+    let input = RegistrationInput {
+        email: "test@example.com".to_string(),
+        password: "securepass123".to_string(),
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_ok());
+}
+
+// Helper function defined once, reused many times
+async fn create_test_registration_handler() -&gt; RegistrationHandler {
+    let db = setup_test_database().await;
+    let email_service = MockEmailService::new();
+    // ... etc
+    RegistrationHandler::new(db, email_service, /* ... */)
+}</code></pre>
+<h3 id="mistake-4-not-running-the-test"><a class="header" href="#mistake-4-not-running-the-test">Mistake 4: Not Running the Test</a></h3>
+<p><strong>Symptom</strong>: You write a test, assume it fails correctly, and move to GREEN.</p>
+<p><strong>Why it’s bad</strong>: The test might already pass (making it useless), or fail for the wrong reason (typo, wrong import).</p>
+<p><strong>Fix</strong>: Always run the test immediately and verify the failure message:</p>
+<pre><code class="language-bash"># After writing test
+cargo test test_divide_returns_quotient
+# Expected: Test failed (function not implemented)
+# If: Test passed → test is useless
+# If: Test failed (wrong reason) → fix test first
+</code></pre>
+<h2 id="advanced-red-techniques"><a class="header" href="#advanced-red-techniques">Advanced RED Techniques</a></h2>
+<h3 id="outside-in-tdd"><a class="header" href="#outside-in-tdd">Outside-In TDD</a></h3>
+<p>Start with high-level behavior, let tests drive lower-level design:</p>
+<pre><code class="language-rust">// Minute 0:00 - High-level test
+#[tokio::test]
+async fn test_api_returns_user_profile() {
+    let api = UserAPI::new();
+
+    let result = api.get_profile("user123").await;
+
+    assert!(result.is_ok());
+    let profile = result.unwrap();
+    assert_eq!(profile.username, "alice");
+}</code></pre>
+<p>This test will drive the creation of:</p>
+<ul>
+<li><code>UserAPI</code> struct</li>
+<li><code>get_profile</code> method</li>
+<li><code>Profile</code> struct</li>
+<li>Database layer (in later cycles)</li>
+</ul>
+<h3 id="property-based-testing-hint"><a class="header" href="#property-based-testing-hint">Property-Based Testing Hint</a></h3>
+<p>For complex logic, use RED to specify properties:</p>
+<pre><code class="language-rust">// Standard example-based test
+#[tokio::test]
+async fn test_sort_orders_numbers() {
+    let input = vec![3, 1, 4, 1, 5];
+    let result = sort(input).await;
+    assert_eq!(result, vec![1, 1, 3, 4, 5]);
+}
+
+// Property-based test (RED phase)
+#[tokio::test]
+async fn test_sort_maintains_length() {
+    use proptest::prelude::*;
+
+    proptest!(|(numbers: Vec&lt;i32&gt;)| {
+        let sorted = sort(numbers.clone()).await;
+        prop_assert_eq!(sorted.len(), numbers.len());
+    });
+}</code></pre>
+<p>Property tests specify invariants rather than specific examples.</p>
+<h3 id="test-driven-error-messages"><a class="header" href="#test-driven-error-messages">Test-Driven Error Messages</a></h3>
+<p>Write the test with the error message you want users to see:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_divide_provides_helpful_error_message() {
+    let handler = DivideHandler;
+    let input = DivideInput {
+        numerator: 10.0,
+        denominator: 0.0,
+    };
+
+    let result = handler.handle(input).await;
+
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    let message = format!("{}", error);
+
+    // Specify the exact error message you want
+    assert!(message.contains("Division by zero"));
+    assert!(message.contains("denominator must be non-zero"));
+}</code></pre>
+<p>This drives you to write good error messages, not generic “An error occurred.”</p>
+<h2 id="integration-with-pforge-watch-mode"><a class="header" href="#integration-with-pforge-watch-mode">Integration with pforge Watch Mode</a></h2>
+<p>Run tests continuously during RED phase:</p>
+<pre><code class="language-bash"># Terminal 1: Start watch mode
+cargo watch -x 'test test_divide_returns_quotient --lib'
+
+# Terminal 2: Edit test
+vim crates/pforge-runtime/tests/unit/calculator_test.rs
+</code></pre>
+<p>Watch mode gives instant feedback. Save the file, see the failure, confirm it’s RED for the right reason.</p>
+<h2 id="red-phase-workflow-summary"><a class="header" href="#red-phase-workflow-summary">RED Phase Workflow Summary</a></h2>
+<ol>
+<li><strong>Start timer</strong> (5-minute cycle begins)</li>
+<li><strong>Open test file</strong> (under 10 seconds)</li>
+<li><strong>Copy test template</strong> (under 20 seconds)</li>
+<li><strong>Fill in specifics</strong> (under 60 seconds)</li>
+<li><strong>Run test</strong> (under 10 seconds)</li>
+<li><strong>Verify failure</strong> (under 20 seconds)</li>
+<li><strong>Total</strong>: ~2 minutes</li>
+</ol>
+<p>With practice, you’ll complete RED in 90 seconds consistently, giving extra time for GREEN and REFACTOR.</p>
+<h2 id="example-red-phase-executed-correctly"><a class="header" href="#example-red-phase-executed-correctly">Example: RED Phase Executed Correctly</a></h2>
+<p>Let’s implement a <code>clamp</code> function that constrains a value between min and max.</p>
+<h3 id="minute-000---start-timer"><a class="header" href="#minute-000---start-timer">Minute 0:00 - Start Timer</a></h3>
+<pre><code class="language-bash">termdown 5m &amp;
+vim crates/pforge-runtime/src/lib.rs
+</code></pre>
+<h3 id="minute-010---decide-on-test"><a class="header" href="#minute-010---decide-on-test">Minute 0:10 - Decide on Test</a></h3>
+<p>Feature: Clamp function for numbers
+Test: Value below min returns min</p>
+<h3 id="minute-020---open-test-file"><a class="header" href="#minute-020---open-test-file">Minute 0:20 - Open Test File</a></h3>
+<pre><code class="language-bash">vim crates/pforge-runtime/tests/unit/math_test.rs
+</code></pre>
+<h3 id="minute-030---write-test"><a class="header" href="#minute-030---write-test">Minute 0:30 - Write Test</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_clamp_returns_min_when_below_range() {
+    let result = clamp(5, 10, 20);
+    assert_eq!(result, 10);
+}</code></pre>
+<h3 id="minute-050---run-test"><a class="header" href="#minute-050---run-test">Minute 0:50 - Run Test</a></h3>
+<pre><code class="language-bash">cargo test test_clamp_returns_min_when_below_range
+</code></pre>
+<p>Output:</p>
+<pre><code>error: cannot find function `clamp` in this scope
+</code></pre>
+<h3 id="minute-100---verify-red"><a class="header" href="#minute-100---verify-red">Minute 1:00 - Verify RED</a></h3>
+<p>Perfect! Test fails because function doesn’t exist. This is the right failure.</p>
+<h3 id="minute-110---document-in-test"><a class="header" href="#minute-110---document-in-test">Minute 1:10 - Document in Test</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_clamp_returns_min_when_below_range() {
+    // clamp(value, min, max) constrains value to [min, max]
+    let result = clamp(5, 10, 20);
+    assert_eq!(result, 10);
+}</code></pre>
+<h3 id="minute-200---red-phase-complete"><a class="header" href="#minute-200---red-phase-complete">Minute 2:00 - RED Phase Complete</a></h3>
+<p>We have:</p>
+<ul>
+<li>✅ Test written</li>
+<li>✅ Test fails for right reason</li>
+<li>✅ Behavior clearly specified</li>
+<li>✅ Under 2-minute budget</li>
+</ul>
+<p>Time to move to GREEN.</p>
+<h2 id="when-red-takes-longer-than-2-minutes"><a class="header" href="#when-red-takes-longer-than-2-minutes">When RED Takes Longer Than 2 Minutes</a></h2>
+<p>If you hit 2:00 and the test isn’t ready, you have two options:</p>
+<h3 id="option-1-finish-quickly-if--30-seconds-remaining"><a class="header" href="#option-1-finish-quickly-if--30-seconds-remaining">Option 1: Finish Quickly (If &lt; 30 Seconds Remaining)</a></h3>
+<p>If you’re truly close (just need to add assertions), finish quickly:</p>
+<pre><code class="language-rust">// 1:50 elapsed, just need to add:
+assert_eq!(result.value, expected);
+// Total: 2:05 - acceptable</code></pre>
+<p>Minor overruns (&lt; 15 seconds) are acceptable if test is complete and verified RED.</p>
+<h3 id="option-2-reset-if-significantly-over"><a class="header" href="#option-2-reset-if-significantly-over">Option 2: RESET (If Significantly Over)</a></h3>
+<p>If you’re at 2:30 and still writing the test, RESET:</p>
+<pre><code class="language-bash">git checkout .
+</code></pre>
+<p>Reflect: Why did RED take so long?</p>
+<ul>
+<li>Test setup too complex → Need helper function</li>
+<li>Testing too much → Break into smaller tests</li>
+<li>Unclear what to test → Spend 1 minute planning before next cycle</li>
+</ul>
+<h2 id="red-phase-success-metrics"><a class="header" href="#red-phase-success-metrics">RED Phase Success Metrics</a></h2>
+<p>Track these metrics to improve:</p>
+<p><strong>Time to RED</strong>: Average time to write failing test</p>
+<ul>
+<li>Target: &lt; 2:00</li>
+<li>Excellent: &lt; 1:30</li>
+<li>Expert: &lt; 1:00</li>
+</ul>
+<p><strong>RED Failure Rate</strong>: Tests that fail for wrong reason</p>
+<ul>
+<li>Target: &lt; 10%</li>
+<li>Excellent: &lt; 5%</li>
+<li>Expert: &lt; 1%</li>
+</ul>
+<p><strong>RED Rewrites</strong>: Tests rewritten during same cycle</p>
+<ul>
+<li>Target: &lt; 20%</li>
+<li>Excellent: &lt; 10%</li>
+<li>Expert: &lt; 5%</li>
+</ul>
+<h2 id="psychological-benefits-of-red-first"><a class="header" href="#psychological-benefits-of-red-first">Psychological Benefits of RED First</a></h2>
+<p><strong>Confidence</strong>: You know what you’re building before you start.</p>
+<p><strong>Clarity</strong>: The test clarifies vague requirements into concrete behavior.</p>
+<p><strong>Progress</strong>: Each RED test is a small, achievable goal.</p>
+<p><strong>Safety Net</strong>: Tests catch regressions as you refactor later.</p>
+<p><strong>Documentation</strong>: Future developers understand intent from tests.</p>
+<h2 id="next-phase-green"><a class="header" href="#next-phase-green">Next Phase: GREEN</a></h2>
+<p>You’ve written a failing test that specifies behavior. Now it’s time to make it pass with the minimum code necessary.</p>
+<p>The GREEN phase has one goal: get from RED to GREEN as fast as possible, even if the implementation is ugly. We’ll clean it up in REFACTOR.</p>
+<hr />
+<p>Previous: <a href="ch07-00-five-minute-cycle.html">The 5-Minute TDD Cycle</a>
+Next: <a href="ch07-02-green.html">GREEN: Minimum Code</a></p>
 
                     </main>
 

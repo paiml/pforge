@@ -158,8 +158,316 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch08-00-quality-gatesmd"><a class="header" href="#ch08-00-quality-gatesmd">ch08-00-quality-gates.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="quality-gates-the-jidoka-principle"><a class="header" href="#quality-gates-the-jidoka-principle">Quality Gates: The Jidoka Principle</a></h1>
+<p>In Toyota’s manufacturing system, <strong>Jidoka</strong> means “automation with a human touch” or more commonly: <strong>“Stop the line when defects occur.”</strong> If a worker spots a quality issue, they pull the andon cord, halting the entire production line until the problem is fixed.</p>
+<p>This principle prevents defects from propagating downstream and accumulating into expensive rework.</p>
+<p>pforge applies Jidoka to software development through <strong>automated quality gates</strong>: a series of checks that must pass before code enters the codebase. If any gate fails, development stops. Fix the issue, then proceed.</p>
+<p>No compromises. No “I’ll fix it later.” No technical debt accumulation.</p>
+<h2 id="the-quality-gate-philosophy"><a class="header" href="#the-quality-gate-philosophy">The Quality Gate Philosophy</a></h2>
+<p>Traditional development often treats quality as an afterthought:</p>
+<ul>
+<li>Write code quickly, worry about quality later</li>
+<li>Accumulate technical debt, plan a “cleanup sprint” (that never happens)</li>
+<li>Let failing tests slide, promising to fix them “after the deadline”</li>
+<li>Ignore warnings, complexity, and code smells</li>
+</ul>
+<p>This creates a <strong>debt spiral</strong>: poor quality begets more poor quality. Complexity increases. Tests become flaky. Refactoring becomes dangerous. Eventually, the codebase becomes unmaintainable.</p>
+<p><strong>Quality gates prevent this spiral by enforcing standards at every commit.</strong></p>
+<h3 id="why-quality-gates-matter"><a class="header" href="#why-quality-gates-matter">Why Quality Gates Matter</a></h3>
+<p><strong>Prevention over Cure</strong>: Catching issues early is exponentially cheaper than fixing them later. A linting error caught pre-commit takes 30 seconds to fix. The same issue in production might take hours or days.</p>
+<p><strong>Compound Quality</strong>: Each commit builds on previous work. If commit N is low quality, commits N+1, N+2, N+3 inherit that debt. Quality gates ensure every commit maintains baseline standards.</p>
+<p><strong>Rapid Feedback</strong>: Developers get immediate feedback. No waiting for CI, code review, or QA to discover issues.</p>
+<p><strong>Forcing Function</strong>: Knowing that commits will be rejected for quality violations changes behavior. You write cleaner code from the start.</p>
+<p><strong>Collective Ownership</strong>: Quality gates are objective and automated. They apply equally to all contributors, maintaining consistent standards.</p>
+<h2 id="pforges-quality-gate-stack"><a class="header" href="#pforges-quality-gate-stack">pforge’s Quality Gate Stack</a></h2>
+<p>pforge enforces <strong>eight quality gates</strong> before allowing commits:</p>
+<h3 id="0-documentation-link-validation"><a class="header" href="#0-documentation-link-validation">0. Documentation Link Validation</a></h3>
+<p><strong>Command</strong>: <code>pmat validate-docs --fail-on-error</code></p>
+<p><strong>What it checks</strong>: All markdown links (both local files and HTTP URLs) are valid</p>
+<p><strong>Why it matters</strong>: Broken documentation links frustrate users and erode trust. Dead links suggest unmaintained projects.</p>
+<p><strong>Example failure</strong>:</p>
+<pre><code>❌ Broken link found: docs/api.md -&gt; nonexistent-file.md
+❌ HTTP 404: https://example.com/deleted-page
+</code></pre>
+<p>This catches both local file references that don’t exist and external URLs that return 404s. Documentation is code—it must be tested.</p>
+<h3 id="1-code-formatting"><a class="header" href="#1-code-formatting">1. Code Formatting</a></h3>
+<p><strong>Command</strong>: <code>cargo fmt --check</code></p>
+<p><strong>What it checks</strong>: Code follows Rust’s standard formatting (indentation, spacing, line breaks)</p>
+<p><strong>Why it matters</strong>: Consistent formatting reduces cognitive load and eliminates bike-shedding. Code review focuses on logic, not style.</p>
+<p><strong>Example failure</strong>:</p>
+<pre><code>Diff in /home/noah/src/pforge/crates/pforge-runtime/src/handler.rs at line 42:
+-pub fn new(name:String)-&gt;Self{
++pub fn new(name: String) -&gt; Self {
+</code></pre>
+<p>Fix: Run <code>cargo fmt</code> to auto-format all code.</p>
+<h3 id="2-linting-clippy"><a class="header" href="#2-linting-clippy">2. Linting (Clippy)</a></h3>
+<p><strong>Command</strong>: <code>cargo clippy --all-targets --all-features -- -D warnings</code></p>
+<p><strong>What it checks</strong>: Common Rust pitfalls, performance issues, API misuse, code smells</p>
+<p><strong>Why it matters</strong>: Clippy’s 500+ lints catch bugs and anti-patterns that humans miss. It encodes decades of Rust experience.</p>
+<p><strong>Example failures</strong>:</p>
+<pre><code>warning: unnecessary clone
+  --&gt; src/handler.rs:23:18
+   |
+23 |     let s = name.clone();
+   |                  ^^^^^^^ help: remove this
+
+warning: this returns a `Result&lt;_, ()&gt;`
+  --&gt; src/registry.rs:45:5
+   |
+45 |     Err(())
+   |     ^^^^^^^ help: use a custom error type
+</code></pre>
+<p>Fix: Address each warning. For rare false positives, use <code>#[allow(clippy::lint_name)]</code> with a comment explaining why.</p>
+<h3 id="3-tests"><a class="header" href="#3-tests">3. Tests</a></h3>
+<p><strong>Command</strong>: <code>cargo test --all</code></p>
+<p><strong>What it checks</strong>: All tests (unit, integration, doc tests) pass</p>
+<p><strong>Why it matters</strong>: Failing tests mean broken behavior. A green test suite is your contract with users.</p>
+<p><strong>Example failure</strong>:</p>
+<pre><code>test handler::tests::test_validation ... FAILED
+
+---- handler::tests::test_validation stdout ----
+thread 'handler::tests::test_validation' panicked at 'assertion failed:
+  `(left == right)`
+  left: `Error("Invalid parameter")`,
+  right: `Ok(...)`'
+</code></pre>
+<p>Fix: Debug the test. Either the implementation is wrong or the test expectations are incorrect.</p>
+<h3 id="4-complexity-analysis"><a class="header" href="#4-complexity-analysis">4. Complexity Analysis</a></h3>
+<p><strong>Command</strong>: <code>pmat analyze complexity --max-cyclomatic 20</code></p>
+<p><strong>What it checks</strong>: Cyclomatic complexity of each function (max: 20)</p>
+<p><strong>Why it matters</strong>: Complex functions are bug-prone, hard to test, and hard to maintain. Studies show defect density increases exponentially with complexity.</p>
+<p><strong>Example failure</strong>:</p>
+<pre><code>Function 'process_request' has cyclomatic complexity 23 (max: 20)
+  Location: src/handler.rs:156
+  Recommendation: Extract helper functions or simplify logic
+</code></pre>
+<p>Fix: Refactor. Extract functions, eliminate branches, use early returns, leverage Rust’s pattern matching.</p>
+<h3 id="5-satd-detection-self-admitted-technical-debt"><a class="header" href="#5-satd-detection-self-admitted-technical-debt">5. SATD Detection (Self-Admitted Technical Debt)</a></h3>
+<p><strong>Command</strong>: <code>pmat analyze satd</code></p>
+<p><strong>What it checks</strong>: TODO, FIXME, HACK, XXX comments (except Phase 2-4 markers)</p>
+<p><strong>Why it matters</strong>: These comments are promises to fix things “later.” Later rarely comes. They accumulate into unmaintainable codebases.</p>
+<p><strong>Example failures</strong>:</p>
+<pre><code>SATD found: TODO: refactor this mess
+  Location: src/handler.rs:89
+  Severity: Medium
+
+SATD found: HACK: temporary workaround
+  Location: src/registry.rs:234
+  Severity: High
+</code></pre>
+<p>pforge allows Phase markers (<code>Phase 2: ...</code>) because they represent planned work, not technical debt.</p>
+<p>Fix: Either fix the issue immediately or remove the comment. No deferred promises.</p>
+<h3 id="6-code-coverage"><a class="header" href="#6-code-coverage">6. Code Coverage</a></h3>
+<p><strong>Command</strong>: <code>cargo llvm-cov --summary-only</code> (requires ≥80% line coverage)</p>
+<p><strong>What it checks</strong>: Percentage of code exercised by tests</p>
+<p><strong>Why it matters</strong>: Untested code is unverified code. 80% coverage ensures critical paths are tested.</p>
+<p><strong>Example output</strong>:</p>
+<pre><code>Filename                      Lines    Covered    Uncovered    %
+------------------------------------------------------------
+src/handler.rs                234      198        36          84.6%
+src/registry.rs               189      167        22          88.4%
+src/config.rs                 145      109        36          75.2%  ❌
+------------------------------------------------------------
+TOTAL                         1247     1021       226         81.9%
+</code></pre>
+<p>Fix: Add tests for uncovered code paths. Focus on edge cases, error handling, and boundary conditions.</p>
+<h3 id="7-technical-debt-grade-tdg"><a class="header" href="#7-technical-debt-grade-tdg">7. Technical Debt Grade (TDG)</a></h3>
+<p><strong>Command</strong>: <code>pmat tdg .</code> (requires ≥75/100, Grade C or better)</p>
+<p><strong>What it checks</strong>: Holistic code quality score combining complexity, duplication, documentation, test quality, and maintainability</p>
+<p><strong>Why it matters</strong>: TDG provides a single quality metric. It catches issues that slip through individual gates.</p>
+<p><strong>Example output</strong>:</p>
+<pre><code>╭─────────────────────────────────────────────────╮
+│  TDG Score Report                              │
+├─────────────────────────────────────────────────┤
+│  Overall Score: 94.6/100 (A)                  │
+│  Language: Rust (confidence: 98%)               │
+│                                                 │
+│  Component Scores:                              │
+│    Complexity:      92/100                      │
+│    Duplication:     96/100                      │
+│    Documentation:   91/100                      │
+│    Test Quality:    97/100                      │
+│    Maintainability: 95/100                      │
+╰─────────────────────────────────────────────────╯
+</code></pre>
+<p>A score below 75 indicates systemic quality issues. Fix: Address the lowest component scores first.</p>
+<h3 id="8-security-audit"><a class="header" href="#8-security-audit">8. Security Audit</a></h3>
+<p><strong>Command</strong>: <code>cargo audit</code> (fails on known vulnerabilities)</p>
+<p><strong>What it checks</strong>: Dependencies against the RustSec Advisory Database</p>
+<p><strong>Why it matters</strong>: Vulnerable dependencies create attack vectors. Automated auditing catches CVEs before they reach production.</p>
+<p><strong>Example failure</strong>:</p>
+<pre><code>Crate:     time
+Version:   0.1.43
+Warning:   potential segfault in time
+ID:        RUSTSEC-2020-0071
+Solution:  Upgrade to &gt;= 0.2.23
+</code></pre>
+<p>Fix: Update vulnerable dependencies. Use <code>cargo update</code> or modify <code>Cargo.toml</code>.</p>
+<h2 id="running-quality-gates"><a class="header" href="#running-quality-gates">Running Quality Gates</a></h2>
+<h3 id="manual-execution"><a class="header" href="#manual-execution">Manual Execution</a></h3>
+<p>Run all gates before committing:</p>
+<pre><code class="language-bash">make quality-gate
+</code></pre>
+<p>This executes all eight gates sequentially, stopping at the first failure. Expected output:</p>
+<pre><code>📝 Formatting code...
+✅ Formatting complete!
+
+🔍 Linting code...
+✅ Linting complete!
+
+🧪 Running all tests...
+✅ All tests passed!
+
+📊 Running comprehensive test coverage analysis...
+✅ Coverage: 81.9% (target: ≥80%)
+
+🔬 Running PMAT quality checks...
+
+  1. Complexity Analysis (max: 20)...
+     ✅ All functions within complexity limits
+
+  2. SATD Detection (technical debt)...
+     ⚠️  6 Phase markers (allowed)
+     ✅ No prohibited SATD comments
+
+  3. Technical Debt Grade (TDG)...
+     ✅ Score: 94.6/100 (A)
+
+  4. Dead Code Analysis...
+     ✅ No dead code detected
+
+✅ All quality gates passed!
+</code></pre>
+<h3 id="automated-pre-commit-hooks"><a class="header" href="#automated-pre-commit-hooks">Automated Pre-Commit Hooks</a></h3>
+<p>pforge installs a pre-commit hook that runs gates automatically:</p>
+<pre><code class="language-bash">git commit -m "Add feature"
+
+🔒 pforge Quality Gate - Pre-Commit Checks
+==========================================
+
+🔗 0/8 Validating markdown links...
+✓ All markdown links valid
+
+📝 1/8 Checking code formatting...
+✓ Formatting passed
+
+🔍 2/8 Running clippy lints...
+✓ Clippy passed
+
+🧪 3/8 Running tests...
+✓ All tests passed
+
+🔬 4/8 Analyzing code complexity...
+✓ Complexity check passed
+
+📋 5/8 Checking for technical debt comments...
+✓ Only phase markers present (allowed)
+
+📊 6/8 Checking code coverage...
+✓ Coverage ≥80%
+
+📈 7/8 Calculating Technical Debt Grade...
+✓ TDG Grade passed
+
+==========================================
+✅ Quality Gate PASSED
+
+All quality checks passed. Proceeding with commit.
+[main abc1234] Add feature
+</code></pre>
+<p>If any gate fails, the commit is blocked:</p>
+<pre><code class="language-bash">git commit -m "Add buggy feature"
+
+...
+🔍 2/8 Running clippy lints...
+✗ Clippy warnings/errors found
+
+warning: unused variable: `result`
+  --&gt; src/handler.rs:23:9
+
+==========================================
+❌ Quality Gate FAILED
+
+Fix the issues above and try again.
+To bypass (NOT recommended): git commit --no-verify
+</code></pre>
+<h3 id="bypassing-quality-gates-emergency-use-only"><a class="header" href="#bypassing-quality-gates-emergency-use-only">Bypassing Quality Gates (Emergency Use Only)</a></h3>
+<p>In rare emergencies, you can bypass the pre-commit hook:</p>
+<pre><code class="language-bash">git commit --no-verify -m "Hotfix: critical production issue"
+</code></pre>
+<p><strong>Use this sparingly.</strong> Every bypass creates technical debt. Document why the bypass was necessary and create a follow-up task to fix the issues.</p>
+<h2 id="quality-gate-workflow-integration"><a class="header" href="#quality-gate-workflow-integration">Quality Gate Workflow Integration</a></h2>
+<p>Quality gates integrate with pforge’s 5-minute TDD cycle:</p>
+<ol>
+<li><strong>RED (0:00-2:00)</strong>: Write failing test</li>
+<li><strong>GREEN (2:00-4:00)</strong>: Write minimal code to pass test</li>
+<li><strong>REFACTOR (4:00-5:00)</strong>: Clean up, run <code>make quality-gate</code></li>
+<li><strong>COMMIT (5:00)</strong>: If gates pass, commit. If gates fail, <strong>RESET</strong>.</li>
+</ol>
+<p>The binary COMMIT/RESET decision enforces discipline. You must write quality code within the time budget, or discard everything and start over.</p>
+<p>This might seem harsh, but it prevents the gradual quality erosion that plagues most projects.</p>
+<h2 id="customizing-quality-gates"><a class="header" href="#customizing-quality-gates">Customizing Quality Gates</a></h2>
+<p>While pforge’s default gates work for most projects, you can customize them via <code>.pmat/quality-gates.yaml</code>:</p>
+<pre><code class="language-yaml">gates:
+  - name: complexity
+    max_cyclomatic: 15        # Stricter than default 20
+    max_cognitive: 10
+    fail_on_violation: true
+
+  - name: satd
+    max_count: 0
+    fail_on_violation: true
+
+  - name: test_coverage
+    min_line_coverage: 85      # Higher than default 80%
+    min_branch_coverage: 80
+    fail_on_violation: true
+
+  - name: tdg_score
+    min_grade: 0.80            # Grade B or better (stricter)
+    fail_on_violation: true
+
+  - name: dead_code
+    max_count: 0
+    fail_on_violation: true    # Make dead code a hard failure
+
+  - name: lints
+    fail_on_warnings: true
+
+  - name: formatting
+    enforce_rustfmt: true
+
+  - name: security_audit
+    fail_on_vulnerabilities: true
+</code></pre>
+<p>Stricter gates improve quality but may slow development velocity initially. Find the balance that works for your team.</p>
+<h2 id="benefits-of-quality-gates"><a class="header" href="#benefits-of-quality-gates">Benefits of Quality Gates</a></h2>
+<p>After using quality gates consistently, you’ll notice:</p>
+<p><strong>Zero Technical Debt Accumulation</strong>: Issues are fixed immediately, not deferred</p>
+<p><strong>Faster Code Reviews</strong>: Reviewers focus on architecture and logic, not style and obvious bugs</p>
+<p><strong>Confident Refactoring</strong>: High test coverage and low complexity make refactoring safe</p>
+<p><strong>Reduced Debugging Time</strong>: Clean code with good tests means fewer production bugs</p>
+<p><strong>New Developer Onboarding</strong>: Enforced standards help newcomers write quality code from day one</p>
+<p><strong>Maintainability</strong>: Low complexity and high test coverage mean the codebase stays maintainable as it grows</p>
+<h2 id="common-objections"><a class="header" href="#common-objections">Common Objections</a></h2>
+<p><strong>“Quality gates slow me down!”</strong></p>
+<p>Initially, yes. You’ll spend time formatting code, fixing lints, and improving test coverage. But this upfront investment pays exponential dividends. You’re moving slower to move faster—preventing the bugs and debt that would slow you down later.</p>
+<p><strong>“My code is good enough without gates!”</strong></p>
+<p>Perhaps. But quality gates are objective and consistent. They catch issues you miss, especially when tired or rushed. They ensure quality remains high even as the team scales.</p>
+<p><strong>“Sometimes I need to bypass gates for urgent work!”</strong></p>
+<p>Use <code>--no-verify</code> for true emergencies, but treat each bypass as technical debt that must be repaid. Log why you bypassed, and create a task to fix it.</p>
+<p><strong>“80% coverage is arbitrary!”</strong></p>
+<p>Somewhat. But research shows 70-80% coverage hits diminishing returns—more tests yield less value. 80% is a pragmatic target that catches most issues without excessive test maintenance.</p>
+<h2 id="whats-next"><a class="header" href="#whats-next">What’s Next?</a></h2>
+<p>The next chapters dive deep into specific quality gates:</p>
+<ul>
+<li><strong>Chapter 8.1</strong>: Pre-commit hooks—automated enforcement</li>
+<li><strong>Chapter 8.2</strong>: PMAT integration—the tool behind the gates</li>
+<li><strong>Chapter 8.3</strong>: Complexity analysis—keeping functions simple</li>
+<li><strong>Chapter 8.4</strong>: Code coverage—measuring test quality</li>
+</ul>
+<p>Quality gates transform development from reactive debugging to proactive quality engineering. They embody the Jidoka principle: <strong>build quality in, don’t inspect it in later.</strong></p>
+<p>When quality gates become muscle memory, you’ll wonder how you ever shipped code without them.</p>
 
                     </main>
 

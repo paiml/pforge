@@ -158,8 +158,519 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch07-04-commitmd"><a class="header" href="#ch07-04-commitmd">ch07-04-commit.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="commit-quality-gates"><a class="header" href="#commit-quality-gates">COMMIT: Quality Gates</a></h1>
+<p>You’ve reached minute 5:00. Tests pass. Code is clean. Now comes the moment of truth: do quality gates pass?</p>
+<p><strong>COMMIT</strong>: All gates pass → Accept the work
+<strong>RESET</strong>: Any gate fails → Discard everything</p>
+<p>No middle ground. No “mostly passing.” This binary decision enforces uncompromising quality standards.</p>
+<h2 id="the-quality-gate-philosophy"><a class="header" href="#the-quality-gate-philosophy">The Quality Gate Philosophy</a></h2>
+<p>Quality gates embody Toyota’s <strong>Jidoka</strong> principle: “Stop the line when defects occur.” If quality standards aren’t met, production halts.</p>
+<h3 id="why-binary"><a class="header" href="#why-binary">Why Binary?</a></h3>
+<p><strong>No Compromise</strong>: Quality is non-negotiable. A partially working feature is worse than no feature—it gives false confidence.</p>
+<p><strong>Clear Signal</strong>: Binary outcomes are unambiguous. You know instantly whether the cycle succeeded.</p>
+<p><strong>Forcing Function</strong>: Knowing you might RESET motivates you to stay within the 5-minute budget and write clean code from the start.</p>
+<p><strong>Continuous Integration</strong>: Every commit maintains codebase quality. No “I’ll fix it later” accumulation.</p>
+<h2 id="pforge-quality-gates"><a class="header" href="#pforge-quality-gates">pforge Quality Gates</a></h2>
+<p>pforge enforces multiple quality gates via <code>make quality-gate</code>:</p>
+<h3 id="gate-1-formatting"><a class="header" href="#gate-1-formatting">Gate 1: Formatting</a></h3>
+<pre><code class="language-bash">cargo fmt --check
+</code></pre>
+<p><strong>What it checks</strong>: Code follows Rust style guide (indentation, spacing, line breaks)</p>
+<p><strong>Why it matters</strong>: Consistent formatting reduces cognitive load and diff noise</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>Inconsistent indentation</li>
+<li>Missing/extra line breaks</li>
+<li>Non-standard brace placement</li>
+</ul>
+<p><strong>Fix</strong>: Run <code>cargo fmt</code> before checking</p>
+<h3 id="gate-2-linting-clippy"><a class="header" href="#gate-2-linting-clippy">Gate 2: Linting (Clippy)</a></h3>
+<pre><code class="language-bash">cargo clippy -- -D warnings
+</code></pre>
+<p><strong>What it checks</strong>: Common Rust pitfalls, performance issues, style violations</p>
+<p><strong>Why it matters</strong>: Clippy catches bugs and code smells automatically</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>Unused variables</li>
+<li>Unnecessary clones</li>
+<li>Redundant pattern matching</li>
+<li>Performance anti-patterns</li>
+</ul>
+<p><strong>Fix</strong>: Address each warning individually or suppress with <code>#[allow(clippy::...)]</code> if truly necessary</p>
+<h3 id="gate-3-tests"><a class="header" href="#gate-3-tests">Gate 3: Tests</a></h3>
+<pre><code class="language-bash">cargo test --all
+</code></pre>
+<p><strong>What it checks</strong>: All tests (unit, integration, doc tests) pass</p>
+<p><strong>Why it matters</strong>: Broken tests mean broken behavior</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>New code breaks existing tests (regression)</li>
+<li>New test doesn’t pass (incomplete implementation)</li>
+<li>Flaky tests (non-deterministic behavior)</li>
+</ul>
+<p><strong>Fix</strong>: Debug failing tests, fix implementation, or fix test expectations</p>
+<h3 id="gate-4-complexity"><a class="header" href="#gate-4-complexity">Gate 4: Complexity</a></h3>
+<pre><code class="language-bash">pmat analyze complexity --max 20
+</code></pre>
+<p><strong>What it checks</strong>: Cyclomatic complexity of each function</p>
+<p><strong>Why it matters</strong>: Complex functions are bug-prone and hard to maintain</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>Too many conditional branches</li>
+<li>Deeply nested loops</li>
+<li>Long match statements</li>
+</ul>
+<p><strong>Fix</strong>: Extract functions, simplify conditionals, reduce nesting</p>
+<h3 id="gate-5-technical-debt"><a class="header" href="#gate-5-technical-debt">Gate 5: Technical Debt</a></h3>
+<pre><code class="language-bash">pmat analyze satd --max 0
+</code></pre>
+<p><strong>What it checks</strong>: Self-Admitted Technical Debt (SATD) comments like <code>TODO</code>, <code>FIXME</code>, <code>HACK</code></p>
+<p><strong>Why it matters</strong>: SATD comments indicate code that needs improvement</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>Leftover <code>TODO</code> comments</li>
+<li><code>FIXME</code> markers</li>
+<li><code>HACK</code> acknowledgments</li>
+</ul>
+<p><strong>Fix</strong>: Either address the issue or remove the comment (only if it’s not actual debt)</p>
+<p><strong>Exception</strong>: Phase markers like <code>TODO(RED)</code>, <code>TODO(GREEN)</code>, <code>TODO(REFACTOR)</code> are allowed during development but must be removed before COMMIT</p>
+<h3 id="gate-6-coverage"><a class="header" href="#gate-6-coverage">Gate 6: Coverage</a></h3>
+<pre><code class="language-bash">cargo tarpaulin --out Json
+</code></pre>
+<p><strong>What it checks</strong>: Test coverage ≥ 80%</p>
+<p><strong>Why it matters</strong>: Untested code is unverified code</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>New code without tests</li>
+<li>Error paths not tested</li>
+<li>Edge cases not covered</li>
+</ul>
+<p><strong>Fix</strong>: Add tests for uncovered lines</p>
+<h3 id="gate-7-technical-debt-grade"><a class="header" href="#gate-7-technical-debt-grade">Gate 7: Technical Debt Grade</a></h3>
+<pre><code class="language-bash">pmat analyze tdg --min 0.75
+</code></pre>
+<p><strong>What it checks</strong>: Overall technical debt grade (0-1 scale)</p>
+<p><strong>Why it matters</strong>: Aggregate measure of code health</p>
+<p><strong>Typical failures</strong>:</p>
+<ul>
+<li>Combination of complexity, SATD, dead code, and low coverage</li>
+<li>Accumulation of small issues</li>
+</ul>
+<p><strong>Fix</strong>: Address individual issues contributing to low TDG</p>
+<h2 id="running-quality-gates"><a class="header" href="#running-quality-gates">Running Quality Gates</a></h2>
+<h3 id="fast-check-during-refactor"><a class="header" href="#fast-check-during-refactor">Fast Check (During REFACTOR)</a></h3>
+<pre><code class="language-bash">make quality-gate-fast
+</code></pre>
+<p>Runs subset of gates for quick feedback:</p>
+<ul>
+<li>Formatting</li>
+<li>Clippy</li>
+<li>Unit tests only</li>
+</ul>
+<p><strong>Time</strong>: &lt; 10 seconds</p>
+<p>Use this during REFACTOR to catch issues early.</p>
+<h3 id="full-check-before-commit"><a class="header" href="#full-check-before-commit">Full Check (Before COMMIT)</a></h3>
+<pre><code class="language-bash">make quality-gate
+</code></pre>
+<p>Runs all gates:</p>
+<ul>
+<li>Formatting</li>
+<li>Clippy</li>
+<li>All tests</li>
+<li>Complexity</li>
+<li>SATD</li>
+<li>Coverage</li>
+<li>TDG</li>
+</ul>
+<p><strong>Time</strong>: &lt; 30 seconds (for small projects)</p>
+<p>Use this at minute 4:30-5:00 before deciding COMMIT or RESET.</p>
+<h2 id="the-commit-decision"><a class="header" href="#the-commit-decision">The COMMIT Decision</a></h2>
+<p>At minute 5:00, run <code>make quality-gate</code>:</p>
+<h3 id="scenario-1-all-gates-pass"><a class="header" href="#scenario-1-all-gates-pass">Scenario 1: All Gates Pass</a></h3>
+<pre><code class="language-bash">make quality-gate
+# ✓ Formatting check passed
+# ✓ Clippy check passed
+# ✓ Tests passed (15 passed; 0 failed)
+# ✓ Complexity check passed (max: 9/20)
+# ✓ SATD check passed (0 markers found)
+# ✓ Coverage check passed (87.5%)
+# ✓ TDG check passed (0.92/0.75)
+# All quality gates passed!
+</code></pre>
+<p><strong>Decision: COMMIT</strong></p>
+<p>Stage and commit your changes:</p>
+<pre><code class="language-bash">git add -A
+git commit -m "feat: add division handler with zero check
+
+Implements division operation with validation for zero denominator.
+
+Generated with Claude Code
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;"
+</code></pre>
+<p><strong>Cycle successful</strong>. Start next cycle.</p>
+<h3 id="scenario-2-one-or-more-gates-fail"><a class="header" href="#scenario-2-one-or-more-gates-fail">Scenario 2: One or More Gates Fail</a></h3>
+<pre><code class="language-bash">make quality-gate
+# ✓ Formatting check passed
+# ✗ Clippy check failed (3 warnings)
+# ✓ Tests passed
+# ✓ Complexity check passed
+# ✓ SATD check passed
+# ✗ Coverage check failed (72.3% &lt; 80%)
+# ✓ TDG check passed
+# Quality gates FAILED
+</code></pre>
+<p><strong>Decision: RESET</strong></p>
+<p>Discard all changes:</p>
+<pre><code class="language-bash">git checkout .
+git clean -fd
+</code></pre>
+<p><strong>Cycle failed</strong>. Reflect, then start next cycle with adjusted scope.</p>
+<h3 id="scenario-3-timer-expired"><a class="header" href="#scenario-3-timer-expired">Scenario 3: Timer Expired</a></h3>
+<pre><code class="language-bash"># Check time
+echo "Minute: 5:30"
+</code></pre>
+<p>Timer expired before running quality gates.</p>
+<p><strong>Decision: RESET</strong></p>
+<p>No exceptions. Even if you’re “almost done,” RESET.</p>
+<pre><code class="language-bash">git checkout .
+git clean -fd
+</code></pre>
+<h2 id="the-reset-protocol"><a class="header" href="#the-reset-protocol">The RESET Protocol</a></h2>
+<p>When RESET occurs, follow this protocol:</p>
+<h3 id="step-1-discard-changes"><a class="header" href="#step-1-discard-changes">Step 1: Discard Changes</a></h3>
+<pre><code class="language-bash">git checkout .
+git clean -fd
+</code></pre>
+<p>This removes all uncommitted changes—both tracked and untracked files.</p>
+<h3 id="step-2-reflect"><a class="header" href="#step-2-reflect">Step 2: Reflect</a></h3>
+<p>Don’t immediately start the next cycle. Take 30-60 seconds to reflect:</p>
+<p><strong>Why did RESET occur?</strong></p>
+<ul>
+<li>Timer expired → Scope too large</li>
+<li>Tests failed → Implementation incomplete or incorrect</li>
+<li>Complexity too high → Need simpler approach</li>
+<li>Coverage too low → Missing tests</li>
+</ul>
+<p><strong>What will I do differently next cycle?</strong></p>
+<ul>
+<li>Smaller scope (fewer features per test)</li>
+<li>Simpler implementation (avoid clever approaches)</li>
+<li>Better planning (think before typing)</li>
+<li>More tests (test error cases too)</li>
+</ul>
+<h3 id="step-3-log-the-reset"><a class="header" href="#step-3-log-the-reset">Step 3: Log the RESET</a></h3>
+<p>Track your RESETs to identify patterns:</p>
+<pre><code class="language-bash">echo "$(date) RESET divide_by_zero - complexity too high (cycle 5:30)" &gt;&gt; .tdd-log
+</code></pre>
+<p>Over time, you’ll notice:</p>
+<ul>
+<li>Common failure modes</li>
+<li>Scope estimation improvements</li>
+<li>Decreasing RESET frequency</li>
+</ul>
+<h3 id="step-4-start-fresh-cycle"><a class="header" href="#step-4-start-fresh-cycle">Step 4: Start Fresh Cycle</a></h3>
+<p>Begin a new 5-minute cycle with adjusted scope:</p>
+<pre><code class="language-bash">termdown 5m &amp;
+vim tests/calculator_test.rs
+</code></pre>
+<p>Apply lessons learned from the RESET.</p>
+<h2 id="common-commit-failures"><a class="header" href="#common-commit-failures">Common COMMIT Failures</a></h2>
+<h3 id="failure-1-clippy-warnings"><a class="header" href="#failure-1-clippy-warnings">Failure 1: Clippy Warnings</a></h3>
+<pre><code>warning: unused variable: `temp`
+  --&gt; src/handlers/calculate.rs:12:9
+   |
+12 |     let temp = input.a + input.b;
+   |         ^^^^ help: if this is intentional, prefix it with an underscore: `_temp`
+</code></pre>
+<p><strong>Why it happens</strong>: Leftover variables from implementation iterations</p>
+<p><strong>Quick fix</strong> (if &lt; 30 seconds to minute 5:00):</p>
+<pre><code class="language-rust">// Remove unused variable
+// let temp = input.a + input.b;  // deleted
+
+Ok(Output { result: input.a + input.b })</code></pre>
+<p>Re-run quality gates.</p>
+<p><strong>If no time to fix</strong>: RESET</p>
+<h3 id="failure-2-test-regression"><a class="header" href="#failure-2-test-regression">Failure 2: Test Regression</a></h3>
+<pre><code>test test_add_positive_numbers ... FAILED
+
+failures:
+
+---- test_add_positive_numbers stdout ----
+thread 'test_add_positive_numbers' panicked at 'assertion failed: `(left == right)`
+  left: `5`,
+ right: `6`'
+</code></pre>
+<p><strong>Why it happens</strong>: New code broke existing functionality</p>
+<p><strong>Quick fix</strong>: Unlikely to fix in &lt; 30 seconds</p>
+<p><strong>Correct action</strong>: RESET</p>
+<p>Regression means your change had unintended side effects. You need to rethink the approach.</p>
+<h3 id="failure-3-low-coverage"><a class="header" href="#failure-3-low-coverage">Failure 3: Low Coverage</a></h3>
+<pre><code>Coverage: 72.3% (target: 80%)
+Uncovered lines:
+  src/handlers/divide.rs:15-18 (error handling)
+</code></pre>
+<p><strong>Why it happens</strong>: Forgot to test error paths</p>
+<p><strong>Quick fix</strong> (if close to time limit): Write missing test in next cycle</p>
+<p><strong>Correct action</strong>: RESET if you want this feature in codebase now</p>
+<p>Coverage gates ensure every line is tested. Untested error handling is a bug waiting to happen.</p>
+<h3 id="failure-4-high-complexity"><a class="header" href="#failure-4-high-complexity">Failure 4: High Complexity</a></h3>
+<pre><code>Cyclomatic complexity check failed:
+  src/handlers/calculate.rs:handle (complexity: 23, max: 20)
+</code></pre>
+<p><strong>Why it happens</strong>: Too many conditional branches</p>
+<p><strong>Quick fix</strong>: Unlikely in remaining time</p>
+<p><strong>Correct action</strong>: RESET</p>
+<p>High complexity indicates the implementation needs redesign. Quick patches won’t fix fundamental complexity.</p>
+<h2 id="when-to-override-quality-gates"><a class="header" href="#when-to-override-quality-gates">When to Override Quality Gates</a></h2>
+<p><strong>Never.</strong></p>
+<p>The strict answer: you should never override quality gates in EXTREME TDD. If gates fail, the cycle fails.</p>
+<p>However, in practice, there are rare circumstances where you might <code>git commit --no-verify</code>:</p>
+<h3 id="acceptable-override-cases"><a class="header" href="#acceptable-override-cases">Acceptable Override Cases</a></h3>
+<p><strong>Pre-commit hook not installed yet</strong>: First commit setting up the project</p>
+<p><strong>External dependency issues</strong>: Gate tool unavailable (e.g., CI server down, PMAT not installed)</p>
+<p><strong>Emergency hotfix</strong>: Production is down, fix needs to deploy immediately</p>
+<p><strong>Experimental branch</strong>: Explicitly marked WIP branch, not merging to main</p>
+<h3 id="unacceptable-override-cases"><a class="header" href="#unacceptable-override-cases">Unacceptable Override Cases</a></h3>
+<p><strong>“I’m in a hurry”</strong>: No. RESET and do it right.</p>
+<p><strong>“The gate is wrong”</strong>: If the gate is genuinely wrong, fix the gate in a separate cycle. Don’t override.</p>
+<p><strong>“It’s just a style issue”</strong>: Style issues compound. Fix them.</p>
+<p><strong>“I’ll fix it in the next commit”</strong>: No. Future you won’t fix it. Fix it now or RESET.</p>
+<h2 id="the-pre-commit-hook"><a class="header" href="#the-pre-commit-hook">The Pre-Commit Hook</a></h2>
+<p>pforge installs a pre-commit hook that runs quality gates automatically:</p>
+<pre><code class="language-bash">.git/hooks/pre-commit
+</code></pre>
+<p>Contents:</p>
+<pre><code class="language-bash">#!/bin/bash
+set -e
+
+echo "Running quality gates..."
+make quality-gate
+
+if [ $? -ne 0 ]; then
+    echo "Quality gates failed. Commit blocked."
+    exit 1
+fi
+
+echo "Quality gates passed. Commit allowed."
+exit 0
+</code></pre>
+<p>This hook:</p>
+<ul>
+<li>Runs automatically on <code>git commit</code></li>
+<li>Blocks commit if gates fail</li>
+<li>Ensures you never accidentally commit bad code</li>
+</ul>
+<p>To bypass (rarely needed):</p>
+<pre><code class="language-bash">git commit --no-verify
+</code></pre>
+<p>But this should be exceptional, not routine.</p>
+<h2 id="commit-message-conventions"><a class="header" href="#commit-message-conventions">COMMIT Message Conventions</a></h2>
+<p>When COMMIT succeeds, write a clear commit message:</p>
+<h3 id="format"><a class="header" href="#format">Format</a></h3>
+<pre><code>&lt;type&gt;: &lt;short summary&gt;
+
+&lt;detailed description&gt;
+
+Generated with Claude Code
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;
+</code></pre>
+<h3 id="types"><a class="header" href="#types">Types</a></h3>
+<ul>
+<li><code>feat</code>: New feature</li>
+<li><code>fix</code>: Bug fix</li>
+<li><code>refactor</code>: Code restructuring (no behavior change)</li>
+<li><code>test</code>: Add or modify tests</li>
+<li><code>docs</code>: Documentation changes</li>
+<li><code>chore</code>: Build, dependencies, tooling</li>
+</ul>
+<h3 id="examples"><a class="header" href="#examples">Examples</a></h3>
+<pre><code class="language-bash">git commit -m "feat: add divide operation to calculator
+
+Implements basic division with f64 precision. Validates denominator is non-zero and returns appropriate error for division by zero.
+
+Generated with Claude Code
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;"
+</code></pre>
+<pre><code class="language-bash">git commit -m "test: add edge case for negative numbers
+
+Ensures calculator handles negative operands correctly.
+
+Generated with Claude Code
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;"
+</code></pre>
+<pre><code class="language-bash">git commit -m "refactor: extract validation into helper function
+
+Reduces cyclomatic complexity from 18 to 12 by extracting input validation logic.
+
+Generated with Claude Code
+Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;"
+</code></pre>
+<h2 id="psychology-of-commit-vs-reset"><a class="header" href="#psychology-of-commit-vs-reset">Psychology of COMMIT vs RESET</a></h2>
+<h3 id="the-joy-of-commit"><a class="header" href="#the-joy-of-commit">The Joy of COMMIT</a></h3>
+<p>When quality gates pass:</p>
+<pre><code>✓ All quality gates passed!
+</code></pre>
+<p>There’s a genuine dopamine hit. You’ve:</p>
+<ul>
+<li>Written working code</li>
+<li>Maintained quality standards</li>
+<li>Made progress</li>
+</ul>
+<p>This positive reinforcement encourages continuing the discipline.</p>
+<h3 id="the-pain-of-reset"><a class="header" href="#the-pain-of-reset">The Pain of RESET</a></h3>
+<p>When quality gates fail:</p>
+<pre><code>✗ Quality gates FAILED
+</code></pre>
+<p>There’s genuine disappointment. You’ve:</p>
+<ul>
+<li>Spent 5 minutes</li>
+<li>Produced nothing commitworthy</li>
+<li>Must start over</li>
+</ul>
+<p>This negative reinforcement teaches you to:</p>
+<ul>
+<li>Scope smaller</li>
+<li>Write cleaner code upfront</li>
+<li>Respect the time budget</li>
+</ul>
+<h3 id="the-learning-curve"><a class="header" href="#the-learning-curve">The Learning Curve</a></h3>
+<p>First week:</p>
+<ul>
+<li>COMMIT rate: ~50%</li>
+<li>RESET rate: ~50%</li>
+<li>Frequent frustration</li>
+</ul>
+<p>Second week:</p>
+<ul>
+<li>COMMIT rate: ~70%</li>
+<li>RESET rate: ~30%</li>
+<li>Pattern recognition forms</li>
+</ul>
+<p>Fourth week:</p>
+<ul>
+<li>COMMIT rate: ~90%</li>
+<li>RESET rate: ~10%</li>
+<li>Discipline internalized</li>
+</ul>
+<p>The pain of RESETs trains you to succeed. After 30 days, you intuitively scope work to fit 5-minute cycles.</p>
+<h2 id="tracking-commitreset-ratios"><a class="header" href="#tracking-commitreset-ratios">Tracking COMMIT/RESET Ratios</a></h2>
+<p>Track your outcomes to measure improvement:</p>
+<pre><code class="language-bash"># Simple tracking script
+echo "$(date) COMMIT feat_divide_basic (4:45)" &gt;&gt; .tdd-log
+echo "$(date) RESET  feat_divide_zero (5:30)" &gt;&gt; .tdd-log
+</code></pre>
+<p>Calculate weekly stats:</p>
+<pre><code class="language-bash">grep COMMIT .tdd-log | wc -l  # 27
+grep RESET .tdd-log | wc -l   # 3
+
+# Success rate: 27/(27+3) = 90%
+</code></pre>
+<h3 id="target-metrics"><a class="header" href="#target-metrics">Target Metrics</a></h3>
+<p><strong>Week 1</strong>: 50% COMMIT rate (learning)
+<strong>Week 2</strong>: 70% COMMIT rate (improving)
+<strong>Week 4</strong>: 85% COMMIT rate (proficient)
+<strong>Week 8</strong>: 95% COMMIT rate (expert)</p>
+<h2 id="when-reset-happens-repeatedly"><a class="header" href="#when-reset-happens-repeatedly">When RESET Happens Repeatedly</a></h2>
+<p>If you RESET 3+ times on the same feature:</p>
+<h3 id="stop-and-reassess"><a class="header" href="#stop-and-reassess">Stop and Reassess</a></h3>
+<p><strong>Problem</strong>: Your approach isn’t working</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li><strong>Break down further</strong>: Feature is too large for one cycle</li>
+<li><strong>Research first</strong>: You don’t understand the domain well enough</li>
+<li><strong>Spike solution</strong>: Take 15 minutes outside TDD to explore approaches</li>
+<li><strong>Pair program</strong>: Another developer might see a simpler approach</li>
+<li><strong>Defer feature</strong>: Maybe this feature needs more design before implementation</li>
+</ol>
+<h3 id="example-persistent-reset"><a class="header" href="#example-persistent-reset">Example: Persistent RESET</a></h3>
+<pre><code class="language-bash"># Attempting to implement JWT authentication
+09:00 RESET jwt_auth_validate (5:45)
+09:06 RESET jwt_auth_validate (5:30)
+09:12 RESET jwt_auth_validate (6:00)
+</code></pre>
+<p>After 3 RESETs, stop. Take 15 minutes to:</p>
+<ul>
+<li>Read JWT library documentation</li>
+<li>Write a spike (throwaway code) to understand API</li>
+<li>Identify the smallest incremental step</li>
+</ul>
+<p>Then return to TDD with better understanding.</p>
+<h2 id="quality-gates-in-cicd"><a class="header" href="#quality-gates-in-cicd">Quality Gates in CI/CD</a></h2>
+<p>Quality gates don’t just run locally—they run in CI/CD:</p>
+<h3 id="github-actions-example"><a class="header" href="#github-actions-example">GitHub Actions Example</a></h3>
+<pre><code class="language-yaml"># .github/workflows/quality.yml
+name: Quality Gates
+
+on: [push, pull_request]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run Quality Gates
+        run: make quality-gate
+</code></pre>
+<p>This ensures:</p>
+<ul>
+<li>Every push runs quality gates</li>
+<li>Pull requests can’t merge if gates fail</li>
+<li>Team maintains quality standards</li>
+</ul>
+<h2 id="advanced-graduated-quality-gates"><a class="header" href="#advanced-graduated-quality-gates">Advanced: Graduated Quality Gates</a></h2>
+<p>For larger changes, use graduated quality gates:</p>
+<h3 id="cycle-1-core-implementation"><a class="header" href="#cycle-1-core-implementation">Cycle 1: Core Implementation</a></h3>
+<ul>
+<li>Run fast gates (fmt, clippy, unit tests)</li>
+<li>COMMIT if passing</li>
+</ul>
+<h3 id="cycle-2-integration-tests"><a class="header" href="#cycle-2-integration-tests">Cycle 2: Integration Tests</a></h3>
+<ul>
+<li>Run integration tests</li>
+<li>COMMIT if passing</li>
+</ul>
+<h3 id="cycle-3-performance-tests"><a class="header" href="#cycle-3-performance-tests">Cycle 3: Performance Tests</a></h3>
+<ul>
+<li>Run benchmarks</li>
+<li>COMMIT if no regression</li>
+</ul>
+<p>This allows you to make progress in 5-minute increments while building up to full validation.</p>
+<h2 id="the-discipline-of-binary-outcomes"><a class="header" href="#the-discipline-of-binary-outcomes">The Discipline of Binary Outcomes</a></h2>
+<p>The hardest part of EXTREME TDD is accepting binary outcomes:</p>
+<p><strong>No “Good Enough”</strong>: Either all gates pass or they don’t. No subjective judgment.</p>
+<p><strong>No “I’ll Fix Later”</strong>: Future you won’t fix it. Fix it now or RESET.</p>
+<p><strong>No “It’s Just One Warning”</strong>: One warning becomes ten warnings becomes unmaintainable code.</p>
+<p>This discipline seems harsh, but it’s what maintains quality over hundreds of cycles.</p>
+<h2 id="celebrating-commits"><a class="header" href="#celebrating-commits">Celebrating COMMITs</a></h2>
+<p>Each COMMIT is progress. Celebrate small wins:</p>
+<pre><code class="language-bash"># After COMMIT
+echo "✓ Feature complete: divide with zero check"
+echo "✓ Tests: 12 passing"
+echo "✓ Coverage: 87%"
+echo "✓ Cycle time: 4:45"
+</code></pre>
+<p>Recognizing progress maintains motivation through the discipline of EXTREME TDD.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>You now understand the complete 5-minute EXTREME TDD cycle:</p>
+<p><strong>RED</strong> (2 min): Write failing test
+<strong>GREEN</strong> (2 min): Minimum code to pass
+<strong>REFACTOR</strong> (1 min): Clean up
+<strong>COMMIT</strong> (instant): Quality gates decide</p>
+<p>This cycle, repeated hundreds of times, builds production-quality software with:</p>
+<ul>
+<li>80%+ test coverage</li>
+<li>Zero technical debt</li>
+<li>Consistent code quality</li>
+<li>Frequent commits (safety net)</li>
+</ul>
+<p>The next chapters cover quality gates in detail, testing strategies, and advanced TDD patterns.</p>
+<hr />
+<p>Previous: <a href="ch07-03-refactor.html">REFACTOR: Clean Up</a>
+Next: <a href="ch08-00-quality-gates.html">Chapter 8: Quality Gates</a></p>
 
                     </main>
 

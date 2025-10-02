@@ -158,8 +158,630 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch17-04-publishingmd"><a class="header" href="#ch17-04-publishingmd">ch17-04-publishing.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="publishing-process"><a class="header" href="#publishing-process">Publishing Process</a></h1>
+<p>This chapter covers the actual mechanics of publishing crates to crates.io, including authentication, dry runs, the publication workflow, verification, and troubleshooting. We’ll use pforge’s real publishing experience with five interconnected crates.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Before publishing, ensure:</p>
+<ol>
+<li><strong>crates.io account</strong>: Sign up at https://crates.io using GitHub</li>
+<li><strong>API token</strong>: Generate at https://crates.io/me</li>
+<li><strong>Email verification</strong>: Verify your email address</li>
+<li><strong>Preparation complete</strong>: Metadata, documentation, tests (Chapters 17-01 through 17-03)</li>
+</ol>
+<h2 id="authentication"><a class="header" href="#authentication">Authentication</a></h2>
+<h3 id="getting-your-api-token"><a class="header" href="#getting-your-api-token">Getting Your API Token</a></h3>
+<ol>
+<li>Visit https://crates.io/me</li>
+<li>Click “New Token”</li>
+<li>Name it (e.g., “pforge-publishing”)</li>
+<li>Set scope: “Publish new crates and update existing ones”</li>
+<li>Click “Create”</li>
+<li>Copy the token (you won’t see it again!)</li>
+</ol>
+<h3 id="storing-the-token"><a class="header" href="#storing-the-token">Storing the Token</a></h3>
+<pre><code class="language-bash">cargo login
+</code></pre>
+<p>Paste your token when prompted. This stores it in <code>~/.cargo/credentials.toml</code>:</p>
+<pre><code class="language-toml">[registry]
+token = "your-api-token-here"
+</code></pre>
+<p><strong>Security</strong>:</p>
+<ul>
+<li>Never commit this file to git</li>
+<li>Keep permissions restrictive: <code>chmod 600 ~/.cargo/credentials.toml</code></li>
+<li>Regenerate if compromised</li>
+</ul>
+<h3 id="cicd-authentication"><a class="header" href="#cicd-authentication">CI/CD Authentication</a></h3>
+<p>For automated publishing in CI:</p>
+<pre><code class="language-yaml"># .github/workflows/publish.yml
+env:
+  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+</code></pre>
+<p>Add token as GitHub secret at: Repository Settings → Secrets → Actions</p>
+<h2 id="dry-run-testing-without-publishing"><a class="header" href="#dry-run-testing-without-publishing">Dry Run: Testing Without Publishing</a></h2>
+<p>Always dry run first. This simulates publication without actually publishing.</p>
+<h3 id="running-dry-run"><a class="header" href="#running-dry-run">Running Dry Run</a></h3>
+<pre><code class="language-bash">cd crates/pforge-config
+cargo publish --dry-run
+</code></pre>
+<p>Expected output:</p>
+<pre><code>   Packaging pforge-config v0.1.0 (/home/user/pforge/crates/pforge-config)
+   Verifying pforge-config v0.1.0 (/home/user/pforge/crates/pforge-config)
+   Compiling pforge-config v0.1.0 (/home/user/pforge/target/package/pforge-config-0.1.0)
+    Finished dev [unoptimized + debuginfo] target(s) in 2.34s
+</code></pre>
+<p>No errors = ready to publish.</p>
+<h3 id="what-dry-run-checks"><a class="header" href="#what-dry-run-checks">What Dry Run Checks</a></h3>
+<ol>
+<li><strong>Packaging</strong>: Creates <code>.crate</code> file with included files</li>
+<li><strong>Manifest validation</strong>: Checks Cargo.toml metadata</li>
+<li><strong>Dependency resolution</strong>: Verifies all dependencies available</li>
+<li><strong>Compilation</strong>: Builds the packaged crate from scratch</li>
+<li><strong>Tests</strong>: Runs all tests in the packaged crate</li>
+</ol>
+<h3 id="common-dry-run-errors"><a class="header" href="#common-dry-run-errors">Common Dry Run Errors</a></h3>
+<h4 id="missing-metadata"><a class="header" href="#missing-metadata">Missing Metadata</a></h4>
+<pre><code>error: manifest has no description, license, or license-file
+</code></pre>
+<p><strong>Fix</strong>: Add to <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">description = "Your description"
+license = "MIT"
+</code></pre>
+<h4 id="missing-dependencies"><a class="header" href="#missing-dependencies">Missing Dependencies</a></h4>
+<pre><code>error: no matching package named `pforge-config` found
+</code></pre>
+<p><strong>Fix</strong>: Ensure dependency is published to crates.io first, or add version:</p>
+<pre><code class="language-toml">pforge-config = { path = "../pforge-config", version = "0.1.0" }
+</code></pre>
+<h4 id="package-too-large"><a class="header" href="#package-too-large">Package Too Large</a></h4>
+<pre><code>error: package size exceeds 10 MB limit
+</code></pre>
+<p><strong>Fix</strong>: Use <code>exclude</code> or <code>include</code> to reduce size:</p>
+<pre><code class="language-toml">exclude = ["benches/data/*", "tests/fixtures/*"]
+</code></pre>
+<h2 id="publishing-dependency-order"><a class="header" href="#publishing-dependency-order">Publishing: Dependency Order</a></h2>
+<p>For multi-crate workspaces, publish in dependency order.</p>
+<h3 id="pforge-publishing-order"><a class="header" href="#pforge-publishing-order">pforge Publishing Order</a></h3>
+<pre><code>1. pforge-config (no dependencies)
+2. pforge-macro (no dependencies)
+   ↓
+3. pforge-runtime (depends on config)
+4. pforge-codegen (depends on config)
+   ↓
+5. pforge-cli (depends on all)
+</code></pre>
+<p><strong>Rule</strong>: Publish dependencies before dependents.</p>
+<h3 id="day-1-foundation-crates"><a class="header" href="#day-1-foundation-crates">Day 1: Foundation Crates</a></h3>
+<h4 id="step-1-publish-pforge-config"><a class="header" href="#step-1-publish-pforge-config">Step 1: Publish pforge-config</a></h4>
+<pre><code class="language-bash">cd crates/pforge-config
+cargo publish
+</code></pre>
+<p>Output:</p>
+<pre><code>    Updating crates.io index
+   Packaging pforge-config v0.1.0 (/home/user/pforge/crates/pforge-config)
+   Verifying pforge-config v0.1.0 (/home/user/pforge/crates/pforge-config)
+   Compiling pforge-config v0.1.0
+    Finished dev [unoptimized + debuginfo] target(s) in 3.21s
+   Uploading pforge-config v0.1.0 (/home/user/pforge/crates/pforge-config)
+</code></pre>
+<p><strong>Success indicators</strong>:</p>
+<ul>
+<li>“Uploading…” message appears</li>
+<li>No errors</li>
+<li>Process completes</li>
+</ul>
+<h4 id="step-2-verify-on-cratesio"><a class="header" href="#step-2-verify-on-cratesio">Step 2: Verify on crates.io</a></h4>
+<p>Wait 1-2 minutes, then visit:</p>
+<p>https://crates.io/crates/pforge-config</p>
+<p>Verify:</p>
+<ul>
+<li>Version shows as 0.1.0</li>
+<li>Description is correct</li>
+<li>Repository link works</li>
+<li>README renders</li>
+</ul>
+<h4 id="step-3-publish-pforge-macro-parallel"><a class="header" href="#step-3-publish-pforge-macro-parallel">Step 3: Publish pforge-macro (Parallel)</a></h4>
+<p>Can publish immediately since it has no pforge dependencies:</p>
+<pre><code class="language-bash">cd ../pforge-macro
+cargo publish
+</code></pre>
+<h4 id="step-4-rate-limiting-pause"><a class="header" href="#step-4-rate-limiting-pause">Step 4: Rate Limiting Pause</a></h4>
+<p><strong>Wait 10-15 minutes</strong> before publishing more crates to avoid rate limiting.</p>
+<h3 id="day-1-continued-dependent-crates"><a class="header" href="#day-1-continued-dependent-crates">Day 1 (Continued): Dependent Crates</a></h3>
+<h4 id="step-5-publish-pforge-runtime"><a class="header" href="#step-5-publish-pforge-runtime">Step 5: Publish pforge-runtime</a></h4>
+<p>After waiting and verifying config is live:</p>
+<pre><code class="language-bash">cd ../pforge-runtime
+cargo publish
+</code></pre>
+<p>If config isn’t available yet:</p>
+<pre><code>error: no matching package named `pforge-config` found
+</code></pre>
+<p><strong>Fix</strong>: Wait longer. crates.io indexing takes 1-2 minutes.</p>
+<h4 id="step-6-publish-pforge-codegen-parallel-option"><a class="header" href="#step-6-publish-pforge-codegen-parallel-option">Step 6: Publish pforge-codegen (Parallel Option)</a></h4>
+<p>Since both runtime and codegen only depend on config:</p>
+<pre><code class="language-bash">cd ../pforge-codegen
+cargo publish
+</code></pre>
+<h3 id="day-2-final-crate"><a class="header" href="#day-2-final-crate">Day 2: Final Crate</a></h3>
+<h4 id="step-7-wait-and-verify"><a class="header" href="#step-7-wait-and-verify">Step 7: Wait and Verify</a></h4>
+<p>Wait until:</p>
+<ul>
+<li>pforge-runtime is visible on crates.io</li>
+<li>pforge-codegen is visible on crates.io</li>
+<li>docs.rs has built docs for both</li>
+</ul>
+<h4 id="step-8-publish-pforge-cli"><a class="header" href="#step-8-publish-pforge-cli">Step 8: Publish pforge-cli</a></h4>
+<pre><code class="language-bash">cd ../pforge-cli
+cargo publish
+</code></pre>
+<p>This is the most complex crate - depends on all others.</p>
+<p><strong>Critical</strong>: Ensure <code>include</code> has templates:</p>
+<pre><code class="language-toml">include = [
+    "src/**/*",
+    "templates/**/*",
+    "Cargo.toml",
+]
+</code></pre>
+<h2 id="handling-publishing-errors"><a class="header" href="#handling-publishing-errors">Handling Publishing Errors</a></h2>
+<h3 id="error-too-many-requests"><a class="header" href="#error-too-many-requests">Error: Too Many Requests</a></h3>
+<pre><code>error: failed to publish to crates.io
+
+Caused by:
+  the remote server responded with an error: too many crates published too quickly
+</code></pre>
+<p><strong>Cause</strong>: Rate limiting (prevents spam)</p>
+<p><strong>Fix</strong>:</p>
+<ul>
+<li>Wait 10-15 minutes</li>
+<li>Retry with <code>cargo publish</code></li>
+<li>Consider spreading across multiple days</li>
+</ul>
+<h3 id="error-crate-name-taken"><a class="header" href="#error-crate-name-taken">Error: Crate Name Taken</a></h3>
+<pre><code>error: crate name `pforge` is already taken
+</code></pre>
+<p><strong>Cause</strong>: Someone else owns this name</p>
+<p><strong>Fix</strong>:</p>
+<ul>
+<li>Choose different name</li>
+<li>Request name transfer if abandoned (email help@crates.io)</li>
+<li>Use scoped name like <code>your-org-pforge</code></li>
+</ul>
+<h3 id="error-version-already-published"><a class="header" href="#error-version-already-published">Error: Version Already Published</a></h3>
+<pre><code>error: crate version `0.1.0` is already uploaded
+</code></pre>
+<p><strong>Cause</strong>: You (or someone else) already published this version</p>
+<p><strong>Fix</strong>:</p>
+<ul>
+<li>Bump version: <code>0.1.0</code> → <code>0.1.1</code></li>
+<li>Update <code>Cargo.toml</code></li>
+<li>Run <code>cargo update -w</code></li>
+<li>Publish new version</li>
+</ul>
+<p><strong>Note</strong>: You cannot delete or replace published versions.</p>
+<h3 id="error-missing-dependency"><a class="header" href="#error-missing-dependency">Error: Missing Dependency</a></h3>
+<pre><code>error: no matching package named `pforge-config` found
+location searched: registry `crates-io`
+required by package `pforge-runtime v0.1.0`
+</code></pre>
+<p><strong>Cause</strong>: Dependency not yet on crates.io</p>
+<p><strong>Fix</strong>:</p>
+<ul>
+<li>Ensure dependency is published first</li>
+<li>Wait for crates.io indexing (1-2 minutes)</li>
+<li>Verify dependency is visible at <code>https://crates.io/crates/dependency-name</code></li>
+</ul>
+<h3 id="error-dirty-working-directory"><a class="header" href="#error-dirty-working-directory">Error: Dirty Working Directory</a></h3>
+<pre><code>error: 3 files in the working directory contain changes that were not yet committed
+</code></pre>
+<p><strong>Cause</strong>: Uncommitted changes in git</p>
+<p><strong>Options</strong>:</p>
+<p>Option 1: Commit changes first (recommended)</p>
+<pre><code class="language-bash">git add .
+git commit -m "Prepare for publication"
+cargo publish
+</code></pre>
+<p>Option 2: Force publish (use cautiously)</p>
+<pre><code class="language-bash">cargo publish --allow-dirty
+</code></pre>
+<p><strong>Warning</strong>: <code>--allow-dirty</code> bypasses safety checks. Only use if you know what you’re doing.</p>
+<h3 id="error-network-timeout"><a class="header" href="#error-network-timeout">Error: Network Timeout</a></h3>
+<pre><code>error: failed to connect to crates.io
+</code></pre>
+<p><strong>Cause</strong>: Network issues or crates.io downtime</p>
+<p><strong>Fix</strong>:</p>
+<ul>
+<li>Check internet connection</li>
+<li>Check crates.io status: https://status.rust-lang.org</li>
+<li>Retry after a few minutes</li>
+<li>Use different network if persistent</li>
+</ul>
+<h2 id="verification-after-publishing"><a class="header" href="#verification-after-publishing">Verification After Publishing</a></h2>
+<p>After each publication, verify it worked correctly.</p>
+<h3 id="1-check-cratesio-listing"><a class="header" href="#1-check-cratesio-listing">1. Check crates.io Listing</a></h3>
+<p>Visit <code>https://crates.io/crates/your-crate-name</code></p>
+<p>Verify:</p>
+<ul>
+<li>Version is correct</li>
+<li>Description appears</li>
+<li>Keywords are visible</li>
+<li>Categories are correct</li>
+<li>Links work (repository, documentation, homepage)</li>
+<li>README renders properly</li>
+<li>License is displayed</li>
+</ul>
+<h3 id="2-check-docsrs-build"><a class="header" href="#2-check-docsrs-build">2. Check docs.rs Build</a></h3>
+<p>Visit <code>https://docs.rs/your-crate-name</code></p>
+<p>Initial visit shows:</p>
+<pre><code>Building documentation...
+This may take a few minutes.
+</code></pre>
+<p>After build completes (5-10 minutes):</p>
+<p>Verify:</p>
+<ul>
+<li>Documentation built successfully</li>
+<li>All modules are present</li>
+<li>Examples render correctly</li>
+<li>Intra-doc links work</li>
+<li>No build warnings shown</li>
+</ul>
+<p>If build fails, check build log at <code>https://docs.rs/crate/your-crate-name/0.1.0/builds</code></p>
+<h3 id="3-test-installation"><a class="header" href="#3-test-installation">3. Test Installation</a></h3>
+<p>On a clean machine or Docker container:</p>
+<pre><code class="language-bash"># Install CLI
+cargo install pforge-cli
+
+# Verify version
+pforge --version
+
+# Test functionality
+pforge new test-project
+cd test-project
+cargo build
+</code></pre>
+<p>This ensures published crate actually works for users.</p>
+<h3 id="4-test-as-dependency"><a class="header" href="#4-test-as-dependency">4. Test as Dependency</a></h3>
+<p>Create test project:</p>
+<pre><code class="language-bash">cargo new test-pforge-config
+cd test-pforge-config
+</code></pre>
+<p>Add to <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+pforge-config = "0.1.0"
+</code></pre>
+<pre><code class="language-bash">cargo build
+</code></pre>
+<p>Verifies:</p>
+<ul>
+<li>Crate is downloadable</li>
+<li>Dependencies resolve</li>
+<li>Compilation succeeds</li>
+</ul>
+<h2 id="using-allow-dirty-flag"><a class="header" href="#using-allow-dirty-flag">Using –allow-dirty Flag</a></h2>
+<p>The <code>--allow-dirty</code> flag bypasses git cleanliness checks.</p>
+<h3 id="when-to-use"><a class="header" href="#when-to-use">When to Use</a></h3>
+<p><strong>Safe scenarios</strong>:</p>
+<ul>
+<li>Automated CI/CD pipelines (working directory is ephemeral)</li>
+<li>Documentation-only changes (already committed elsewhere)</li>
+<li>Version bump commits (version updated but not committed yet)</li>
+</ul>
+<p><strong>Unsafe scenarios</strong>:</p>
+<ul>
+<li>Uncommitted code changes</li>
+<li>Experimental features not in git</li>
+<li>Local-only patches</li>
+</ul>
+<h3 id="example-cicd-publishing"><a class="header" href="#example-cicd-publishing">Example: CI/CD Publishing</a></h3>
+<pre><code class="language-yaml"># .github/workflows/publish.yml
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Publish pforge-config
+        run: |
+          cd crates/pforge-config
+          cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io
+        run: sleep 60
+
+      - name: Publish pforge-runtime
+        run: |
+          cd crates/pforge-runtime
+          cargo publish --allow-dirty
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+</code></pre>
+<p><code>--allow-dirty</code> is needed because CI checkout might not be clean.</p>
+<h2 id="post-publication-tasks"><a class="header" href="#post-publication-tasks">Post-Publication Tasks</a></h2>
+<h3 id="1-tag-the-release"><a class="header" href="#1-tag-the-release">1. Tag the Release</a></h3>
+<pre><code class="language-bash">git tag -a v0.1.0 -m "Release version 0.1.0"
+git push origin v0.1.0
+</code></pre>
+<h3 id="2-create-github-release"><a class="header" href="#2-create-github-release">2. Create GitHub Release</a></h3>
+<p>Visit: https://github.com/your-org/your-repo/releases/new</p>
+<ul>
+<li>Tag: v0.1.0</li>
+<li>Title: pforge 0.1.0</li>
+<li>Description: Copy from CHANGELOG.md</li>
+</ul>
+<h3 id="3-update-documentation"><a class="header" href="#3-update-documentation">3. Update Documentation</a></h3>
+<p>If you have separate docs site:</p>
+<ul>
+<li>Update version numbers</li>
+<li>Add release notes</li>
+<li>Update installation instructions</li>
+</ul>
+<h3 id="4-announce-release"><a class="header" href="#4-announce-release">4. Announce Release</a></h3>
+<p>Channels to consider:</p>
+<ul>
+<li>GitHub Discussions/Issues</li>
+<li>Reddit: r/rust</li>
+<li>Twitter/X</li>
+<li>Discord/Slack communities</li>
+<li>Blog post</li>
+</ul>
+<p><strong>Template announcement</strong>:</p>
+<pre><code>pforge 0.1.0 released!
+
+Zero-boilerplate MCP server framework with EXTREME TDD.
+
+Install: cargo install pforge-cli
+
+Changes:
+- Initial release
+- Native, CLI, and Pipeline tool types
+- Quality gates with PMAT integration
+- &lt;1μs dispatch, &lt;100ms cold start
+
+Docs: https://docs.rs/pforge-runtime
+Repo: https://github.com/paiml/pforge
+</code></pre>
+<h3 id="5-monitor-for-issues"><a class="header" href="#5-monitor-for-issues">5. Monitor for Issues</a></h3>
+<p>After release, watch:</p>
+<ul>
+<li>GitHub issues</li>
+<li>crates.io downloads</li>
+<li>docs.rs build status</li>
+<li>Community feedback</li>
+</ul>
+<p>Be ready to publish a patch (0.1.1) if critical bugs appear.</p>
+<h2 id="publishing-checklist"><a class="header" href="#publishing-checklist">Publishing Checklist</a></h2>
+<p>Use this checklist for each publication:</p>
+<h3 id="pre-publication"><a class="header" href="#pre-publication">Pre-Publication</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+All tests pass: <code>cargo test --all</code></li>
+<li><input disabled="" type="checkbox"/>
+Quality gates pass: <code>make quality-gate</code></li>
+<li><input disabled="" type="checkbox"/>
+Documentation builds: <code>cargo doc --no-deps</code></li>
+<li><input disabled="" type="checkbox"/>
+Dry run succeeds: <code>cargo publish --dry-run</code></li>
+<li><input disabled="" type="checkbox"/>
+Version bumped in <code>Cargo.toml</code></li>
+<li><input disabled="" type="checkbox"/>
+CHANGELOG.md updated</li>
+<li><input disabled="" type="checkbox"/>
+Git committed: <code>git status</code> clean</li>
+<li><input disabled="" type="checkbox"/>
+Dependencies published (if any)</li>
+</ul>
+<h3 id="publication"><a class="header" href="#publication">Publication</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Run: <code>cargo publish</code></li>
+<li><input disabled="" type="checkbox"/>
+No errors during upload</li>
+<li><input disabled="" type="checkbox"/>
+“Uploading…” message appears</li>
+<li><input disabled="" type="checkbox"/>
+Process completes successfully</li>
+</ul>
+<h3 id="verification"><a class="header" href="#verification">Verification</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+crates.io listing appears</li>
+<li><input disabled="" type="checkbox"/>
+Version number correct</li>
+<li><input disabled="" type="checkbox"/>
+Metadata correct (description, keywords, license)</li>
+<li><input disabled="" type="checkbox"/>
+README renders correctly</li>
+<li><input disabled="" type="checkbox"/>
+Links work (repository, homepage, docs)</li>
+<li><input disabled="" type="checkbox"/>
+docs.rs build starts</li>
+<li><input disabled="" type="checkbox"/>
+docs.rs build succeeds (wait 5-10 min)</li>
+<li><input disabled="" type="checkbox"/>
+Test installation: <code>cargo install crate-name</code></li>
+<li><input disabled="" type="checkbox"/>
+Test as dependency in new project</li>
+</ul>
+<h3 id="post-publication"><a class="header" href="#post-publication">Post-Publication</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Git tag created: <code>git tag -a vX.Y.Z</code></li>
+<li><input disabled="" type="checkbox"/>
+Tag pushed: <code>git push origin vX.Y.Z</code></li>
+<li><input disabled="" type="checkbox"/>
+GitHub release created</li>
+<li><input disabled="" type="checkbox"/>
+Documentation updated</li>
+<li><input disabled="" type="checkbox"/>
+Announce release</li>
+<li><input disabled="" type="checkbox"/>
+Monitor for issues</li>
+</ul>
+<h2 id="troubleshooting-guide"><a class="header" href="#troubleshooting-guide">Troubleshooting Guide</a></h2>
+<h3 id="problem-publication-hangs"><a class="header" href="#problem-publication-hangs">Problem: Publication Hangs</a></h3>
+<p><strong>Symptoms</strong>: <code>cargo publish</code> freezes during upload</p>
+<p><strong>Causes</strong>:</p>
+<ul>
+<li>Large package size</li>
+<li>Slow network</li>
+<li>crates.io performance</li>
+</ul>
+<p><strong>Solutions</strong>:</p>
+<ul>
+<li>Wait patiently (can take 5+ minutes for large crates)</li>
+<li>Check package size: <code>ls -lh target/package/*.crate</code></li>
+<li>Reduce size with <code>exclude</code> if &gt;5MB</li>
+<li>Try different network</li>
+</ul>
+<h3 id="problem-docsrs-build-fails"><a class="header" href="#problem-docsrs-build-fails">Problem: docs.rs Build Fails</a></h3>
+<p><strong>Symptoms</strong>: docs.rs shows “Build failed”</p>
+<p><strong>Causes</strong>:</p>
+<ul>
+<li>Missing dependencies</li>
+<li>Feature flags required</li>
+<li>Platform-specific code without guards</li>
+<li>Doc test failures</li>
+</ul>
+<p><strong>Solutions</strong>:</p>
+<ul>
+<li>View build log at <code>https://docs.rs/crate/name/version/builds</code></li>
+<li>Fix errors locally: <code>cargo doc --no-deps</code></li>
+<li>Add <code>[package.metadata.docs.rs]</code> configuration</li>
+<li>Ensure doc tests pass: <code>cargo test --doc</code></li>
+</ul>
+<h3 id="problem-cant-find-published-crate"><a class="header" href="#problem-cant-find-published-crate">Problem: Can’t Find Published Crate</a></h3>
+<p><strong>Symptoms</strong>: <code>cargo install</code> fails with “could not find”</p>
+<p><strong>Causes</strong>:</p>
+<ul>
+<li>crates.io indexing delay</li>
+<li>Typo in crate name</li>
+<li>Version not specified correctly</li>
+</ul>
+<p><strong>Solutions</strong>:</p>
+<ul>
+<li>Wait 1-2 minutes for indexing</li>
+<li>Check spelling: <code>https://crates.io/crates/exact-name</code></li>
+<li>Force index update: <code>cargo search your-crate</code></li>
+<li>Clear cargo cache: <code>rm -rf ~/.cargo/registry/index/*</code></li>
+</ul>
+<h3 id="problem-wrong-version-published"><a class="header" href="#problem-wrong-version-published">Problem: Wrong Version Published</a></h3>
+<p><strong>Symptoms</strong>: Realized you published 0.1.0 instead of 0.2.0</p>
+<p><strong>Solutions</strong>:</p>
+<ul>
+<li><strong>Cannot unpublish</strong></li>
+<li>Option 1: Yank wrong version: <code>cargo yank --version 0.1.0</code></li>
+<li>Option 2: Publish correct version: <code>0.2.0</code></li>
+<li>Option 3: If 0.1.0 has bugs, yank and publish 0.1.1</li>
+</ul>
+<h2 id="complete-publishing-script"><a class="header" href="#complete-publishing-script">Complete Publishing Script</a></h2>
+<p>Automate the full publishing workflow:</p>
+<pre><code class="language-bash">#!/bin/bash
+# scripts/publish-all.sh
+
+set -e
+
+CRATES=("pforge-config" "pforge-macro" "pforge-runtime" "pforge-codegen" "pforge-cli")
+WAIT_TIME=120  # 2 minutes between publications
+
+echo "Starting publication workflow..."
+
+# Pre-flight checks
+echo "Running pre-flight checks..."
+cargo test --all
+cargo clippy --all -- -D warnings
+cargo doc --no-deps --all
+
+# Publish each crate
+for crate in "${CRATES[@]}"; do
+    echo ""
+    echo "========================================  "
+    echo "Publishing: $crate"
+    echo "========================================"
+
+    cd "crates/$crate"
+
+    # Dry run first
+    echo "Dry run..."
+    cargo publish --dry-run
+
+    # Confirm
+    read -p "Proceed with publication? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Skipped $crate"
+        cd ../..
+        continue
+    fi
+
+    # Publish
+    cargo publish
+
+    cd ../..
+
+    # Wait before next (except for last crate)
+    if [ "$crate" != "${CRATES[-1]}" ]; then
+        echo "Waiting $WAIT_TIME seconds before next publication..."
+        sleep $WAIT_TIME
+    fi
+done
+
+echo ""
+echo "All crates published successfully!"
+echo "Don't forget to:"
+echo "  1. Create git tag: git tag -a vX.Y.Z"
+echo "  2. Push tag: git push origin vX.Y.Z"
+echo "  3. Create GitHub release"
+echo "  4. Verify on crates.io"
+echo "  5. Check docs.rs builds"
+</code></pre>
+<p>Run with:</p>
+<pre><code class="language-bash">./scripts/publish-all.sh
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Publishing to crates.io involves:</p>
+<ol>
+<li><strong>Authentication</strong>: Get API token, store with <code>cargo login</code></li>
+<li><strong>Dry run</strong>: Test with <code>cargo publish --dry-run</code></li>
+<li><strong>Dependency order</strong>: Publish dependencies first</li>
+<li><strong>Rate limiting</strong>: Wait 10-15 minutes between publications</li>
+<li><strong>Verification</strong>: Check crates.io, docs.rs, test installation</li>
+<li><strong>Post-publication</strong>: Tag, release, announce</li>
+</ol>
+<p><strong>pforge publishing experience</strong>:</p>
+<ul>
+<li>Five crates published over two days</li>
+<li>Foundation crates first (config, macro)</li>
+<li>Then dependent crates (runtime, codegen)</li>
+<li>Finally CLI with all dependencies</li>
+<li>Hit rate limiting - spaced publications</li>
+<li>Caught template inclusion issue in dry run</li>
+<li>All verified before announcing</li>
+</ul>
+<p><strong>Key lessons</strong>:</p>
+<ul>
+<li>Dry run is essential</li>
+<li>Wait for crates.io indexing between dependent crates</li>
+<li>Verify each publication before continuing</li>
+<li>Can’t unpublish - only yank</li>
+<li>Automation helps but manual verification required</li>
+</ul>
+<p>Publishing is irreversible. Take your time, use checklists, verify everything.</p>
+<hr />
+<p><strong>Previous</strong>: <a href="ch17-03-documentation.html">Documentation</a></p>
+<p><strong>Next</strong>: <a href="ch18-00-cicd.html">CI/CD Pipeline</a></p>
 
                     </main>
 

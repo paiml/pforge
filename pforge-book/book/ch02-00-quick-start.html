@@ -158,8 +158,124 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch02-00-quick-startmd"><a class="header" href="#ch02-00-quick-startmd">ch02-00-quick-start.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-2-quick-start"><a class="header" href="#chapter-2-quick-start">Chapter 2: Quick Start</a></h1>
+<p>Welcome to pforge! In this chapter, you’ll go from zero to a running MCP server in under 10 minutes.</p>
+<h2 id="what-youll-build"><a class="header" href="#what-youll-build">What You’ll Build</a></h2>
+<p>By the end of this chapter, you’ll have:</p>
+<ol>
+<li>Installed pforge on your system</li>
+<li>Scaffolded a new MCP server project</li>
+<li>Understood the generated project structure</li>
+<li>Run your first server</li>
+<li>Tested it with an MCP client</li>
+</ol>
+<h2 id="the-three-file-philosophy"><a class="header" href="#the-three-file-philosophy">The Three-File Philosophy</a></h2>
+<p>A typical pforge project requires just three files:</p>
+<pre><code>my-server/
+├── pforge.yaml      # Declarative configuration
+├── Cargo.toml       # Rust dependencies (auto-generated)
+└── src/
+    └── handlers.rs  # Your business logic
+</code></pre>
+<p>That’s it. No boilerplate, no ceremony, just your configuration and handlers.</p>
+<h2 id="why-so-fast"><a class="header" href="#why-so-fast">Why So Fast?</a></h2>
+<p>Traditional MCP server development requires:</p>
+<ul>
+<li>Setting up project structure</li>
+<li>Implementing protocol handlers</li>
+<li>Writing serialization/deserialization code</li>
+<li>Configuring transport layers</li>
+<li>Managing schema generation</li>
+</ul>
+<p>pforge generates all of this from your YAML configuration:</p>
+<pre><code class="language-yaml">forge:
+  name: my-server
+  version: 0.1.0
+
+tools:
+  - type: native
+    name: greet
+    description: "Say hello"
+    handler:
+      path: handlers::greet_handler
+    params:
+      name: { type: string, required: true }
+</code></pre>
+<p>This 10-line YAML declaration produces a fully functional MCP server with:</p>
+<ul>
+<li>Type-safe input validation</li>
+<li>JSON Schema generation</li>
+<li>Error handling</li>
+<li>Transport configuration</li>
+<li>Tool registration</li>
+<li>Handler dispatch</li>
+</ul>
+<h2 id="performance-out-of-the-box"><a class="header" href="#performance-out-of-the-box">Performance Out of the Box</a></h2>
+<p>Your first server will achieve production-grade performance:</p>
+<ul>
+<li>Tool dispatch: &lt;1 microsecond</li>
+<li>Cold start: &lt;100 milliseconds</li>
+<li>Memory overhead: &lt;512KB</li>
+<li>Throughput: &gt;100K requests/second</li>
+</ul>
+<p>These aren’t aspirational goals - they’re guaranteed by pforge’s compile-time code generation.</p>
+<h2 id="the-extreme-tdd-journey"><a class="header" href="#the-extreme-tdd-journey">The EXTREME TDD Journey</a></h2>
+<p>As you build your server, you’ll follow EXTREME TDD methodology:</p>
+<ol>
+<li>Write a failing test (RED phase)</li>
+<li>Implement minimal code to pass (GREEN phase)</li>
+<li>Refactor and run quality gates (REFACTOR phase)</li>
+</ol>
+<p>Each cycle takes 5 minutes or less. Quality gates automatically enforce:</p>
+<ul>
+<li>Code formatting (rustfmt)</li>
+<li>Linting (clippy)</li>
+<li>Test coverage (&gt;80%)</li>
+<li>Complexity limits (&lt;20)</li>
+<li>Technical debt grade (&gt;75)</li>
+</ul>
+<h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What This Chapter Covers</a></h2>
+<h3 id="installation"><a class="header" href="#installation"><a href="ch02-01-installation.html">Installation</a></a></h3>
+<p>Learn how to install pforge from crates.io or build from source. Verify your installation with diagnostic commands.</p>
+<h3 id="your-first-server"><a class="header" href="#your-first-server"><a href="ch02-02-first-server.html">Your First Server</a></a></h3>
+<p>Scaffold a new project and understand the generated structure. Explore the YAML configuration and handler implementation.</p>
+<h3 id="testing-your-server"><a class="header" href="#testing-your-server"><a href="ch02-03-testing.html">Testing Your Server</a></a></h3>
+<p>Run your server and test it with an MCP client. Learn basic debugging and troubleshooting techniques.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>You’ll need:</p>
+<ul>
+<li>Rust 1.70 or later (install from <a href="https://rustup.rs">rustup.rs</a>)</li>
+<li>Basic terminal/command line familiarity</li>
+<li>A text editor (VS Code, Vim, etc.)</li>
+</ul>
+<p>That’s all. No complex environment setup, no Docker, no additional services.</p>
+<h2 id="time-investment"><a class="header" href="#time-investment">Time Investment</a></h2>
+<ul>
+<li>Installation: 2 minutes</li>
+<li>First server: 5 minutes</li>
+<li>Testing: 3 minutes</li>
+<li><strong>Total: 10 minutes</strong></li>
+</ul>
+<h2 id="what-you-wont-learn-yet"><a class="header" href="#what-you-wont-learn-yet">What You Won’t Learn (Yet)</a></h2>
+<p>This chapter focuses on getting you productive quickly. We’ll cover advanced topics later:</p>
+<ul>
+<li>Multiple handler types (CLI, HTTP, Pipeline) - Chapter 5</li>
+<li>State management - Chapter 9</li>
+<li>Error handling patterns - Chapter 10</li>
+<li>Performance optimization - Chapter 17</li>
+<li>Production deployment - Chapter 19</li>
+</ul>
+<p>For now, let’s get your development environment set up and build your first server.</p>
+<h2 id="support"><a class="header" href="#support">Support</a></h2>
+<p>If you get stuck:</p>
+<ol>
+<li>Check the <a href="https://github.com/paiml/pforge/issues">GitHub Issues</a></li>
+<li>Review the <a href="../../docs/specifications/pforge-specification.html">full specification</a></li>
+<li>Examine the <a href="../examples/">examples</a> directory</li>
+</ol>
+<p>Ready? Let’s begin with installation.</p>
+<hr />
+<p>Next: <a href="ch02-01-installation.html">Installation</a></p>
 
                     </main>
 

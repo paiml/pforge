@@ -158,8 +158,442 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch03-04-runningmd"><a class="header" href="#ch03-04-runningmd">ch03-04-running.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="running-and-using-the-calculator"><a class="header" href="#running-and-using-the-calculator">Running and Using the Calculator</a></h1>
+<p>You’ve built a production-ready calculator with YAML config, Rust handlers, and comprehensive tests. Now let’s <strong>run it</strong> and see the EXTREME TDD discipline pay off.</p>
+<h2 id="project-setup"><a class="header" href="#project-setup">Project Setup</a></h2>
+<p>If you haven’t created the calculator yet, start here:</p>
+<pre><code class="language-bash"># Create a new pforge project
+pforge new calculator-server --type native
+cd calculator-server
+
+# Copy the example files
+cp ../examples/calculator/forge.yaml .
+cp ../examples/calculator/src/handlers.rs src/
+</code></pre>
+<p>Or work directly with the example:</p>
+<pre><code class="language-bash">cd examples/calculator
+</code></pre>
+<h2 id="build-the-server"><a class="header" href="#build-the-server">Build the Server</a></h2>
+<h3 id="development-build"><a class="header" href="#development-build">Development Build</a></h3>
+<pre><code class="language-bash">cargo build
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code>   Compiling pforge-example-calculator v0.1.0
+    Finished dev [unoptimized + debuginfo] target(s) in 2.34s
+</code></pre>
+<p><strong>Development builds</strong>:</p>
+<ul>
+<li>Include debug symbols</li>
+<li>No optimizations</li>
+<li>Fast compile time (~2s)</li>
+<li>Suitable for testing</li>
+</ul>
+<h3 id="release-build"><a class="header" href="#release-build">Release Build</a></h3>
+<pre><code class="language-bash">cargo build --release
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code>   Compiling pforge-example-calculator v0.1.0
+    Finished release [optimized] target(s) in 8.67s
+</code></pre>
+<p><strong>Release builds</strong>:</p>
+<ul>
+<li>Full optimizations enabled</li>
+<li>Strip debug symbols</li>
+<li>Slower compile (~8s)</li>
+<li><strong>10x faster runtime</strong> (&lt;1μs dispatch)</li>
+</ul>
+<p><strong>Use release builds for</strong>:</p>
+<ul>
+<li>Production deployment</li>
+<li>Performance benchmarking</li>
+<li>Integration with MCP clients</li>
+</ul>
+<h2 id="run-the-tests-first"><a class="header" href="#run-the-tests-first">Run the Tests First</a></h2>
+<p>Before running the server, verify everything works:</p>
+<pre><code class="language-bash">cargo test
+</code></pre>
+<p><strong>Expected output</strong>:</p>
+<pre><code>running 6 tests
+test tests::test_add ... ok
+test tests::test_subtract ... ok
+test tests::test_multiply ... ok
+test tests::test_divide ... ok
+test tests::test_divide_by_zero ... ok
+test tests::test_unknown_operation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+</code></pre>
+<p><strong>All 6 tests pass in &lt;10ms</strong>. This is the EXTREME TDD confidence - you know it works before running it.</p>
+<h2 id="start-the-server"><a class="header" href="#start-the-server">Start the Server</a></h2>
+<p>The calculator uses <strong>stdio transport</strong> (standard input/output), which means it communicates via JSON-RPC over stdin/stdout.</p>
+<h3 id="manual-testing-with-json-rpc"><a class="header" href="#manual-testing-with-json-rpc">Manual Testing with JSON-RPC</a></h3>
+<p>Create a test file <code>test_request.json</code>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "calculate",
+    "arguments": {
+      "operation": "add",
+      "a": 5.0,
+      "b": 3.0
+    }
+  }
+}
+</code></pre>
+<p>Run the server with this input:</p>
+<pre><code class="language-bash">cargo run --release &lt; test_request.json
+</code></pre>
+<p><strong>Expected output</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"result\":8.0}"
+      }
+    ]
+  }
+}
+</code></pre>
+<p><strong>Success!</strong> 5.0 + 3.0 = 8.0</p>
+<h2 id="using-with-mcp-clients"><a class="header" href="#using-with-mcp-clients">Using with MCP Clients</a></h2>
+<p>MCP clients like Claude Desktop, Continue, or Cline can connect to your calculator.</p>
+<h3 id="configure-claude-desktop"><a class="header" href="#configure-claude-desktop">Configure Claude Desktop</a></h3>
+<p>Add to <code>claude_desktop_config.json</code>:</p>
+<pre><code class="language-json">{
+  "mcpServers": {
+    "calculator": {
+      "command": "cargo",
+      "args": ["run", "--release", "--manifest-path", "/path/to/calculator/Cargo.toml"]
+    }
+  }
+}
+</code></pre>
+<p><strong>Replace <code>/path/to/calculator</code></strong> with your actual path.</p>
+<h3 id="restart-claude-desktop"><a class="header" href="#restart-claude-desktop">Restart Claude Desktop</a></h3>
+<ol>
+<li>Quit Claude Desktop completely</li>
+<li>Relaunch</li>
+<li>Your calculator is now available as a tool!</li>
+</ol>
+<h3 id="test-from-claude"><a class="header" href="#test-from-claude">Test from Claude</a></h3>
+<p>Try asking Claude:</p>
+<blockquote>
+<p>“What is 123.45 multiplied by 67.89?”</p>
+</blockquote>
+<p>Claude will:</p>
+<ol>
+<li>See the <code>calculate</code> tool is available</li>
+<li>Call it with <code>{"operation": "multiply", "a": 123.45, "b": 67.89}</code></li>
+<li>Receive the result: <code>8380.9005</code></li>
+<li>Respond: “123.45 × 67.89 = 8,380.90”</li>
+</ol>
+<h2 id="interactive-testing"><a class="header" href="#interactive-testing">Interactive Testing</a></h2>
+<p>For development, use a REPL-style workflow:</p>
+<h3 id="option-1-use-pforge-dev-if-available"><a class="header" href="#option-1-use-pforge-dev-if-available">Option 1: Use <code>pforge dev</code> (if available)</a></h3>
+<pre><code class="language-bash">pforge dev
+</code></pre>
+<p>This starts a development server with hot reload.</p>
+<h3 id="option-2-manual-json-rpc"><a class="header" href="#option-2-manual-json-rpc">Option 2: Manual JSON-RPC</a></h3>
+<p>Create <code>test_all_operations.sh</code>:</p>
+<pre><code class="language-bash">#!/bin/bash
+
+echo "Testing ADD..."
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"calculate","arguments":{"operation":"add","a":10,"b":5}}}' | cargo run --release
+
+echo "Testing SUBTRACT..."
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"calculate","arguments":{"operation":"subtract","a":10,"b":5}}}' | cargo run --release
+
+echo "Testing MULTIPLY..."
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"calculate","arguments":{"operation":"multiply","a":10,"b":5}}}' | cargo run --release
+
+echo "Testing DIVIDE..."
+echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"calculate","arguments":{"operation":"divide","a":10,"b":5}}}' | cargo run --release
+
+echo "Testing DIVIDE BY ZERO..."
+echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"calculate","arguments":{"operation":"divide","a":10,"b":0}}}' | cargo run --release
+
+echo "Testing UNKNOWN OPERATION..."
+echo '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"calculate","arguments":{"operation":"modulo","a":10,"b":3}}}' | cargo run --release
+</code></pre>
+<p>Run it:</p>
+<pre><code class="language-bash">chmod +x test_all_operations.sh
+./test_all_operations.sh
+</code></pre>
+<h2 id="real-world-usage-examples"><a class="header" href="#real-world-usage-examples">Real-World Usage Examples</a></h2>
+<h3 id="example-1-simple-calculation"><a class="header" href="#example-1-simple-calculation">Example 1: Simple Calculation</a></h3>
+<p><strong>Request</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "calculate",
+    "arguments": {
+      "operation": "add",
+      "a": 42.5,
+      "b": 17.3
+    }
+  }
+}
+</code></pre>
+<p><strong>Response</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"result\":59.8}"
+      }
+    ]
+  }
+}
+</code></pre>
+<h3 id="example-2-division"><a class="header" href="#example-2-division">Example 2: Division</a></h3>
+<p><strong>Request</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "calculate",
+    "arguments": {
+      "operation": "divide",
+      "a": 100,
+      "b": 3
+    }
+  }
+}
+</code></pre>
+<p><strong>Response</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"result\":33.333333333333336}"
+      }
+    ]
+  }
+}
+</code></pre>
+<p><strong>Note the floating-point precision</strong> - this is expected behavior for f64.</p>
+<h3 id="example-3-error-handling-division-by-zero"><a class="header" href="#example-3-error-handling-division-by-zero">Example 3: Error Handling (Division by Zero)</a></h3>
+<p><strong>Request</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "calculate",
+    "arguments": {
+      "operation": "divide",
+      "a": 10,
+      "b": 0
+    }
+  }
+}
+</code></pre>
+<p><strong>Response</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "error": {
+    "code": -32000,
+    "message": "Division by zero"
+  }
+}
+</code></pre>
+<p><strong>Clean error message</strong> - exactly what we tested!</p>
+<h3 id="example-4-error-handling-unknown-operation"><a class="header" href="#example-4-error-handling-unknown-operation">Example 4: Error Handling (Unknown Operation)</a></h3>
+<p><strong>Request</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "calculate",
+    "arguments": {
+      "operation": "power",
+      "a": 2,
+      "b": 8
+    }
+  }
+}
+</code></pre>
+<p><strong>Response</strong>:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "error": {
+    "code": -32000,
+    "message": "Unknown operation: power. Supported: add, subtract, multiply, divide"
+  }
+}
+</code></pre>
+<p><strong>Helpful error message</strong> tells users what went wrong AND what’s supported.</p>
+<h2 id="performance-verification"><a class="header" href="#performance-verification">Performance Verification</a></h2>
+<p>Let’s verify our &lt;1μs dispatch target:</p>
+<h3 id="benchmark-the-handler"><a class="header" href="#benchmark-the-handler">Benchmark the Handler</a></h3>
+<p>Create <code>benches/calculator_bench.rs</code>:</p>
+<pre><code class="language-rust">use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use pforge_example_calculator::handlers::{CalculateHandler, CalculateInput};
+use pforge_runtime::Handler;
+
+fn benchmark_operations(c: &amp;mut Criterion) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    c.bench_function("add", |b| {
+        let handler = CalculateHandler;
+        b.to_async(&amp;rt).iter(|| async {
+            let input = CalculateInput {
+                operation: "add".to_string(),
+                a: black_box(5.0),
+                b: black_box(3.0),
+            };
+            handler.handle(input).await.unwrap()
+        });
+    });
+
+    c.bench_function("divide", |b| {
+        let handler = CalculateHandler;
+        b.to_async(&amp;rt).iter(|| async {
+            let input = CalculateInput {
+                operation: "divide".to_string(),
+                a: black_box(15.0),
+                b: black_box(3.0),
+            };
+            handler.handle(input).await.unwrap()
+        });
+    });
+}
+
+criterion_group!(benches, benchmark_operations);
+criterion_main!(benches);</code></pre>
+<p>Run benchmarks:</p>
+<pre><code class="language-bash">cargo bench
+</code></pre>
+<p><strong>Expected output</strong>:</p>
+<pre><code>add                     time:   [450.23 ns 455.67 ns 461.34 ns]
+divide                  time:   [782.45 ns 789.12 ns 796.78 ns]
+</code></pre>
+<p><strong>0.45μs for addition, 0.78μs for division</strong> - we hit our &lt;1μs target!</p>
+<h2 id="production-deployment"><a class="header" href="#production-deployment">Production Deployment</a></h2>
+<h3 id="docker-container"><a class="header" href="#docker-container">Docker Container</a></h3>
+<p>Create <code>Dockerfile</code>:</p>
+<pre><code class="language-dockerfile">FROM rust:1.70 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bullseye-slim
+COPY --from=builder /app/target/release/pforge-example-calculator /usr/local/bin/calculator
+ENTRYPOINT ["calculator"]
+</code></pre>
+<p>Build and run:</p>
+<pre><code class="language-bash">docker build -t calculator-server .
+docker run -i calculator-server
+</code></pre>
+<h3 id="systemd-service"><a class="header" href="#systemd-service">Systemd Service</a></h3>
+<p>Create <code>/etc/systemd/system/calculator.service</code>:</p>
+<pre><code class="language-ini">[Unit]
+Description=Calculator MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User=mcp
+ExecStart=/usr/local/bin/calculator
+Restart=on-failure
+StandardInput=socket
+StandardOutput=socket
+
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<p>Enable and start:</p>
+<pre><code class="language-bash">sudo systemctl enable calculator
+sudo systemctl start calculator
+</code></pre>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="issue-handler-not-found"><a class="header" href="#issue-handler-not-found">Issue: “Handler not found”</a></h3>
+<p><strong>Symptom</strong>:</p>
+<pre><code>Error: Handler not found: handlers::calculate_handler
+</code></pre>
+<p><strong>Fix</strong>:
+Verify <code>forge.yaml</code> has correct path:</p>
+<pre><code class="language-yaml">handler:
+  path: handlers::calculate_handler  # Not calculate_handler
+</code></pre>
+<h3 id="issue-invalid-json-rpc"><a class="header" href="#issue-invalid-json-rpc">Issue: “Invalid JSON-RPC”</a></h3>
+<p><strong>Symptom</strong>:</p>
+<pre><code>Error: Invalid JSON-RPC request
+</code></pre>
+<p><strong>Fix</strong>:
+Ensure request has all required fields:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",    # Required
+  "id": 1,             # Required
+  "method": "tools/call",  # Required
+  "params": { ... }    # Required
+}
+</code></pre>
+<h3 id="issue-division-by-zero"><a class="header" href="#issue-division-by-zero">Issue: “Division by zero”</a></h3>
+<p><strong>Symptom</strong>:</p>
+<pre><code class="language-json">{"error": {"message": "Division by zero"}}
+</code></pre>
+<p><strong>Fix</strong>:
+This is <strong>expected behavior</strong>! Your error handling works. Pass non-zero <code>b</code> value.</p>
+<h3 id="issue-slow-performance"><a class="header" href="#issue-slow-performance">Issue: Slow Performance</a></h3>
+<p><strong>Symptom</strong>:
+Operations take &gt;10μs</p>
+<p><strong>Fix</strong>:
+Use <code>--release</code> build:</p>
+<pre><code class="language-bash">cargo build --release
+cargo run --release
+</code></pre>
+<p>Debug builds are 10x slower.</p>
+<h2 id="quality-gate-check"><a class="header" href="#quality-gate-check">Quality Gate Check</a></h2>
+<p>Before deploying, run the full quality gate:</p>
+<pre><code class="language-bash">cargo test                          # All tests pass
+cargo tarpaulin --out Stdout        # 100% coverage
+cargo clippy -- -D warnings         # No warnings
+cargo fmt --check                   # Formatted
+cargo bench                         # Performance verified
+</code></pre>
+<p><strong>If ANY check fails, DO NOT deploy.</strong></p>
+<p>This is EXTREME TDD in action - quality gates prevent production issues.</p>
+<h2 id="what-youve-accomplished"><a class="header" href="#what-youve-accomplished">What You’ve Accomplished</a></h2>
+<p>You’ve built a <strong>production-ready MCP server</strong> that:</p>
+<p>✅ Has zero boilerplate (26-line YAML config)
+✅ Implements four arithmetic operations
+✅ Handles errors gracefully (division by zero, unknown operations)
+✅ Has 100% test coverage (6 comprehensive tests)
+✅ Achieves &lt;1μs dispatch performance
+✅ Runs in 20 minutes of development time
+✅ Passes all quality gates</p>
+<p><strong>This is the power of EXTREME TDD + pforge.</strong></p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that you’ve mastered the basics:</p>
+<ol>
+<li><strong>Chapter 4</strong>: Add state management to your servers</li>
+<li><strong>Chapter 5</strong>: Implement HTTP and CLI handlers</li>
+<li><strong>Chapter 6</strong>: Build production pipelines</li>
+<li><strong>Chapter 7</strong>: Add fault tolerance and retries</li>
+</ol>
+<p>You have the foundation. Let’s build something bigger.</p>
+<hr />
+<blockquote>
+<p>“Ship with confidence. Test-driven code doesn’t fear production.” - EXTREME TDD principle</p>
+</blockquote>
 
                     </main>
 

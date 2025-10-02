@@ -158,8 +158,297 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch03-01-yaml-configmd"><a class="header" href="#ch03-01-yaml-configmd">ch03-01-yaml-config.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="yaml-configuration-declaring-your-calculator"><a class="header" href="#yaml-configuration-declaring-your-calculator">YAML Configuration: Declaring Your Calculator</a></h1>
+<p>The calculator’s YAML configuration is <strong>26 lines</strong> that replace hundreds of lines of SDK boilerplate. Let’s build it following EXTREME TDD principles.</p>
+<h2 id="the-complete-configuration"><a class="header" href="#the-complete-configuration">The Complete Configuration</a></h2>
+<p>Here’s the full <code>forge.yaml</code> for our calculator server:</p>
+<pre><code class="language-yaml">forge:
+  name: calculator-server
+  version: 0.1.0
+  transport: stdio
+  optimization: release
+
+tools:
+  - type: native
+    name: calculate
+    description: "Perform arithmetic operations (add, subtract, multiply, divide)"
+    handler:
+      path: handlers::calculate_handler
+    params:
+      operation:
+        type: string
+        required: true
+        description: "The operation to perform: add, subtract, multiply, or divide"
+      a:
+        type: float
+        required: true
+        description: "First operand"
+      b:
+        type: float
+        required: true
+        description: "Second operand"
+</code></pre>
+<h2 id="section-by-section-breakdown"><a class="header" href="#section-by-section-breakdown">Section-by-Section Breakdown</a></h2>
+<h3 id="1-forge-metadata"><a class="header" href="#1-forge-metadata">1. Forge Metadata</a></h3>
+<pre><code class="language-yaml">forge:
+  name: calculator-server
+  version: 0.1.0
+  transport: stdio
+  optimization: release
+</code></pre>
+<p><strong>Key decisions</strong>:</p>
+<ul>
+<li><code>name</code>: Unique identifier for your server</li>
+<li><code>version</code>: Semantic versioning (important for client compatibility)</li>
+<li><code>transport: stdio</code>: Standard input/output (most common for MCP)</li>
+<li><code>optimization: release</code>: Build with optimizations enabled (&lt;1μs dispatch)</li>
+</ul>
+<p><strong>Alternative transports</strong>:</p>
+<ul>
+<li><code>sse</code>: Server-Sent Events (web-based)</li>
+<li><code>websocket</code>: WebSocket (bidirectional streaming)</li>
+</ul>
+<p>For local tools like calculators, <code>stdio</code> is the right choice.</p>
+<h3 id="2-tool-definition"><a class="header" href="#2-tool-definition">2. Tool Definition</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: native
+    name: calculate
+    description: "Perform arithmetic operations (add, subtract, multiply, divide)"
+</code></pre>
+<p><strong>Why a single tool?</strong></p>
+<p>Instead of four separate tools (<code>add</code>, <code>subtract</code>, <code>multiply</code>, <code>divide</code>), we use <strong>one tool with an operation parameter</strong>. Benefits:</p>
+<ol>
+<li><strong>Cleaner API</strong>: Clients see one tool, not four</li>
+<li><strong>Shared logic</strong>: Validation happens once</li>
+<li><strong>Easier testing</strong>: Test one handler, not four</li>
+<li><strong>Better UX</strong>: “I want to calculate” vs “I want to add or subtract or…”</li>
+</ol>
+<p><strong>The description field</strong> is critical - it’s what LLMs see when deciding which tool to use. Make it specific and actionable.</p>
+<h3 id="3-handler-path"><a class="header" href="#3-handler-path">3. Handler Path</a></h3>
+<pre><code class="language-yaml">    handler:
+      path: handlers::calculate_handler
+</code></pre>
+<p>This tells pforge where to find your Rust handler:</p>
+<ul>
+<li><strong>Module</strong>: <code>handlers</code> (the <code>src/handlers.rs</code> file)</li>
+<li><strong>Symbol</strong>: <code>calculate_handler</code> (the exported handler struct)</li>
+</ul>
+<p><strong>Convention</strong>: Use <code>{module}::{handler_name}</code> format. The handler must implement the <code>Handler</code> trait.</p>
+<h3 id="4-parameter-schema"><a class="header" href="#4-parameter-schema">4. Parameter Schema</a></h3>
+<pre><code class="language-yaml">    params:
+      operation:
+        type: string
+        required: true
+        description: "The operation to perform: add, subtract, multiply, or divide"
+      a:
+        type: float
+        required: true
+        description: "First operand"
+      b:
+        type: float
+        required: true
+        description: "Second operand"
+</code></pre>
+<p><strong>Parameter types</strong>:</p>
+<ul>
+<li><code>string</code>: For operation names (“add”, “subtract”, etc.)</li>
+<li><code>float</code>: For <code>f64</code> numeric values (supports decimals)</li>
+<li><code>required: true</code>: Validation fails if missing</li>
+</ul>
+<p><strong>Why <code>float</code> not <code>number</code>?</strong></p>
+<p>MCP/JSON Schema distinguishes:</p>
+<ul>
+<li><code>integer</code>: Whole numbers only</li>
+<li><code>float</code>: Decimal/floating-point numbers</li>
+</ul>
+<p>Our calculator supports <code>10.5 + 3.7</code>, so we need <code>float</code>.</p>
+<h2 id="type-safety-in-action"><a class="header" href="#type-safety-in-action">Type Safety in Action</a></h2>
+<p>pforge uses this YAML to generate Rust types. The params:</p>
+<pre><code class="language-yaml">params:
+  operation: { type: string, required: true }
+  a: { type: float, required: true }
+  b: { type: float, required: true }
+</code></pre>
+<p>Become this Rust struct (auto-generated):</p>
+<pre><code class="language-rust">#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalculateInput {
+    pub operation: String,
+    pub a: f64,
+    pub b: f64,
+}</code></pre>
+<p><strong>No runtime validation needed</strong> - the type system guarantees correctness!</p>
+<h2 id="extreme-tdd-configuration-first"><a class="header" href="#extreme-tdd-configuration-first">EXTREME TDD: Configuration First</a></h2>
+<p>In our 5-minute cycles, the YAML came <strong>before</strong> the handler:</p>
+<p><strong>Cycle 0 (3 minutes)</strong>:</p>
+<ol>
+<li><strong>RED</strong>: Create empty <code>forge.yaml</code>, run <code>pforge build</code> → fails (no handler)</li>
+<li><strong>GREEN</strong>: Add forge metadata and basic tool structure</li>
+<li><strong>REFACTOR</strong>: Add parameter descriptions</li>
+</ol>
+<p>This <strong>design-first approach</strong> forces you to think about:</p>
+<ul>
+<li>What inputs do I need?</li>
+<li>What types make sense?</li>
+<li>What’s the API contract?</li>
+</ul>
+<h2 id="common-yaml-patterns"><a class="header" href="#common-yaml-patterns">Common YAML Patterns</a></h2>
+<h3 id="pattern-1-optional-parameters"><a class="header" href="#pattern-1-optional-parameters">Pattern 1: Optional Parameters</a></h3>
+<pre><code class="language-yaml">params:
+  operation: { type: string, required: true }
+  precision: { type: integer, required: false, default: 2 }
+</code></pre>
+<h3 id="pattern-2-enum-constraints"><a class="header" href="#pattern-2-enum-constraints">Pattern 2: Enum Constraints</a></h3>
+<pre><code class="language-yaml">params:
+  operation:
+    type: string
+    required: true
+    enum: ["add", "subtract", "multiply", "divide"]
+</code></pre>
+<p><strong>We didn’t use enum constraints</strong> because we validate in Rust, giving better error messages.</p>
+<h3 id="pattern-3-nested-objects"><a class="header" href="#pattern-3-nested-objects">Pattern 3: Nested Objects</a></h3>
+<pre><code class="language-yaml">params:
+  calculation:
+    type: object
+    required: true
+    properties:
+      operation: { type: string }
+      operands:
+        type: array
+        items: { type: float }
+</code></pre>
+<h3 id="pattern-4-arrays"><a class="header" href="#pattern-4-arrays">Pattern 4: Arrays</a></h3>
+<pre><code class="language-yaml">params:
+  numbers:
+    type: array
+    required: true
+    items: { type: float }
+    minItems: 2
+</code></pre>
+<h2 id="validation-strategy"><a class="header" href="#validation-strategy">Validation Strategy</a></h2>
+<p><strong>Two-layer validation</strong>:</p>
+<ol>
+<li>
+<p><strong>YAML validation</strong> (at build time):</p>
+<ul>
+<li>pforge validates against its schema</li>
+<li>Catches: missing required fields, invalid types</li>
+<li>Fast fail: Won’t even compile</li>
+</ul>
+</li>
+<li>
+<p><strong>Runtime validation</strong> (in handler):</p>
+<ul>
+<li>Check operation is valid</li>
+<li>Check division by zero</li>
+<li>Custom business logic</li>
+</ul>
+</li>
+</ol>
+<p><strong>Philosophy</strong>: Use the type system first, runtime validation second.</p>
+<h2 id="configuration-vs-code"><a class="header" href="#configuration-vs-code">Configuration vs. Code</a></h2>
+<p>Traditional MCP SDK (TypeScript):</p>
+<pre><code class="language-typescript">// 50+ lines of boilerplate
+const server = new Server({
+  name: "calculator-server",
+  version: "0.1.0"
+}, {
+  capabilities: {
+    tools: {}
+  }
+});
+
+server.setRequestHandler(ListToolsRequestSchema, async () =&gt; ({
+  tools: [{
+    name: "calculate",
+    description: "Perform arithmetic operations",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: { type: "string", description: "..." },
+        a: { type: "number", description: "..." },
+        b: { type: "number", description: "..." }
+      },
+      required: ["operation", "a", "b"]
+    }
+  }]
+}));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) =&gt; {
+  if (request.params.name === "calculate") {
+    // ... handler logic
+  }
+});
+</code></pre>
+<p>pforge equivalent:</p>
+<pre><code class="language-yaml"># 26 lines, zero boilerplate
+forge:
+  name: calculator-server
+  version: 0.1.0
+  transport: stdio
+  optimization: release
+
+tools:
+  - type: native
+    name: calculate
+    # ... (see above)
+</code></pre>
+<p><strong>90% less code. 100% type-safe. 16x faster.</strong></p>
+<h2 id="build-time-code-generation"><a class="header" href="#build-time-code-generation">Build-Time Code Generation</a></h2>
+<p>When you run <code>pforge build</code>, this YAML generates:</p>
+<ol>
+<li><strong>Handler registry</strong>: O(1) lookup for “calculate” tool</li>
+<li><strong>Type definitions</strong>: <code>CalculateInput</code> struct with validation</li>
+<li><strong>JSON Schema</strong>: For MCP protocol compatibility</li>
+<li><strong>Dispatch logic</strong>: Routes requests to your handler</li>
+</ol>
+<p>All at <strong>compile time</strong> - zero runtime overhead.</p>
+<h2 id="debugging-configuration"><a class="header" href="#debugging-configuration">Debugging Configuration</a></h2>
+<p>Common errors and fixes:</p>
+<p><strong>Error</strong>: “Handler not found: handlers::calculate_handler”</p>
+<pre><code class="language-yaml"># Wrong:
+handler:
+  path: calculate_handler
+
+# Right:
+handler:
+  path: handlers::calculate_handler
+</code></pre>
+<p><strong>Error</strong>: “Invalid type: expected float, found string”</p>
+<pre><code class="language-yaml"># Wrong:
+params:
+  a: { type: string }  # User passes "5.0"
+
+# Right:
+params:
+  a: { type: float }   # Parsed as 5.0
+</code></pre>
+<p><strong>Error</strong>: “Missing required parameter: operation”</p>
+<pre><code class="language-yaml"># Wrong:
+params:
+  operation: { type: string }  # defaults to required: false
+
+# Right:
+params:
+  operation: { type: string, required: true }
+</code></pre>
+<h2 id="testing-your-configuration"><a class="header" href="#testing-your-configuration">Testing Your Configuration</a></h2>
+<p>Before writing handler code, validate your YAML:</p>
+<pre><code class="language-bash"># Validate configuration
+pforge validate
+
+# Build (validates + generates code)
+pforge build --debug
+
+# Watch mode (continuous validation)
+pforge dev --watch
+</code></pre>
+<p><strong>EXTREME TDD tip</strong>: Run <code>pforge validate</code> after every YAML edit. Fast feedback!</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Now that you have a valid configuration, it’s time to implement the handler. Turn to Chapter 3.2 to write the Rust code that powers the calculator.</p>
+<hr />
+<blockquote>
+<p>“Configuration is code. Treat it with the same rigor.” - pforge philosophy</p>
+</blockquote>
 
                     </main>
 

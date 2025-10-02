@@ -158,8 +158,451 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch07-03-refactormd"><a class="header" href="#ch07-03-refactormd">ch07-03-refactor.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="refactor-clean-up"><a class="header" href="#refactor-clean-up">REFACTOR: Clean Up</a></h1>
+<p>You have working code. Tests pass. Now you have exactly 1 minute to make it clean. REFACTOR is where minimum code becomes maintainable code, all while protected by your test suite.</p>
+<h2 id="the-purpose-of-refactor"><a class="header" href="#the-purpose-of-refactor">The Purpose of REFACTOR</a></h2>
+<p>REFACTOR transforms code from “works” to “works well.” You’re not adding features—you’re improving the structure, readability, and maintainability of existing code.</p>
+<h3 id="why-refactor-matters"><a class="header" href="#why-refactor-matters">Why Refactor Matters</a></h3>
+<p><strong>Technical Debt Prevention</strong>: Without regular refactoring, each cycle adds a little cruft. After 100 cycles, the codebase is unmaintainable.</p>
+<p><strong>Code Comprehension</strong>: Future you (next week) needs to understand current you’s code. Clear code reduces cognitive load.</p>
+<p><strong>Change Velocity</strong>: Clean code is easier to modify. Refactoring now saves time in future cycles.</p>
+<p><strong>Bug Prevention</strong>: Clearer code has fewer hiding places for bugs.</p>
+<h2 id="the-1-minute-budget"><a class="header" href="#the-1-minute-budget">The 1-Minute Budget</a></h2>
+<p>You have 1 minute for REFACTOR. This forces discipline:</p>
+<p><strong>Only Obvious Improvements</strong>: If it takes more than 1 minute to refactor, defer it to a dedicated refactoring cycle.</p>
+<p><strong>Safe Changes Only</strong>: You don’t have time to debug complex refactorings. Stick to automated refactorings and obvious simplifications.</p>
+<p><strong>Keep Tests Green</strong>: After each refactoring step, tests must still pass. If they don’t, revert immediately.</p>
+<h3 id="time-breakdown"><a class="header" href="#time-breakdown">Time Breakdown</a></h3>
+<ul>
+<li><strong>0:00-0:30</strong>: Identify improvements (duplication, naming, complexity)</li>
+<li><strong>0:30-0:50</strong>: Apply refactorings</li>
+<li><strong>0:50-1:00</strong>: Re-run tests, verify still GREEN</li>
+</ul>
+<h2 id="common-refactorings-that-fit-in-1-minute"><a class="header" href="#common-refactorings-that-fit-in-1-minute">Common Refactorings That Fit in 1 Minute</a></h2>
+<h3 id="refactoring-1-extract-variable"><a class="header" href="#refactoring-1-extract-variable">Refactoring 1: Extract Variable</a></h3>
+<p>Before:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.age &lt; 0 || input.age &gt; 120 {
+        return Err(Error::Validation("Invalid age".to_string()));
+    }
+
+    Ok(AgeOutput {
+        category: if input.age &lt; 13 { "child" } else if input.age &lt; 20 { "teenager" } else { "adult" }.to_string(),
+    })
+}</code></pre>
+<p>After:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.age &lt; 0 || input.age &gt; 120 {
+        return Err(Error::Validation("Invalid age".to_string()));
+    }
+
+    let category = if input.age &lt; 13 {
+        "child"
+    } else if input.age &lt; 20 {
+        "teenager"
+    } else {
+        "adult"
+    };
+
+    Ok(AgeOutput {
+        category: category.to_string(),
+    })
+}</code></pre>
+<p><strong>Why</strong>: Extracts complex expression into named variable, improving readability.</p>
+<p><strong>Time</strong>: 15 seconds</p>
+<h3 id="refactoring-2-improve-naming"><a class="header" href="#refactoring-2-improve-naming">Refactoring 2: Improve Naming</a></h3>
+<p>Before:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let x = input.a + input.b;
+    let y = x * 2;
+    let z = y - 10;
+
+    Ok(Output { result: z })
+}</code></pre>
+<p>After:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let sum = input.a + input.b;
+    let doubled = sum * 2;
+    let adjusted = doubled - 10;
+
+    Ok(Output { result: adjusted })
+}</code></pre>
+<p><strong>Why</strong>: Descriptive names make code self-documenting.</p>
+<p><strong>Time</strong>: 20 seconds</p>
+<h3 id="refactoring-3-extract-constant"><a class="header" href="#refactoring-3-extract-constant">Refactoring 3: Extract Constant</a></h3>
+<p>Before:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.temperature &gt; 100 {
+        return Err(Error::Validation("Temperature too high".to_string()));
+    }
+
+    if input.temperature &lt; -273 {
+        return Err(Error::Validation("Temperature too low".to_string()));
+    }
+
+    Ok(TemperatureOutput { celsius: input.temperature })
+}</code></pre>
+<p>After:</p>
+<pre><code class="language-rust">const BOILING_POINT_CELSIUS: f64 = 100.0;
+const ABSOLUTE_ZERO_CELSIUS: f64 = -273.15;
+
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.temperature &gt; BOILING_POINT_CELSIUS {
+        return Err(Error::Validation("Temperature too high".to_string()));
+    }
+
+    if input.temperature &lt; ABSOLUTE_ZERO_CELSIUS {
+        return Err(Error::Validation("Temperature too low".to_string()));
+    }
+
+    Ok(TemperatureOutput { celsius: input.temperature })
+}</code></pre>
+<p><strong>Why</strong>: Magic numbers become named constants with semantic meaning.</p>
+<p><strong>Time</strong>: 25 seconds</p>
+<h3 id="refactoring-4-simplify-conditional"><a class="header" href="#refactoring-4-simplify-conditional">Refactoring 4: Simplify Conditional</a></h3>
+<p>Before:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let is_valid = if input.value &gt;= 0 &amp;&amp; input.value &lt;= 100 {
+        true
+    } else {
+        false
+    };
+
+    if !is_valid {
+        return Err(Error::Validation("Value out of range".to_string()));
+    }
+
+    Ok(Output { value: input.value })
+}</code></pre>
+<p>After:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.value &lt; 0 || input.value &gt; 100 {
+        return Err(Error::Validation("Value out of range".to_string()));
+    }
+
+    Ok(Output { value: input.value })
+}</code></pre>
+<p><strong>Why</strong>: Removes unnecessary boolean variable and inverted logic.</p>
+<p><strong>Time</strong>: 15 seconds</p>
+<h3 id="refactoring-5-use-rust-idioms"><a class="header" href="#refactoring-5-use-rust-idioms">Refactoring 5: Use Rust Idioms</a></h3>
+<p>Before:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let mut result = Vec::new();
+
+    for item in input.items {
+        let processed = item * 2;
+        result.push(processed);
+    }
+
+    Ok(Output { items: result })
+}</code></pre>
+<p>After:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let items = input.items
+        .into_iter()
+        .map(|item| item * 2)
+        .collect();
+
+    Ok(Output { items })
+}</code></pre>
+<p><strong>Why</strong>: Idiomatic Rust uses iterators, which are more concise and often faster.</p>
+<p><strong>Time</strong>: 20 seconds</p>
+<h3 id="refactoring-6-auto-format"><a class="header" href="#refactoring-6-auto-format">Refactoring 6: Auto-Format</a></h3>
+<p>Always run auto-formatter:</p>
+<pre><code class="language-bash">cargo fmt
+</code></pre>
+<p>This instantly fixes:</p>
+<ul>
+<li>Indentation</li>
+<li>Spacing</li>
+<li>Line breaks</li>
+<li>Brace alignment</li>
+</ul>
+<p><strong>Time</strong>: 5 seconds (automated)</p>
+<h2 id="refactorings-that-dont-fit-in-1-minute"><a class="header" href="#refactorings-that-dont-fit-in-1-minute">Refactorings That DON’T Fit in 1 Minute</a></h2>
+<p>Some refactorings are too complex for the 1-minute window. Defer these to dedicated refactoring cycles:</p>
+<h3 id="extract-function"><a class="header" href="#extract-function">Extract Function</a></h3>
+<pre><code class="language-rust">// Complex function that needs extraction
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // 50 lines of complex logic
+    // Would take 3-5 minutes to extract safely
+}</code></pre>
+<p><strong>Why defer</strong>: Extracting requires:</p>
+<ul>
+<li>Identifying the right boundary</li>
+<li>Determining parameters</li>
+<li>Updating all call sites</li>
+<li>Writing tests for new function</li>
+</ul>
+<p>This takes &gt; 1 minute. Create a dedicated refactoring cycle.</p>
+<h3 id="restructure-data"><a class="header" href="#restructure-data">Restructure Data</a></h3>
+<pre><code class="language-rust">// Changing struct layout
+pub struct User {
+    pub name: String,
+    pub age: i32,
+}
+
+// Want to change to:
+pub struct User {
+    pub profile: Profile,
+}
+
+pub struct Profile {
+    pub name: String,
+    pub age: i32,
+}</code></pre>
+<p><strong>Why defer</strong>: Ripple effects across codebase. Needs multiple cycles.</p>
+<h3 id="change-architecture"><a class="header" href="#change-architecture">Change Architecture</a></h3>
+<pre><code class="language-rust">// Moving from direct DB access to repository pattern
+// This touches many files and requires careful coordination</code></pre>
+<p><strong>Why defer</strong>: Architectural changes need planning and multiple refactoring cycles.</p>
+<h2 id="the-refactoring-checklist"><a class="header" href="#the-refactoring-checklist">The Refactoring Checklist</a></h2>
+<p>Before finishing REFACTOR phase:</p>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Code formatted (<code>cargo fmt</code>)</li>
+<li><input disabled="" type="checkbox"/>
+No clippy warnings (<code>cargo clippy</code>)</li>
+<li><input disabled="" type="checkbox"/>
+No duplication within function</li>
+<li><input disabled="" type="checkbox"/>
+Variable names are descriptive</li>
+<li><input disabled="" type="checkbox"/>
+Constants extracted for magic numbers</li>
+<li><input disabled="" type="checkbox"/>
+All tests still pass (<code>cargo test</code>)</li>
+<li><input disabled="" type="checkbox"/>
+Timer shows less than 5:00 elapsed</li>
+</ul>
+<h2 id="example-complete-refactor-phase"><a class="header" href="#example-complete-refactor-phase">Example: Complete REFACTOR Phase</a></h2>
+<p>Let’s refactor our division handler.</p>
+<h3 id="minute-400---begin-refactor"><a class="header" href="#minute-400---begin-refactor">Minute 4:00 - Begin REFACTOR</a></h3>
+<p>Current code (from GREEN phase):</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.denominator == 0.0 {
+        return Err(Error::Validation(
+            "Division by zero: denominator must be non-zero".to_string()
+        ));
+    }
+
+    Ok(DivideOutput {
+        quotient: input.numerator / input.denominator,
+    })
+}</code></pre>
+<h3 id="minute-410---identify-improvements"><a class="header" href="#minute-410---identify-improvements">Minute 4:10 - Identify Improvements</a></h3>
+<p>Scan for issues:</p>
+<ul>
+<li>✓ No duplication</li>
+<li>✓ Names are clear</li>
+<li>✓ Logic is simple</li>
+<li>✓ Error message is helpful</li>
+</ul>
+<p>This code is already clean! No refactoring needed.</p>
+<h3 id="minute-415---run-formatter-and-clippy"><a class="header" href="#minute-415---run-formatter-and-clippy">Minute 4:15 - Run Formatter and Clippy</a></h3>
+<pre><code class="language-bash">cargo fmt
+cargo clippy --quiet
+</code></pre>
+<p>Output: No warnings.</p>
+<h3 id="minute-420---verify-tests-still-pass"><a class="header" href="#minute-420---verify-tests-still-pass">Minute 4:20 - Verify Tests Still Pass</a></h3>
+<pre><code class="language-bash">cargo test --lib --quiet
+</code></pre>
+<p>All tests pass.</p>
+<h3 id="minute-425---refactor-complete"><a class="header" href="#minute-425---refactor-complete">Minute 4:25 - REFACTOR Complete</a></h3>
+<p>Code is clean, tests pass, ready for COMMIT.</p>
+<h2 id="when-code-needs-more-refactoring"><a class="header" href="#when-code-needs-more-refactoring">When Code Needs More Refactoring</a></h2>
+<p>Sometimes GREEN code is messy enough that 1 minute isn’t enough:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    let x = input.a;
+    let y = input.b;
+    let z = input.c;
+    let q = x + y * z - (x / y) + (z * x);
+    let r = q * 2;
+    let s = r - 10;
+    let t = s / 2;
+    let u = t + q;
+    let v = u * s;
+
+    Ok(Output { result: v })
+}</code></pre>
+<p>You have two options:</p>
+<h3 id="option-1-partial-refactor"><a class="header" href="#option-1-partial-refactor">Option 1: Partial Refactor</a></h3>
+<p>Do what you can in 1 minute:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Improved names (30 seconds)
+    let a = input.a;
+    let b = input.b;
+    let c = input.c;
+
+    let complex_calc = a + b * c - (a / b) + (c * a);
+    let doubled = complex_calc * 2;
+    let adjusted = doubled - 10;
+    let halved = adjusted / 2;
+    let combined = halved + complex_calc;
+    let final_result = combined * adjusted;
+
+    Ok(Output { result: final_result })
+}</code></pre>
+<p>Then create a TODO for deeper refactoring:</p>
+<pre><code class="language-rust">// TODO(REFACTOR): Extract calculation logic into separate functions
+// This calculation is complex and would benefit from decomposition
+// Estimated effort: 2-3 TDD cycles</code></pre>
+<h3 id="option-2-commit-then-refactor"><a class="header" href="#option-2-commit-then-refactor">Option 2: COMMIT Then Refactor</a></h3>
+<p>If code is working but ugly:</p>
+<ol>
+<li>COMMIT the working code</li>
+<li>Start a new cycle dedicated to refactoring</li>
+<li>Use the same tests as safety net</li>
+</ol>
+<p>This is better than extending the cycle to 7-8 minutes.</p>
+<h2 id="refactoring-without-tests"><a class="header" href="#refactoring-without-tests">Refactoring Without Tests</a></h2>
+<p>Never refactor code without tests. If code lacks tests:</p>
+<ol>
+<li><strong>Stop</strong>: Don’t refactor</li>
+<li><strong>Add tests first</strong>: Write tests in separate cycles</li>
+<li><strong>Then refactor</strong>: Once tests exist, refactor safely</li>
+</ol>
+<p>Refactoring without tests is reckless. You can’t verify behavior stays unchanged.</p>
+<h2 id="the-safety-of-small-refactorings"><a class="header" href="#the-safety-of-small-refactorings">The Safety of Small Refactorings</a></h2>
+<p>Why 1-minute refactorings are safe:</p>
+<p><strong>Small Changes</strong>: Each refactoring is tiny. Easy to understand, easy to verify.</p>
+<p><strong>Frequent Testing</strong>: Run tests after every refactoring. Catch breaks immediately.</p>
+<p><strong>Easy Revert</strong>: If refactoring breaks tests, revert is fast (Git history is &lt; 5 minutes old).</p>
+<p><strong>Muscle Memory</strong>: After 50 cycles, these refactorings become automatic.</p>
+<h2 id="automated-refactoring-tools"><a class="header" href="#automated-refactoring-tools">Automated Refactoring Tools</a></h2>
+<p>Rust-analyzer provides automated refactorings:</p>
+<ul>
+<li><strong>Rename</strong>: Rename variable/function (safe, updates all references)</li>
+<li><strong>Extract variable</strong>: Pull expression into variable</li>
+<li><strong>Inline variable</strong>: Opposite of extract</li>
+<li><strong>Change signature</strong>: Modify function parameters</li>
+</ul>
+<p>These are safe because the tool maintains correctness. Use them liberally in REFACTOR.</p>
+<pre><code class="language-rust">// In VS Code with rust-analyzer:
+// 1. Place cursor on variable name
+// 2. Press F2 (rename)
+// 3. Type new name
+// 4. Press Enter
+// All references updated automatically</code></pre>
+<p><strong>Time</strong>: 5-10 seconds per refactoring</p>
+<h2 id="refactor-anti-patterns"><a class="header" href="#refactor-anti-patterns">REFACTOR Anti-Patterns</a></h2>
+<h3 id="anti-pattern-1-refactoring-during-green"><a class="header" href="#anti-pattern-1-refactoring-during-green">Anti-Pattern 1: Refactoring During GREEN</a></h3>
+<pre><code class="language-rust">// BAD - Refactoring while implementing
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Writing implementation...
+    let result = calculate(input);
+
+    // Oh, let me make this name better...
+    // And extract this constant...
+    // And simplify this expression...
+}</code></pre>
+<p><strong>Why it’s bad</strong>: GREEN and REFACTOR serve different purposes. Mixing them extends cycle time and confuses goals.</p>
+<p><strong>Fix</strong>: Resist the urge to refactor during GREEN. Write minimum code, even if ugly. Clean it in REFACTOR.</p>
+<h3 id="anti-pattern-2-speculative-refactoring"><a class="header" href="#anti-pattern-2-speculative-refactoring">Anti-Pattern 2: Speculative Refactoring</a></h3>
+<pre><code class="language-rust">// BAD - Refactoring for "future needs"
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Current need: simple addition
+    // But "maybe we'll need subtraction later", so...
+
+    let calculator = GenericCalculator::new();
+    calculator.register_operation("add", Box::new(AddOperation));
+    // ... 20 more lines of infrastructure
+}</code></pre>
+<p><strong>Why it’s bad</strong>: YAGNI (You Aren’t Gonna Need It). Speculative refactoring adds complexity for uncertain future needs.</p>
+<p><strong>Fix</strong>: Refactor for current needs only. When subtraction is actually needed, refactor then.</p>
+<h3 id="anti-pattern-3-breaking-tests"><a class="header" href="#anti-pattern-3-breaking-tests">Anti-Pattern 3: Breaking Tests</a></h3>
+<pre><code class="language-rust">// REFACTOR starts
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    // Some refactoring...
+}
+
+// Run tests
+cargo test
+<span class="boring">test test_calculate ... FAILED
+</span>
+// Continue anyway, assuming I'll fix it later</code></pre>
+<p><strong>Why it’s bad</strong>: If REFACTOR breaks tests, you’ve changed behavior. That’s a bug, not a refactoring.</p>
+<p><strong>Fix</strong>: If tests break, revert immediately:</p>
+<pre><code class="language-bash">git checkout .
+</code></pre>
+<p>Investigate why the refactoring broke tests. Either:</p>
+<ul>
+<li>The refactoring was wrong (fix it)</li>
+<li>The test was wrong (fix it in a separate cycle)</li>
+</ul>
+<h2 id="measuring-refactoring-effectiveness"><a class="header" href="#measuring-refactoring-effectiveness">Measuring Refactoring Effectiveness</a></h2>
+<p>Track these metrics:</p>
+<p><strong>Cyclomatic Complexity</strong>: Should decrease or stay flat after refactoring</p>
+<pre><code class="language-bash">pmat analyze complexity --max 20
+# Before: function_name: 15
+# After:  function_name: 12
+</code></pre>
+<p><strong>Line Count</strong>: Should decrease or stay flat (not always, but often)</p>
+<p><strong>Clippy Warnings</strong>: Should decrease to zero</p>
+<pre><code class="language-bash">cargo clippy
+# Before: 3 warnings
+# After:  0 warnings
+</code></pre>
+<h2 id="the-refactoring-habit"><a class="header" href="#the-refactoring-habit">The Refactoring Habit</a></h2>
+<p>After 30 days of EXTREME TDD, refactoring becomes automatic:</p>
+<p><strong>Minute 4:00</strong>: Timer hits, you transition to REFACTOR without thinking</p>
+<p><strong>Scan</strong>: Eyes automatically scan for duplication, bad names, complexity</p>
+<p><strong>Refactor</strong>: Fingers execute refactorings via muscle memory</p>
+<p><strong>Test</strong>: Tests run automatically (in watch mode)</p>
+<p><strong>Done</strong>: Clean code, passing tests, ready to commit</p>
+<p>This takes 30-40 seconds after the habit forms.</p>
+<h2 id="refactor-success-metrics"><a class="header" href="#refactor-success-metrics">REFACTOR Success Metrics</a></h2>
+<p>Track these to improve:</p>
+<p><strong>Time in REFACTOR</strong>: Average time spent refactoring</p>
+<ul>
+<li>Target: &lt; 1:00</li>
+<li>Excellent: &lt; 0:45</li>
+<li>Expert: &lt; 0:30</li>
+</ul>
+<p><strong>Refactorings Per Cycle</strong>: Average number of refactorings applied</p>
+<ul>
+<li>Target: 1-2</li>
+<li>Excellent: 2-3</li>
+<li>Expert: 3-4 (fast, automated refactorings)</li>
+</ul>
+<p><strong>Test Breaks During REFACTOR</strong>: Tests broken by refactoring</p>
+<ul>
+<li>Target: &lt; 5%</li>
+<li>Excellent: &lt; 2%</li>
+<li>Expert: &lt; 1%</li>
+</ul>
+<h2 id="when-to-skip-refactor"><a class="header" href="#when-to-skip-refactor">When to Skip REFACTOR</a></h2>
+<p>Sometimes code is clean enough after GREEN:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    Ok(AddOutput {
+        sum: input.a + input.b,
+    })
+}</code></pre>
+<p>This is already clean. No refactoring needed.</p>
+<p><strong>Still run the checklist</strong>:</p>
+<ul>
+<li>Run formatter</li>
+<li>Run clippy</li>
+<li>Run tests</li>
+</ul>
+<p>But don’t force refactoring for the sake of it.</p>
+<h2 id="deep-refactoring-cycles"><a class="header" href="#deep-refactoring-cycles">Deep Refactoring Cycles</a></h2>
+<p>For complex refactorings (extract function, change architecture), dedicate full cycles:</p>
+<p><strong>RED</strong>: Write test proving current behavior
+<strong>GREEN</strong>: No changes (test already passes)
+<strong>REFACTOR</strong>: Apply complex refactoring
+<strong>COMMIT</strong>: Verify tests still pass, commit</p>
+<p>This uses the 5-minute cycle structure but focuses entirely on refactoring.</p>
+<h2 id="the-psychology-of-refactor"><a class="header" href="#the-psychology-of-refactor">The Psychology of REFACTOR</a></h2>
+<p><strong>Pride</strong>: Refactoring is satisfying. Taking messy code and making it clean feels good.</p>
+<p><strong>Safety</strong>: Tests provide confidence. Refactor boldly knowing tests catch mistakes.</p>
+<p><strong>Discipline</strong>: The 1-minute limit prevents perfectionism. “Good enough” beats “perfect but incomplete.”</p>
+<p><strong>Momentum</strong>: Clean code is easier to build upon. Refactoring accelerates future cycles.</p>
+<h2 id="next-phase-commit"><a class="header" href="#next-phase-commit">Next Phase: COMMIT</a></h2>
+<p>You have clean, tested code. Now it’s time for the quality gates to decide: COMMIT or RESET?</p>
+<p>This final phase determines if your cycle’s work enters the codebase or gets discarded.</p>
+<hr />
+<p>Previous: <a href="ch07-02-green.html">GREEN: Minimum Code</a>
+Next: <a href="ch07-04-commit.html">COMMIT: Quality Gates</a></p>
 
                     </main>
 

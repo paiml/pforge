@@ -158,8 +158,386 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch02-03-testingmd"><a class="header" href="#ch02-03-testingmd">ch02-03-testing.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="testing-your-server"><a class="header" href="#testing-your-server">Testing Your Server</a></h1>
+<p>Now that you have a working server, let’s test it thoroughly. pforge embraces EXTREME TDD, so testing is a first-class citizen.</p>
+<h2 id="unit-testing-handlers"><a class="header" href="#unit-testing-handlers">Unit Testing Handlers</a></h2>
+<p>Start with the most fundamental tests - your handler logic.</p>
+<h3 id="write-your-first-test"><a class="header" href="#write-your-first-test">Write Your First Test</a></h3>
+<p>Open <code>src/handlers/greet.rs</code> and add tests at the bottom:</p>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_greet_basic() {
+        let handler = GreetHandler;
+        let input = GreetInput {
+            name: "World".to_string(),
+        };
+
+        let result = handler.handle(input).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert_eq!(output.message, "Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn test_greet_different_name() {
+        let handler = GreetHandler;
+        let input = GreetInput {
+            name: "Alice".to_string(),
+        };
+
+        let result = handler.handle(input).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().message, "Hello, Alice!");
+    }
+
+    #[tokio::test]
+    async fn test_greet_empty_name() {
+        let handler = GreetHandler;
+        let input = GreetInput {
+            name: "".to_string(),
+        };
+
+        let result = handler.handle(input).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().message, "Hello, !");
+    }
+}</code></pre>
+<h3 id="run-the-tests"><a class="header" href="#run-the-tests">Run the Tests</a></h3>
+<p>Execute your test suite:</p>
+<pre><code class="language-bash">cargo test
+</code></pre>
+<p>Expected output:</p>
+<pre><code>   Compiling hello-server v0.1.0
+    Finished test [unoptimized + debuginfo] target(s) in 2.34s
+     Running unittests src/lib.rs
+
+running 3 tests
+test handlers::greet::tests::test_greet_basic ... ok
+test handlers::greet::tests::test_greet_different_name ... ok
+test handlers::greet::tests::test_greet_empty_name ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+</code></pre>
+<p>All tests pass! Each test runs in microseconds.</p>
+<h3 id="test-best-practices"><a class="header" href="#test-best-practices">Test Best Practices</a></h3>
+<p>Following EXTREME TDD principles:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_should_handle_unicode_names() {
+    // Arrange
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "世界".to_string(),  // "World" in Japanese
+    };
+
+    // Act
+    let result = handler.handle(input).await;
+
+    // Assert
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().message, "Hello, 世界!");
+}</code></pre>
+<p>Structure tests with Arrange-Act-Assert:</p>
+<ol>
+<li><strong>Arrange</strong>: Set up test data</li>
+<li><strong>Act</strong>: Execute the function</li>
+<li><strong>Assert</strong>: Verify results</li>
+</ol>
+<h2 id="integration-testing"><a class="header" href="#integration-testing">Integration Testing</a></h2>
+<p>Integration tests verify the entire server stack, not just individual handlers.</p>
+<h3 id="create-integration-tests"><a class="header" href="#create-integration-tests">Create Integration Tests</a></h3>
+<p>Create <code>tests/integration_test.rs</code>:</p>
+<pre><code class="language-rust">use hello_server::handlers::greet::{GreetHandler, GreetInput};
+use pforge_runtime::Handler;
+
+#[tokio::test]
+async fn test_handler_integration() {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "Integration Test".to_string(),
+    };
+
+    let output = handler.handle(input).await.expect("handler failed");
+    assert!(output.message.contains("Integration Test"));
+}</code></pre>
+<p>Run integration tests:</p>
+<pre><code class="language-bash">cargo test --test integration_test
+</code></pre>
+<p>Integration tests live in the <code>tests/</code> directory and have full access to your library.</p>
+<h2 id="testing-with-mcp-clients"><a class="header" href="#testing-with-mcp-clients">Testing with MCP Clients</a></h2>
+<p>To test the full MCP protocol, use an MCP client.</p>
+<h3 id="manual-testing-with-stdio"><a class="header" href="#manual-testing-with-stdio">Manual Testing with stdio</a></h3>
+<p>Start your server:</p>
+<pre><code class="language-bash">pforge serve
+</code></pre>
+<p>In another terminal, use an MCP inspector tool or send raw JSON-RPC messages:</p>
+<pre><code class="language-bash">echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | pforge serve
+</code></pre>
+<p>Expected response:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tools": [
+      {
+        "name": "greet",
+        "description": "Greet a person by name",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the person to greet"
+            }
+          },
+          "required": ["name"]
+        }
+      }
+    ]
+  }
+}
+</code></pre>
+<h3 id="call-a-tool"><a class="header" href="#call-a-tool">Call a Tool</a></h3>
+<pre><code class="language-bash">echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"greet","arguments":{"name":"World"}}}' | pforge serve
+</code></pre>
+<p>Response:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"message\":\"Hello, World!\"}"
+      }
+    ]
+  }
+}
+</code></pre>
+<h2 id="test-coverage"><a class="header" href="#test-coverage">Test Coverage</a></h2>
+<p>Measure your test coverage with <code>cargo-tarpaulin</code>:</p>
+<pre><code class="language-bash"># Install tarpaulin (Linux only)
+cargo install cargo-tarpaulin
+
+# Run coverage analysis
+cargo tarpaulin --out Html
+</code></pre>
+<p>This generates <code>tarpaulin-report.html</code> showing line-by-line coverage.</p>
+<p>pforge’s quality gates enforce 80% minimum coverage. Check with:</p>
+<pre><code class="language-bash">cargo tarpaulin --out Json | jq '.files | to_entries | map(.value.coverage) | add / length'
+</code></pre>
+<p>Target: ≥ 0.80 (80%)</p>
+<h2 id="watch-mode-for-tdd"><a class="header" href="#watch-mode-for-tdd">Watch Mode for TDD</a></h2>
+<p>For rapid RED-GREEN-REFACTOR cycles:</p>
+<pre><code class="language-bash">cargo watch -x test
+</code></pre>
+<p>This runs tests automatically when files change. Perfect for EXTREME TDD’s 5-minute cycles.</p>
+<p>Advanced watch mode:</p>
+<pre><code class="language-bash">cargo watch -x 'test --lib --quiet' -x 'clippy --quiet'
+</code></pre>
+<p>Runs tests AND linting on every change.</p>
+<h2 id="debugging-tests"><a class="header" href="#debugging-tests">Debugging Tests</a></h2>
+<h3 id="enable-logging"><a class="header" href="#enable-logging">Enable Logging</a></h3>
+<p>Add logging to your handler:</p>
+<pre><code class="language-rust">use tracing::info;
+
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    info!("Handling greet request for: {}", input.name);
+    Ok(GreetOutput {
+        message: format!("Hello, {}!", input.name),
+    })
+}</code></pre>
+<p>Run tests with logging:</p>
+<pre><code class="language-bash">RUST_LOG=debug cargo test -- --nocapture
+</code></pre>
+<h3 id="debug-individual-tests"><a class="header" href="#debug-individual-tests">Debug Individual Tests</a></h3>
+<p>Run a single test:</p>
+<pre><code class="language-bash">cargo test test_greet_basic
+</code></pre>
+<p>Run with output:</p>
+<pre><code class="language-bash">cargo test test_greet_basic -- --nocapture --exact
+</code></pre>
+<h2 id="error-handling-tests"><a class="header" href="#error-handling-tests">Error Handling Tests</a></h2>
+<p>Test error paths to ensure robustness:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_validation_error() {
+    let handler = GreetHandler;
+    // Simulate invalid input by testing edge cases
+    let input = GreetInput {
+        name: "A".repeat(10000),  // Very long name
+    };
+
+    let result = handler.handle(input).await;
+    // Depending on your validation, this might error or succeed
+    assert!(result.is_ok() || result.is_err());
+}</code></pre>
+<p>For handlers that can fail:</p>
+<pre><code class="language-rust">use pforge_runtime::Error;
+
+async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+    if input.name.is_empty() {
+        return Err(Error::Validation("Name cannot be empty".to_string()));
+    }
+    Ok(GreetOutput {
+        message: format!("Hello, {}!", input.name),
+    })
+}
+
+#[tokio::test]
+async fn test_empty_name_validation() {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "".to_string(),
+    };
+
+    let result = handler.handle(input).await;
+    assert!(result.is_err());
+
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("empty"));
+}</code></pre>
+<h2 id="performance-testing"><a class="header" href="#performance-testing">Performance Testing</a></h2>
+<p>Benchmark your handlers:</p>
+<pre><code class="language-bash">cargo bench
+</code></pre>
+<p>For quick performance checks:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_handler_performance() {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: "Benchmark".to_string(),
+    };
+
+    let start = std::time::Instant::now();
+
+    for _ in 0..10_000 {
+        let _ = handler.handle(input.clone()).await;
+    }
+
+    let elapsed = start.elapsed();
+    println!("10,000 calls took: {:?}", elapsed);
+
+    // Should be under 10ms for 10K simple operations
+    assert!(elapsed.as_millis() &lt; 10);
+}</code></pre>
+<p>pforge handlers should dispatch in &lt;1 microsecond each.</p>
+<h2 id="quality-gates"><a class="header" href="#quality-gates">Quality Gates</a></h2>
+<p>Run all quality checks before committing:</p>
+<pre><code class="language-bash"># Format check
+cargo fmt --check
+
+# Linting
+cargo clippy -- -D warnings
+
+# Tests
+cargo test --all
+
+# Coverage (Linux)
+cargo tarpaulin --out Json
+
+# Full quality gate
+make quality-gate
+</code></pre>
+<p>The <code>make quality-gate</code> command runs:</p>
+<ol>
+<li>Code formatting validation</li>
+<li>Clippy linting (all warnings as errors)</li>
+<li>All tests (unit + integration)</li>
+<li>Coverage analysis (≥80%)</li>
+<li>Complexity checks (≤20 per function)</li>
+<li>Technical debt grade (≥75)</li>
+</ol>
+<p>Any failure blocks commits when using pre-commit hooks.</p>
+<h2 id="common-testing-patterns"><a class="header" href="#common-testing-patterns">Common Testing Patterns</a></h2>
+<h3 id="test-fixtures"><a class="header" href="#test-fixtures">Test Fixtures</a></h3>
+<p>Reuse test data:</p>
+<pre><code class="language-rust">fn sample_input() -&gt; GreetInput {
+    GreetInput {
+        name: "Test".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn test_with_fixture() {
+    let handler = GreetHandler;
+    let input = sample_input();
+    let result = handler.handle(input).await;
+    assert!(result.is_ok());
+}</code></pre>
+<h3 id="parameterized-tests"><a class="header" href="#parameterized-tests">Parameterized Tests</a></h3>
+<p>Test multiple cases:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_greet_multiple_names() {
+    let handler = GreetHandler;
+    let test_cases = vec!["Alice", "Bob", "Charlie", "世界"];
+
+    for name in test_cases {
+        let input = GreetInput {
+            name: name.to_string(),
+        };
+        let result = handler.handle(input).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().message.contains(name));
+    }
+}</code></pre>
+<h3 id="async-test-helpers"><a class="header" href="#async-test-helpers">Async Test Helpers</a></h3>
+<p>Extract common async patterns:</p>
+<pre><code class="language-rust">async fn run_handler(name: &amp;str) -&gt; String {
+    let handler = GreetHandler;
+    let input = GreetInput {
+        name: name.to_string(),
+    };
+    handler.handle(input).await.unwrap().message
+}
+
+#[tokio::test]
+async fn test_with_helper() {
+    let message = run_handler("Helper").await;
+    assert_eq!(message, "Hello, Helper!");
+}</code></pre>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="tests-hang"><a class="header" href="#tests-hang">Tests Hang</a></h3>
+<p>If tests never complete:</p>
+<pre><code class="language-bash"># Run with timeout
+cargo test -- --test-threads=1 --nocapture
+
+# Check for deadlocks
+RUST_LOG=trace cargo test
+</code></pre>
+<h3 id="compilation-errors"><a class="header" href="#compilation-errors">Compilation Errors</a></h3>
+<pre><code class="language-bash"># Clean and rebuild
+cargo clean
+cargo test
+
+# Update dependencies
+cargo update
+</code></pre>
+<h3 id="test-failures"><a class="header" href="#test-failures">Test Failures</a></h3>
+<p>Use <code>--nocapture</code> to see println! output:</p>
+<pre><code class="language-bash">cargo test -- --nocapture
+</code></pre>
+<p>Add debug output:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_debug() {
+    let result = handler.handle(input).await;
+    dbg!(&amp;result);  // Print detailed debug info
+    assert!(result.is_ok());
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>You now have a fully tested MCP server. Congratulations!</p>
+<p>In the next chapters, we’ll explore:</p>
+<ul>
+<li>Advanced handler types (CLI, HTTP, Pipeline)</li>
+<li>State management and persistence</li>
+<li>Error handling strategies</li>
+<li>Production deployment</li>
+</ul>
+<p>Your foundation in EXTREME TDD will serve you well as we tackle more complex topics.</p>
+<hr />
+<p>Next: <a href="ch03-00-calculator.html">Chapter 3: Understanding pforge Architecture</a></p>
 
                     </main>
 

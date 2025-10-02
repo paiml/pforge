@@ -158,8 +158,342 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch02-02-first-servermd"><a class="header" href="#ch02-02-first-servermd">ch02-02-first-server.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="your-first-server"><a class="header" href="#your-first-server">Your First Server</a></h1>
+<p>Let’s build your first MCP server using pforge. We’ll create a simple greeting server that demonstrates the core concepts.</p>
+<h2 id="scaffold-a-new-project"><a class="header" href="#scaffold-a-new-project">Scaffold a New Project</a></h2>
+<p>Create a new pforge project with the <code>new</code> command:</p>
+<pre><code class="language-bash">pforge new hello-server
+cd hello-server
+</code></pre>
+<p>This creates a complete project structure:</p>
+<pre><code>hello-server/
+├── pforge.yaml          # Server configuration
+├── Cargo.toml           # Rust dependencies
+├── .gitignore           # Git ignore rules
+└── src/
+    ├── lib.rs           # Library root
+    └── handlers/
+        ├── mod.rs       # Handler module exports
+        └── greet.rs     # Example greeting handler
+</code></pre>
+<p>The scaffolded project includes:</p>
+<ul>
+<li>A working example handler</li>
+<li>Pre-configured dependencies</li>
+<li>Sensible defaults</li>
+<li>Git integration</li>
+</ul>
+<h2 id="explore-the-configuration"><a class="header" href="#explore-the-configuration">Explore the Configuration</a></h2>
+<p>Open <code>pforge.yaml</code> to see the server configuration:</p>
+<pre><code class="language-yaml">forge:
+  name: hello-server
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: native
+    name: greet
+    description: "Greet a person by name"
+    handler:
+      path: handlers::greet::say_hello
+    params:
+      name:
+        type: string
+        required: true
+        description: "Name of the person to greet"
+</code></pre>
+<p>Let’s break this down:</p>
+<h3 id="the-forge-section"><a class="header" href="#the-forge-section">The <code>forge</code> Section</a></h3>
+<pre><code class="language-yaml">forge:
+  name: hello-server      # Server identifier
+  version: 0.1.0          # Semantic version
+  transport: stdio        # Communication channel (stdio, sse, websocket)
+</code></pre>
+<p>The <code>forge</code> section defines server metadata. The <code>stdio</code> transport means the server communicates via standard input/output, perfect for local development.</p>
+<h3 id="the-tools-section"><a class="header" href="#the-tools-section">The <code>tools</code> Section</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: native                           # Handler type
+    name: greet                            # Tool identifier
+    description: "Greet a person by name"  # Human-readable description
+    handler:
+      path: handlers::greet::say_hello     # Rust function path
+    params:
+      name:                                # Parameter name
+        type: string                       # Data type
+        required: true                     # Validation rule
+        description: "Name of the person to greet"
+</code></pre>
+<p>Each tool defines:</p>
+<ul>
+<li><strong>type</strong>: How the tool executes (native, cli, http, pipeline)</li>
+<li><strong>name</strong>: Unique identifier for the tool</li>
+<li><strong>description</strong>: What the tool does</li>
+<li><strong>handler</strong>: Where to find the implementation</li>
+<li><strong>params</strong>: Input schema with type validation</li>
+</ul>
+<h2 id="understand-the-handler"><a class="header" href="#understand-the-handler">Understand the Handler</a></h2>
+<p>Open <code>src/handlers/greet.rs</code>:</p>
+<pre><code class="language-rust">use pforge_runtime::{Handler, Result};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GreetOutput {
+    pub message: String,
+}
+
+pub struct GreetHandler;
+
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("Hello, {}!", input.name),
+        })
+    }
+}
+
+// Alias for YAML reference
+pub use GreetHandler as say_hello;</code></pre>
+<p>Let’s examine each component:</p>
+<h3 id="input-type"><a class="header" href="#input-type">Input Type</a></h3>
+<pre><code class="language-rust">#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    pub name: String,
+}</code></pre>
+<ul>
+<li><code>Deserialize</code>: Converts JSON to Rust struct</li>
+<li><code>JsonSchema</code>: Auto-generates schema for validation</li>
+<li>Matches the <code>params</code> in <code>pforge.yaml</code></li>
+</ul>
+<h3 id="output-type"><a class="header" href="#output-type">Output Type</a></h3>
+<pre><code class="language-rust">#[derive(Debug, Serialize, JsonSchema)]
+pub struct GreetOutput {
+    pub message: String,
+}</code></pre>
+<ul>
+<li><code>Serialize</code>: Converts Rust struct to JSON</li>
+<li><code>JsonSchema</code>: Documents the response format</li>
+<li>Type-safe response structure</li>
+</ul>
+<h3 id="handler-implementation"><a class="header" href="#handler-implementation">Handler Implementation</a></h3>
+<pre><code class="language-rust">#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("Hello, {}!", input.name),
+        })
+    }
+}</code></pre>
+<p>The <code>Handler</code> trait requires:</p>
+<ul>
+<li><strong>Input</strong>: Request parameters</li>
+<li><strong>Output</strong>: Response data</li>
+<li><strong>Error</strong>: Error type (usually <code>pforge_runtime::Error</code>)</li>
+<li><strong>handle()</strong>: Async function with your logic</li>
+</ul>
+<h3 id="export-alias"><a class="header" href="#export-alias">Export Alias</a></h3>
+<pre><code class="language-rust">pub use GreetHandler as say_hello;</code></pre>
+<p>This creates an alias matching the YAML <code>handler.path: handlers::greet::say_hello</code>.</p>
+<h2 id="build-the-project"><a class="header" href="#build-the-project">Build the Project</a></h2>
+<p>Compile your server:</p>
+<pre><code class="language-bash">cargo build
+</code></pre>
+<p>Expected output:</p>
+<pre><code>   Compiling pforge-runtime v0.1.0
+   Compiling hello-server v0.1.0
+    Finished dev [unoptimized + debuginfo] target(s) in 12.34s
+</code></pre>
+<p>For production builds:</p>
+<pre><code class="language-bash">cargo build --release
+</code></pre>
+<p>This enables optimizations for maximum performance.</p>
+<h2 id="run-the-server"><a class="header" href="#run-the-server">Run the Server</a></h2>
+<p>Start your server:</p>
+<pre><code class="language-bash">pforge serve
+</code></pre>
+<p>You should see:</p>
+<pre><code>[INFO] Starting hello-server v0.1.0
+[INFO] Transport: stdio
+[INFO] Registered tools: greet
+[INFO] Server ready
+</code></pre>
+<p>The server is now listening on stdin/stdout for MCP protocol messages.</p>
+<p>To stop the server, press <code>Ctrl+C</code>.</p>
+<h2 id="customize-your-server"><a class="header" href="#customize-your-server">Customize Your Server</a></h2>
+<p>Let’s add a custom greeting parameter. Update <code>pforge.yaml</code>:</p>
+<pre><code class="language-yaml">tools:
+  - type: native
+    name: greet
+    description: "Greet a person by name"
+    handler:
+      path: handlers::greet::say_hello
+    params:
+      name:
+        type: string
+        required: true
+        description: "Name of the person to greet"
+      greeting:
+        type: string
+        required: false
+        default: "Hello"
+        description: "Custom greeting word"
+</code></pre>
+<p>Update <code>src/handlers/greet.rs</code>:</p>
+<pre><code class="language-rust">#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GreetInput {
+    pub name: String,
+    #[serde(default = "default_greeting")]
+    pub greeting: String,
+}
+
+fn default_greeting() -&gt; String {
+    "Hello".to_string()
+}
+
+#[async_trait::async_trait]
+impl Handler for GreetHandler {
+    type Input = GreetInput;
+    type Output = GreetOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(GreetOutput {
+            message: format!("{}, {}!", input.greeting, input.name),
+        })
+    }
+}</code></pre>
+<p>Rebuild and test:</p>
+<pre><code class="language-bash">cargo build
+pforge serve
+</code></pre>
+<p>Now your server accepts both <code>name</code> and an optional <code>greeting</code> parameter.</p>
+<h2 id="project-structure-deep-dive"><a class="header" href="#project-structure-deep-dive">Project Structure Deep Dive</a></h2>
+<h3 id="cargotoml"><a class="header" href="#cargotoml"><code>Cargo.toml</code></a></h3>
+<p>Generated dependencies:</p>
+<pre><code class="language-toml">[package]
+name = "hello-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pforge-runtime = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = { version = "0.8", features = ["derive"] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+</code></pre>
+<p>All dependencies are added automatically by <code>pforge new</code>.</p>
+<h3 id="srclibrs"><a class="header" href="#srclibrs"><code>src/lib.rs</code></a></h3>
+<p>Module structure:</p>
+<pre><code class="language-rust">pub mod handlers;</code></pre>
+<p>This exports your handlers so pforge can find them.</p>
+<h3 id="gitignore"><a class="header" href="#gitignore"><code>.gitignore</code></a></h3>
+<p>Common Rust ignores:</p>
+<pre><code>/target
+Cargo.lock
+*.swp
+.DS_Store
+</code></pre>
+<p>Ready for version control from day one.</p>
+<h2 id="common-customizations"><a class="header" href="#common-customizations">Common Customizations</a></h2>
+<h3 id="add-a-new-tool"><a class="header" href="#add-a-new-tool">Add a New Tool</a></h3>
+<p>Edit <code>pforge.yaml</code>:</p>
+<pre><code class="language-yaml">tools:
+  - type: native
+    name: greet
+    # ... existing greet tool
+
+  - type: native
+    name: farewell
+    description: "Say goodbye"
+    handler:
+      path: handlers::farewell_handler
+    params:
+      name:
+        type: string
+        required: true
+</code></pre>
+<p>Create <code>src/handlers/farewell.rs</code>:</p>
+<pre><code class="language-rust">use pforge_runtime::{Handler, Result};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FarewellInput {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct FarewellOutput {
+    pub message: String,
+}
+
+pub struct FarewellHandler;
+
+#[async_trait::async_trait]
+impl Handler for FarewellHandler {
+    type Input = FarewellInput;
+    type Output = FarewellOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(FarewellOutput {
+            message: format!("Goodbye, {}!", input.name),
+        })
+    }
+}
+
+pub use FarewellHandler as farewell_handler;</code></pre>
+<p>Update <code>src/handlers/mod.rs</code>:</p>
+<pre><code class="language-rust">pub mod greet;
+pub mod farewell;</code></pre>
+<p>Rebuild and you have two tools.</p>
+<h3 id="change-transport"><a class="header" href="#change-transport">Change Transport</a></h3>
+<p>For HTTP-based communication, update <code>pforge.yaml</code>:</p>
+<pre><code class="language-yaml">forge:
+  name: hello-server
+  version: 0.1.0
+  transport: sse  # Server-Sent Events
+</code></pre>
+<p>Or for WebSocket:</p>
+<pre><code class="language-yaml">forge:
+  name: hello-server
+  version: 0.1.0
+  transport: websocket
+</code></pre>
+<p>Each transport has different deployment characteristics covered in Chapter 19.</p>
+<h2 id="development-workflow"><a class="header" href="#development-workflow">Development Workflow</a></h2>
+<p>The typical development cycle:</p>
+<ol>
+<li><strong>Edit</strong> <code>pforge.yaml</code> to define tools</li>
+<li><strong>Implement</strong> handlers in <code>src/handlers/</code></li>
+<li><strong>Build</strong> with <code>cargo build</code></li>
+<li><strong>Test</strong> with <code>cargo test</code></li>
+<li><strong>Run</strong> with <code>pforge serve</code></li>
+</ol>
+<p>For rapid iteration, use watch mode:</p>
+<pre><code class="language-bash">cargo watch -x build -x test
+</code></pre>
+<p>This rebuilds and tests automatically on file changes.</p>
+<h2 id="whats-next"><a class="header" href="#whats-next">What’s Next</a></h2>
+<p>You now have a working MCP server. In the next section, we’ll test it thoroughly and learn debugging techniques.</p>
+<hr />
+<p>Next: <a href="ch02-03-testing.html">Testing Your Server</a></p>
 
                     </main>
 

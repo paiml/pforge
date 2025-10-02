@@ -158,8 +158,331 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch17-00-publishing-cratesmd"><a class="header" href="#ch17-00-publishing-cratesmd">ch17-00-publishing-crates.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="publishing-to-cratesio"><a class="header" href="#publishing-to-cratesio">Publishing to Crates.io</a></h1>
+<p>Publishing your pforge crates to crates.io makes them available to the Rust ecosystem and allows users to install your MCP servers with a simple <code>cargo install</code> command. This chapter covers the complete publishing workflow based on pforge’s real-world experience publishing five interconnected crates.</p>
+<h2 id="why-publish-to-cratesio"><a class="header" href="#why-publish-to-cratesio">Why Publish to Crates.io?</a></h2>
+<p>Publishing to crates.io provides several benefits:</p>
+<ol>
+<li><strong>Easy Installation</strong>: Users can install with <code>cargo install pforge-cli</code> instead of building from source</li>
+<li><strong>Dependency Management</strong>: Other crates can depend on your published crates with automatic version resolution</li>
+<li><strong>Discoverability</strong>: Your crates appear in searches on crates.io and docs.rs</li>
+<li><strong>Documentation</strong>: Automatic documentation generation and hosting on docs.rs</li>
+<li><strong>Versioning</strong>: Semantic versioning guarantees compatibility and upgrade paths</li>
+<li><strong>Trust</strong>: Published crates undergo community review and validation</li>
+</ol>
+<h2 id="the-pforge-publishing-story"><a class="header" href="#the-pforge-publishing-story">The pforge Publishing Story</a></h2>
+<p>pforge consists of five published crates that work together:</p>
+<div class="table-wrapper"><table><thead><tr><th>Crate</th><th>Purpose</th><th>Dependencies</th></tr></thead><tbody>
+<tr><td><code>pforge-config</code></td><td>Configuration parsing and validation</td><td>None (foundation)</td></tr>
+<tr><td><code>pforge-macro</code></td><td>Procedural macros</td><td>None (independent)</td></tr>
+<tr><td><code>pforge-runtime</code></td><td>Core runtime and handler registry</td><td>config</td></tr>
+<tr><td><code>pforge-codegen</code></td><td>Code generation from YAML to Rust</td><td>config</td></tr>
+<tr><td><code>pforge-cli</code></td><td>Command-line interface and templates</td><td>config, runtime, codegen</td></tr>
+</tbody></table>
+</div>
+<p>This dependency chain means <strong>publishing order matters critically</strong>. You must publish foundation crates before crates that depend on them.</p>
+<h2 id="publishing-challenges-we-encountered"><a class="header" href="#publishing-challenges-we-encountered">Publishing Challenges We Encountered</a></h2>
+<p>When publishing pforge, we hit several real-world issues:</p>
+<h3 id="1-rate-limiting"><a class="header" href="#1-rate-limiting">1. Rate Limiting</a></h3>
+<p>crates.io rate-limits new crate publications to prevent spam. Publishing five crates in rapid succession triggered:</p>
+<pre><code>error: failed to publish to crates.io
+
+Caused by:
+  the remote server responded with an error: too many crates published too quickly
+</code></pre>
+<p><strong>Solution</strong>: Wait 10-15 minutes between publications, or publish over multiple days.</p>
+<h3 id="2-missing-metadata"><a class="header" href="#2-missing-metadata">2. Missing Metadata</a></h3>
+<p>First publication attempt failed with:</p>
+<pre><code>error: missing required metadata fields:
+  - description
+  - keywords
+  - categories
+  - license
+</code></pre>
+<p><strong>Solution</strong>: Add comprehensive metadata to <code>Cargo.toml</code> workspace section (covered in Chapter 17-01).</p>
+<h3 id="3-template-files-not-included"><a class="header" href="#3-template-files-not-included">3. Template Files Not Included</a></h3>
+<p>The CLI crate initially failed to include template files needed for <code>pforge new</code>:</p>
+<pre><code>error: templates not found after installation
+</code></pre>
+<p><strong>Solution</strong>: Add <code>include</code> field to <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">include = [
+    "src/**/*",
+    "templates/**/*",
+    "Cargo.toml",
+]
+</code></pre>
+<h3 id="4-version-specification-conflicts"><a class="header" href="#4-version-specification-conflicts">4. Version Specification Conflicts</a></h3>
+<p>Publishing <code>pforge-runtime</code> failed because it depended on <code>pforge-config = { path = "../pforge-config" }</code> without a version:</p>
+<pre><code>error: all dependencies must have version numbers for published crates
+</code></pre>
+<p><strong>Solution</strong>: Use workspace dependencies with explicit versions (covered in Chapter 17-02).</p>
+<h3 id="5-documentation-links-broken"><a class="header" href="#5-documentation-links-broken">5. Documentation Links Broken</a></h3>
+<p>docs.rs generation failed because README links used repository-relative paths:</p>
+<pre><code>warning: documentation link failed to resolve
+</code></pre>
+<p><strong>Solution</strong>: Use absolute URLs in documentation or test with <code>cargo doc --no-deps</code>.</p>
+<h2 id="the-publishing-workflow"><a class="header" href="#the-publishing-workflow">The Publishing Workflow</a></h2>
+<p>Based on these experiences, here’s the proven workflow:</p>
+<h3 id="1-prepare-all-crates-chapter-17-01"><a class="header" href="#1-prepare-all-crates-chapter-17-01">1. Prepare All Crates (Chapter 17-01)</a></h3>
+<ul>
+<li>Add required metadata</li>
+<li>Configure workspace inheritance</li>
+<li>Set up <code>include</code> fields</li>
+<li>Write comprehensive README files</li>
+</ul>
+<h3 id="2-manage-versions-chapter-17-02"><a class="header" href="#2-manage-versions-chapter-17-02">2. Manage Versions (Chapter 17-02)</a></h3>
+<ul>
+<li>Follow semantic versioning</li>
+<li>Update all internal dependencies</li>
+<li>Create version tags</li>
+<li>Update CHANGELOG</li>
+</ul>
+<h3 id="3-write-documentation-chapter-17-03"><a class="header" href="#3-write-documentation-chapter-17-03">3. Write Documentation (Chapter 17-03)</a></h3>
+<ul>
+<li>Add crate-level docs (<code>lib.rs</code>)</li>
+<li>Document all public APIs</li>
+<li>Create examples</li>
+<li>Test documentation builds</li>
+</ul>
+<h3 id="4-publish-in-order-chapter-17-04"><a class="header" href="#4-publish-in-order-chapter-17-04">4. Publish in Order (Chapter 17-04)</a></h3>
+<ul>
+<li>Test with <code>cargo publish --dry-run</code></li>
+<li>Publish foundation crates first</li>
+<li>Wait for crates.io processing</li>
+<li>Verify each publication</li>
+<li>Continue up dependency chain</li>
+</ul>
+<h3 id="5-post-publication"><a class="header" href="#5-post-publication">5. Post-Publication</a></h3>
+<ul>
+<li>Test installation from crates.io</li>
+<li>Verify docs.rs generation</li>
+<li>Announce the release</li>
+<li>Monitor for issues</li>
+</ul>
+<h2 id="the-dependency-chain"><a class="header" href="#the-dependency-chain">The Dependency Chain</a></h2>
+<p>Understanding the dependency chain is crucial for successful publication:</p>
+<pre><code>pforge-config (no deps) ←─────┐
+                              │
+pforge-macro (no deps)        │
+                              │
+pforge-runtime (depends) ─────┘
+       ↑
+       │
+pforge-codegen (depends)
+       ↑
+       │
+pforge-cli (depends on runtime + codegen)
+</code></pre>
+<p><strong>Critical Rule</strong>: Never publish a crate before its dependencies are available on crates.io.</p>
+<h2 id="publishing-order-for-pforge"><a class="header" href="#publishing-order-for-pforge">Publishing Order for pforge</a></h2>
+<p>The exact order we used:</p>
+<ol>
+<li><strong>Day 1</strong>: <code>pforge-config</code> and <code>pforge-macro</code> (independent, can be parallel)</li>
+<li><strong>Day 1</strong> (after 15 min): <code>pforge-runtime</code> (depends on config)</li>
+<li><strong>Day 2</strong>: <code>pforge-codegen</code> (depends on config)</li>
+<li><strong>Day 2</strong> (after 15 min): <code>pforge-cli</code> (depends on all three)</li>
+</ol>
+<p>We spread publications across two days to avoid rate limiting and allow time for verification between steps.</p>
+<h2 id="verification-steps"><a class="header" href="#verification-steps">Verification Steps</a></h2>
+<p>After each publication:</p>
+<h3 id="1-check-cratesio"><a class="header" href="#1-check-cratesio">1. Check crates.io</a></h3>
+<p>Visit <code>https://crates.io/crates/pforge-config</code> and verify:</p>
+<ul>
+<li>Version number is correct</li>
+<li>Description and keywords appear</li>
+<li>License is displayed</li>
+<li>Repository link works</li>
+</ul>
+<h3 id="2-check-docsrs"><a class="header" href="#2-check-docsrs">2. Check docs.rs</a></h3>
+<p>Visit <code>https://docs.rs/pforge-config</code> and verify:</p>
+<ul>
+<li>Documentation builds successfully</li>
+<li>All modules are documented</li>
+<li>Examples render correctly</li>
+<li>Links work</li>
+</ul>
+<h3 id="3-test-installation"><a class="header" href="#3-test-installation">3. Test Installation</a></h3>
+<p>On a clean machine or Docker container:</p>
+<pre><code class="language-bash">cargo install pforge-cli
+pforge --version
+pforge new test-project
+</code></pre>
+<p>This ensures the published crate actually works for end users.</p>
+<h2 id="rollback-and-fixes"><a class="header" href="#rollback-and-fixes">Rollback and Fixes</a></h2>
+<p><strong>Important</strong>: crates.io is <strong>append-only</strong>. You cannot:</p>
+<ul>
+<li>Delete published versions</li>
+<li>Modify published crate contents</li>
+<li>Unpublish a version (only yank it)</li>
+</ul>
+<p>If you publish with a bug:</p>
+<h3 id="option-1-yank-the-version"><a class="header" href="#option-1-yank-the-version">Option 1: Yank the Version</a></h3>
+<pre><code class="language-bash">cargo yank --version 0.1.0
+</code></pre>
+<p>This prevents new projects from using the version but doesn’t break existing users.</p>
+<h3 id="option-2-publish-a-patch"><a class="header" href="#option-2-publish-a-patch">Option 2: Publish a Patch</a></h3>
+<pre><code class="language-bash"># Fix the bug
+# Bump version to 0.1.1
+cargo publish
+</code></pre>
+<p>The new version becomes the default, but the old version remains accessible.</p>
+<h2 id="pre-publication-checklist"><a class="header" href="#pre-publication-checklist">Pre-Publication Checklist</a></h2>
+<p>Before publishing ANY crate, verify:</p>
+<ul>
+<li><input disabled="" type="checkbox"/>
+All tests pass: <code>cargo test --all</code></li>
+<li><input disabled="" type="checkbox"/>
+Quality gates pass: <code>make quality-gate</code></li>
+<li><input disabled="" type="checkbox"/>
+Documentation builds: <code>cargo doc --no-deps</code></li>
+<li><input disabled="" type="checkbox"/>
+Dry run succeeds: <code>cargo publish --dry-run</code></li>
+<li><input disabled="" type="checkbox"/>
+Dependencies are published (for non-foundation crates)</li>
+<li><input disabled="" type="checkbox"/>
+Version numbers are correct</li>
+<li><input disabled="" type="checkbox"/>
+CHANGELOG is updated</li>
+<li><input disabled="" type="checkbox"/>
+Git tags are created</li>
+<li><input disabled="" type="checkbox"/>
+README is comprehensive</li>
+<li><input disabled="" type="checkbox"/>
+Examples work</li>
+</ul>
+<h2 id="publishing-tools"><a class="header" href="#publishing-tools">Publishing Tools</a></h2>
+<p>Helpful tools for the publishing process:</p>
+<pre><code class="language-bash"># Check what will be included in the package
+cargo package --list
+
+# Create a .crate file without publishing
+cargo package
+
+# Inspect the .crate file
+tar -tzf target/package/pforge-config-0.1.0.crate
+
+# Dry run (doesn't actually publish)
+cargo publish --dry-run
+
+# Publish with dirty git tree (use cautiously)
+cargo publish --allow-dirty
+</code></pre>
+<h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common Pitfalls</a></h2>
+<h3 id="1-publishing-without-testing"><a class="header" href="#1-publishing-without-testing">1. Publishing Without Testing</a></h3>
+<p><strong>Problem</strong>: Rushing to publish without thorough testing.</p>
+<p><strong>Solution</strong>: Always run the pre-publication checklist. We found bugs in <code>pforge-cli</code> template handling only after attempting publication.</p>
+<h3 id="2-incorrect-version-dependencies"><a class="header" href="#2-incorrect-version-dependencies">2. Incorrect Version Dependencies</a></h3>
+<p><strong>Problem</strong>: Internal dependencies using <code>path</code> without <code>version</code>.</p>
+<p><strong>Solution</strong>: Use workspace dependencies with explicit versions:</p>
+<pre><code class="language-toml">pforge-config = { workspace = true }
+</code></pre>
+<h3 id="3-missing-files"><a class="header" href="#3-missing-files">3. Missing Files</a></h3>
+<p><strong>Problem</strong>: Source files or resources not included in package.</p>
+<p><strong>Solution</strong>: Use <code>include</code> field or check with <code>cargo package --list</code>.</p>
+<h3 id="4-platform-specific-code"><a class="header" href="#4-platform-specific-code">4. Platform-Specific Code</a></h3>
+<p><strong>Problem</strong>: Code that only works on Linux but no platform guards.</p>
+<p><strong>Solution</strong>: Add <code>#[cfg(...)]</code> attributes and test on all platforms before publishing.</p>
+<h3 id="5-large-crate-size"><a class="header" href="#5-large-crate-size">5. Large Crate Size</a></h3>
+<p><strong>Problem</strong>: Accidentally including test data or build artifacts.</p>
+<p><strong>Solution</strong>: Use <code>.cargo-ignore</code> (similar to <code>.gitignore</code> but for cargo packages).</p>
+<h2 id="multi-crate-workspace-tips"><a class="header" href="#multi-crate-workspace-tips">Multi-Crate Workspace Tips</a></h2>
+<p>For workspaces like pforge with multiple publishable crates:</p>
+<h3 id="1-shared-metadata"><a class="header" href="#1-shared-metadata">1. Shared Metadata</a></h3>
+<p>Define common metadata in <code>[workspace.package]</code>:</p>
+<pre><code class="language-toml">[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Pragmatic AI Labs"]
+repository = "https://github.com/paiml/pforge"
+</code></pre>
+<p>Each crate inherits with:</p>
+<pre><code class="language-toml">[package]
+name = "pforge-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+</code></pre>
+<h3 id="2-shared-dependencies"><a class="header" href="#2-shared-dependencies">2. Shared Dependencies</a></h3>
+<p>Define versions once in <code>[workspace.dependencies]</code>:</p>
+<pre><code class="language-toml">[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+pforge-config = { path = "crates/pforge-config", version = "0.1.0" }
+</code></pre>
+<p>Crates use with:</p>
+<pre><code class="language-toml">[dependencies]
+serde = { workspace = true }
+pforge-config = { workspace = true }
+</code></pre>
+<h3 id="3-version-bumping-script"><a class="header" href="#3-version-bumping-script">3. Version Bumping Script</a></h3>
+<p>Create a script to bump all versions simultaneously:</p>
+<pre><code class="language-bash">#!/bin/bash
+NEW_VERSION=$1
+sed -i "s/^version = .*/version = \"$NEW_VERSION\"/" Cargo.toml
+for crate in crates/*/Cargo.toml; do
+    # Versions are inherited, so this updates workspace version
+    echo "Updated $crate"
+done
+cargo update -w
+</code></pre>
+<h2 id="documentation-best-practices"><a class="header" href="#documentation-best-practices">Documentation Best Practices</a></h2>
+<p>Good documentation drives adoption:</p>
+<h3 id="1-crate-level-documentation"><a class="header" href="#1-crate-level-documentation">1. Crate-Level Documentation</a></h3>
+<p>Add to <code>lib.rs</code>:</p>
+<pre><code class="language-rust">//! # pforge-config
+//!
+//! Configuration parsing and validation for pforge MCP servers.
+//!
+//! This crate provides the core configuration types and parsing logic
+//! used by the pforge framework.
+//!
+//! ## Example
+//!
+//! ```rust
+//! use pforge_config::ForgeConfig;
+//!
+//! let yaml = r#"
+//! forge:
+//!   name: my-server
+//!   version: 0.1.0
+//! "#;
+//!
+//! let config = ForgeConfig::from_yaml(yaml)?;
+//! assert_eq!(config.name, "my-server");
+//! ```</code></pre>
+<h3 id="2-module-documentation"><a class="header" href="#2-module-documentation">2. Module Documentation</a></h3>
+<p>Document each public module:</p>
+<pre><code class="language-rust">/// Tool definition types and validation.
+///
+/// This module contains the [`ToolDef`] enum and related types
+/// for defining MCP tools declaratively.
+pub mod tools;</code></pre>
+<h3 id="3-examples-directory"><a class="header" href="#3-examples-directory">3. Examples Directory</a></h3>
+<p>Add runnable examples in <code>examples/</code>:</p>
+<pre><code>crates/pforge-config/
+├── examples/
+│   ├── basic_config.rs
+│   ├── validation.rs
+│   └── advanced_features.rs
+</code></pre>
+<p>Users can run them with:</p>
+<pre><code class="language-bash">cargo run --example basic_config
+</code></pre>
+<h2 id="chapter-summary"><a class="header" href="#chapter-summary">Chapter Summary</a></h2>
+<p>Publishing to crates.io requires careful preparation, strict ordering, and attention to detail. The key lessons from pforge’s publishing experience:</p>
+<ol>
+<li><strong>Metadata is mandatory</strong>: Description, keywords, categories, license</li>
+<li><strong>Order matters</strong>: Publish dependencies before dependents</li>
+<li><strong>Rate limits exist</strong>: Space out publications by 10-15 minutes</li>
+<li><strong>Include everything</strong>: Templates, resources, documentation</li>
+<li><strong>Test thoroughly</strong>: Dry runs, package inspection, clean installs</li>
+<li><strong>Document well</strong>: Users rely on docs.rs</li>
+<li><strong>Version carefully</strong>: Semantic versioning is a contract</li>
+<li><strong>No rollbacks</strong>: You can’t unpublish, only yank and patch</li>
+</ol>
+<p>The next four chapters dive deep into each phase of the publishing process.</p>
+<hr />
+<p><strong>Next</strong>: <a href="ch17-01-preparing.html">Preparing Your Crate</a></p>
 
                     </main>
 

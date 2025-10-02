@@ -158,8 +158,745 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch08-02-pmatmd"><a class="header" href="#ch08-02-pmatmd">ch08-02-pmat.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="pmat-pragmatic-metrics-analysis-tool"><a class="header" href="#pmat-pragmatic-metrics-analysis-tool">PMAT: Pragmatic Metrics Analysis Tool</a></h1>
+<p>PMAT (Pragmatic Metrics Analysis Tool) is the engine powering pforge’s quality gates. It analyzes code quality across multiple dimensions: complexity, technical debt, duplication, documentation, and maintainability.</p>
+<p>Where traditional metrics tools generate reports that developers ignore, PMAT enforces standards. It’s not just measurement—it’s enforcement.</p>
+<p>This chapter explains what PMAT is, how it integrates with pforge, how to interpret its output, and how to use it to maintain production-grade code quality.</p>
+<h2 id="what-is-pmat"><a class="header" href="#what-is-pmat">What is PMAT?</a></h2>
+<p>PMAT is a command-line tool for analyzing code quality metrics. It supports multiple languages (Rust, Python, JavaScript, Go, Java) and provides actionable insights rather than just numbers.</p>
+<p><strong>Design philosophy</strong>: Metrics should drive action, not just inform.</p>
+<p>Traditional tools tell you “your code has high complexity.” PMAT tells you “function <code>process_request</code> at line 89 has complexity 24 (max: 20)—extract helper functions or simplify logic.”</p>
+<h3 id="core-features"><a class="header" href="#core-features">Core Features</a></h3>
+<p><strong>Complexity Analysis</strong>: Measures cyclomatic and cognitive complexity per function
+<strong>SATD Detection</strong>: Finds self-admitted technical debt (TODO, FIXME, HACK comments)
+<strong>Technical Debt Grade (TDG)</strong>: Holistic quality score (0-100)
+<strong>Dead Code Detection</strong>: Identifies unused functions, variables, imports
+<strong>Documentation Validation</strong>: Checks for broken markdown links (local files and HTTP)
+<strong>Duplication Analysis</strong>: Detects code clones
+<strong>Custom Thresholds</strong>: Configurable limits for each metric</p>
+<h3 id="installation"><a class="header" href="#installation">Installation</a></h3>
+<p>PMAT is written in Rust and distributed via cargo:</p>
+<pre><code class="language-bash">cargo install pmat
+</code></pre>
+<p>Verify installation:</p>
+<pre><code class="language-bash">pmat --version
+# pmat 0.3.0
+</code></pre>
+<p>pforge projects include PMAT by default. If you’re adding it to an existing project:</p>
+<pre><code class="language-bash"># Add to project dependencies
+cargo add pmat --dev
+
+# Or install globally
+cargo install pmat
+</code></pre>
+<h2 id="pmat-commands"><a class="header" href="#pmat-commands">PMAT Commands</a></h2>
+<p>PMAT provides several analysis commands:</p>
+<h3 id="1-complexity-analysis"><a class="header" href="#1-complexity-analysis">1. Complexity Analysis</a></h3>
+<pre><code class="language-bash">pmat analyze complexity [OPTIONS] [PATH]
+</code></pre>
+<p>Analyzes cyclomatic and cognitive complexity for all functions.</p>
+<p><strong>Options</strong>:</p>
+<ul>
+<li><code>--max-cyclomatic &lt;N&gt;</code>: Maximum allowed cyclomatic complexity (default: 10)</li>
+<li><code>--max-cognitive &lt;N&gt;</code>: Maximum allowed cognitive complexity (default: 15)</li>
+<li><code>--format &lt;FORMAT&gt;</code>: Output format (summary, json, detailed)</li>
+<li><code>--fail-on-violation</code>: Exit with code 1 if violations found</li>
+</ul>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-bash">pmat analyze complexity --max-cyclomatic 20 --format summary
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code># Complexity Analysis Summary
+
+📊 **Files analyzed**: 23
+🔧 **Total functions**: 187
+
+## Complexity Metrics
+
+- **Median Cyclomatic**: 3.0
+- **Median Cognitive**: 2.0
+- **Max Cyclomatic**: 12
+- **Max Cognitive**: 15
+- **90th Percentile Cyclomatic**: 8
+- **90th Percentile Cognitive**: 10
+
+## Violations (0)
+
+✅ All functions within complexity limits (max cyclomatic: 20)
+</code></pre>
+<p>If violations exist:</p>
+<pre><code>## Violations (2)
+
+❌ Function 'handle_authentication' exceeds cyclomatic complexity
+   Location: src/auth.rs:145
+   Cyclomatic: 24 (max: 20)
+   Cognitive: 18 (max: 15)
+   Recommendation: Extract helper functions for validation logic
+
+❌ Function 'process_pipeline' exceeds cyclomatic complexity
+   Location: src/pipeline.rs:89
+   Cyclomatic: 22 (max: 20)
+   Cognitive: 16 (max: 15)
+   Recommendation: Use match statements instead of nested if-else
+</code></pre>
+<h3 id="2-satd-detection"><a class="header" href="#2-satd-detection">2. SATD Detection</a></h3>
+<pre><code class="language-bash">pmat analyze satd [OPTIONS] [PATH]
+</code></pre>
+<p>Finds self-admitted technical debt comments: TODO, FIXME, HACK, XXX, BUG.</p>
+<p><strong>Options</strong>:</p>
+<ul>
+<li><code>--format &lt;FORMAT&gt;</code>: Output format (summary, json, detailed)</li>
+<li><code>--severity &lt;LEVEL&gt;</code>: Minimum severity to report (low, medium, high, critical)</li>
+<li><code>--fail-on-violation</code>: Exit with code 1 if violations found</li>
+</ul>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-bash">pmat analyze satd --format summary
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code># SATD Analysis Summary
+
+Found 6 SATD violations in 5 files
+
+Total violations: 6
+
+## Severity Distribution
+- Critical: 1
+- High: 0
+- Medium: 0
+- Low: 5
+
+## Top Violations
+1. ./crates/pforge-cli/src/commands/dev.rs:8 - Requirement (Low)
+   TODO: Implement hot reload functionality
+
+2. ./crates/pforge-runtime/src/state.rs:54 - Requirement (Low)
+   TODO: Add Redis backend support
+
+3. ./pforge-book/book/searcher.js:148 - Security (Critical)
+   FIXME: Sanitize user input to prevent XSS
+
+4. ./crates/pforge-runtime/src/server.rs:123 - Design (Low)
+   TODO: Refactor transport selection logic
+
+5. ./crates/pforge-runtime/src/state.rs:101 - Requirement (Low)
+   TODO: Add TTL support for cached items
+</code></pre>
+<h3 id="3-technical-debt-grade-tdg"><a class="header" href="#3-technical-debt-grade-tdg">3. Technical Debt Grade (TDG)</a></h3>
+<pre><code class="language-bash">pmat tdg [PATH]
+</code></pre>
+<p>Calculates a holistic quality score combining complexity, duplication, documentation, test quality, and maintainability.</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-bash">pmat tdg .
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code>╭─────────────────────────────────────────────────╮
+│  TDG Score Report                              │
+├─────────────────────────────────────────────────┤
+│  Overall Score: 94.6/100 (A)                  │
+│  Language: Rust (confidence: 98%)               │
+│                                                 │
+│  Component Scores:                              │
+│    Complexity:      92/100                      │
+│    Duplication:     96/100                      │
+│    Documentation:   91/100                      │
+│    Test Quality:    97/100                      │
+│    Maintainability: 95/100                      │
+╰─────────────────────────────────────────────────╯
+
+## Recommendations
+
+1. **Complexity** (92/100):
+   - Consider refactoring functions with cyclomatic complexity &gt; 15
+   - 3 functions could benefit from extraction
+
+2. **Documentation** (91/100):
+   - Add doc comments to 5 public functions
+   - Update outdated README sections
+
+3. **Maintainability** (95/100):
+   - Reduce nesting depth in pipeline.rs:parse_config
+   - Consider using builder pattern in config.rs
+</code></pre>
+<p>TDG grades:</p>
+<ul>
+<li><strong>90-100 (A)</strong>: Excellent, production-ready</li>
+<li><strong>75-89 (B)</strong>: Good, minor improvements needed</li>
+<li><strong>60-74 (C)</strong>: Acceptable, significant improvements recommended</li>
+<li><strong>Below 60 (D-F)</strong>: Poor, major refactoring required</li>
+</ul>
+<p>pforge requires TDG ≥ 75 (Grade C or better).</p>
+<h3 id="4-dead-code-analysis"><a class="header" href="#4-dead-code-analysis">4. Dead Code Analysis</a></h3>
+<pre><code class="language-bash">pmat analyze dead-code [OPTIONS] [PATH]
+</code></pre>
+<p>Identifies unused functions, variables, and imports.</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-bash">pmat analyze dead-code --format summary
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code># Dead Code Analysis
+
+## Summary
+- Total files analyzed: 23
+- Dead functions: 0
+- Unused variables: 0
+- Unused imports: 0
+
+✅ No dead code detected
+</code></pre>
+<h3 id="5-documentation-link-validation"><a class="header" href="#5-documentation-link-validation">5. Documentation Link Validation</a></h3>
+<pre><code class="language-bash">pmat validate-docs [OPTIONS] [PATH]
+</code></pre>
+<p>Validates all markdown links (local files and HTTP URLs).</p>
+<p><strong>Options</strong>:</p>
+<ul>
+<li><code>--fail-on-error</code>: Exit with code 1 if broken links found</li>
+<li><code>--timeout &lt;MS&gt;</code>: HTTP request timeout in milliseconds (default: 5000)</li>
+<li><code>--format &lt;FORMAT&gt;</code>: Output format (summary, json, detailed)</li>
+</ul>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-bash">pmat validate-docs --fail-on-error
+</code></pre>
+<p><strong>Output</strong> (success):</p>
+<pre><code># Documentation Link Validation
+
+📚 Scanned 47 markdown files
+🔗 Validated 234 links
+✅ All links valid
+
+## Statistics
+- Local file links: 156 (100% valid)
+- HTTP/HTTPS links: 78 (100% valid)
+- Anchor links: 0
+</code></pre>
+<p><strong>Output</strong> (failure):</p>
+<pre><code># Documentation Link Validation
+
+❌ Found 3 broken links
+
+## Broken Links
+
+1. docs/api.md:23
+   Link: ./nonexistent-file.md
+   Error: File not found
+
+2. README.md:89
+   Link: https://example.com/deleted-page
+   Error: HTTP 404 Not Found
+
+3. docs/architecture.md:145
+   Link: ../specs/missing-spec.md
+   Error: File not found
+
+## Summary
+- Total links: 234
+- Valid: 231 (98.7%)
+- Broken: 3 (1.3%)
+
+Exit code: 1
+</code></pre>
+<h2 id="pmat-configuration"><a class="header" href="#pmat-configuration">PMAT Configuration</a></h2>
+<p>Configure PMAT thresholds in <code>.pmat/quality-gates.yaml</code>:</p>
+<pre><code class="language-yaml">gates:
+  - name: complexity
+    max_cyclomatic: 20        # pforge default
+    max_cognitive: 15
+    fail_on_violation: true
+
+  - name: satd
+    max_count: 0              # Zero tolerance for non-phase markers
+    fail_on_violation: true
+    allowed_patterns:
+      - "Phase [234]:"        # Allow phase planning markers
+
+  - name: test_coverage
+    min_line_coverage: 80     # Minimum 80% line coverage
+    min_branch_coverage: 75   # Minimum 75% branch coverage
+    fail_on_violation: true
+
+  - name: tdg_score
+    min_grade: 0.75           # Minimum 75/100 (Grade C)
+    fail_on_violation: true
+
+  - name: dead_code
+    max_count: 0
+    fail_on_violation: false  # Warning only, don't block commits
+
+  - name: lints
+    fail_on_warnings: true
+
+  - name: formatting
+    enforce_rustfmt: true
+
+  - name: security_audit
+    fail_on_vulnerabilities: true
+</code></pre>
+<h3 id="adjusting-thresholds"><a class="header" href="#adjusting-thresholds">Adjusting Thresholds</a></h3>
+<p>Different projects have different needs:</p>
+<p><strong>Stricter (e.g., financial systems, medical software)</strong>:</p>
+<pre><code class="language-yaml">gates:
+  - name: complexity
+    max_cyclomatic: 10        # Stricter than pforge default
+    max_cognitive: 8
+
+  - name: test_coverage
+    min_line_coverage: 95     # Very high coverage
+    min_branch_coverage: 90
+
+  - name: tdg_score
+    min_grade: 0.85           # Grade B or better
+</code></pre>
+<p><strong>More Lenient (e.g., prototypes, research projects)</strong>:</p>
+<pre><code class="language-yaml">gates:
+  - name: complexity
+    max_cyclomatic: 30        # More lenient
+    max_cognitive: 20
+
+  - name: test_coverage
+    min_line_coverage: 60     # Lower coverage acceptable
+    min_branch_coverage: 50
+
+  - name: tdg_score
+    min_grade: 0.60           # Grade D acceptable
+</code></pre>
+<h2 id="understanding-pmat-metrics"><a class="header" href="#understanding-pmat-metrics">Understanding PMAT Metrics</a></h2>
+<h3 id="cyclomatic-complexity"><a class="header" href="#cyclomatic-complexity">Cyclomatic Complexity</a></h3>
+<p><strong>Definition</strong>: Number of linearly independent paths through code.</p>
+<p><strong>Formula</strong>: <code>E - N + 2P</code> where:</p>
+<ul>
+<li>E = edges in control flow graph</li>
+<li>N = nodes in control flow graph</li>
+<li>P = number of connected components (usually 1)</li>
+</ul>
+<p><strong>Simplified</strong>: Count decision points (if, while, for, match) + 1</p>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">// Cyclomatic complexity: 1 (no branches)
+fn add(a: i32, b: i32) -&gt; i32 {
+    a + b
+}
+
+// Cyclomatic complexity: 3
+fn classify(age: i32) -&gt; &amp;'static str {
+    if age &lt; 13 {        // +1
+        "child"
+    } else if age &lt; 20 { // +1
+        "teenager"
+    } else {
+        "adult"
+    }
+}
+
+// Cyclomatic complexity: 5
+fn validate(input: &amp;str) -&gt; Result&lt;(), String&gt; {
+    if input.is_empty() {           // +1
+        return Err("empty".into());
+    }
+    if input.len() &gt; 100 {          // +1
+        return Err("too long".into());
+    }
+    if !input.chars().all(|c| c.is_alphanumeric()) { // +1
+        return Err("invalid chars".into());
+    }
+
+    match input.chars().next() {    // +1
+        Some('0'..='9') =&gt; Err("starts with digit".into()),
+        _ =&gt; Ok(())
+    }
+}</code></pre>
+<p><strong>Why it matters</strong>: Complexity &gt; 20 indicates:</p>
+<ul>
+<li>Too many execution paths to test thoroughly</li>
+<li>High cognitive load for readers</li>
+<li>Likely to contain bugs</li>
+<li>Hard to modify safely</li>
+</ul>
+<p><strong>How to reduce</strong>:</p>
+<ul>
+<li>Extract functions</li>
+<li>Use early returns</li>
+<li>Leverage Rust’s <code>?</code> operator</li>
+<li>Replace nested if-else with match</li>
+</ul>
+<h3 id="cognitive-complexity"><a class="header" href="#cognitive-complexity">Cognitive Complexity</a></h3>
+<p><strong>Definition</strong>: Measures how hard code is to understand (not just test).</p>
+<p>Unlike cyclomatic complexity, cognitive complexity:</p>
+<ul>
+<li>Penalizes nesting (nested if is worse than flat if)</li>
+<li>Ignores shorthand structures (x &amp;&amp; y doesn’t add complexity)</li>
+<li>Rewards language features that reduce cognitive load</li>
+</ul>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">// Cyclomatic: 4, Cognitive: 1 (shorthand logical operators)
+if x &amp;&amp; y &amp;&amp; z &amp;&amp; w {
+    do_something();
+}
+
+// Cyclomatic: 4, Cognitive: 7 (nesting adds cognitive load)
+if x {          // +1
+    if y {      // +2 (nested)
+        if z {  // +3 (deeply nested)
+            if w { // +4 (very deeply nested)
+                do_something();
+            }
+        }
+    }
+}</code></pre>
+<p><strong>Why it matters</strong>: Cognitive complexity predicts how long it takes to understand code. High cognitive complexity means:</p>
+<ul>
+<li>New developers struggle</li>
+<li>Bugs hide in complex logic</li>
+<li>Refactoring is risky</li>
+</ul>
+<p><strong>How to reduce</strong>:</p>
+<ul>
+<li>Flatten nesting (use early returns)</li>
+<li>Extract complex conditions into named functions</li>
+<li>Use guard clauses</li>
+<li>Leverage pattern matching</li>
+</ul>
+<h3 id="self-admitted-technical-debt-satd"><a class="header" href="#self-admitted-technical-debt-satd">Self-Admitted Technical Debt (SATD)</a></h3>
+<p><strong>Definition</strong>: Comments where developers admit issues need fixing.</p>
+<p>Common markers:</p>
+<ul>
+<li><code>TODO</code>: Work to be done</li>
+<li><code>FIXME</code>: Broken code that needs fixing</li>
+<li><code>HACK</code>: Inelegant solution</li>
+<li><code>XXX</code>: Warning or important note</li>
+<li><code>BUG</code>: Known defect</li>
+</ul>
+<p><strong>Example</strong>:</p>
+<pre><code class="language-rust">// TODO: Add input validation
+fn process(input: &amp;str) -&gt; String {
+    // HACK: This is a temporary workaround
+    input.replace("bad", "good")
+    // FIXME: Handle Unicode properly
+}</code></pre>
+<p><strong>Why it matters</strong>: SATD comments are promises. They accumulate into:</p>
+<ul>
+<li>Unmaintainable codebases</li>
+<li>Security vulnerabilities (deferred validation)</li>
+<li>Performance issues (deferred optimization)</li>
+</ul>
+<p>pforge’s zero-tolerance policy: Fix it now or don’t commit it.</p>
+<p><strong>Exception</strong>: Phase markers for planned work:</p>
+<pre><code class="language-rust">// Phase 2: Add Redis caching
+// Phase 3: Implement distributed locking
+// Phase 4: Add metrics collection</code></pre>
+<p>These represent roadmap items, not technical debt.</p>
+<h3 id="technical-debt-grade-tdg"><a class="header" href="#technical-debt-grade-tdg">Technical Debt Grade (TDG)</a></h3>
+<p><strong>Definition</strong>: Composite score (0-100) measuring overall code quality.</p>
+<p><strong>Components</strong>:</p>
+<ol>
+<li><strong>Complexity (20%)</strong>: Average cyclomatic and cognitive complexity</li>
+<li><strong>Duplication (20%)</strong>: Percentage of duplicated code blocks</li>
+<li><strong>Documentation (20%)</strong>: Doc comment coverage and quality</li>
+<li><strong>Test Quality (20%)</strong>: Coverage, assertion quality, test maintainability</li>
+<li><strong>Maintainability (20%)</strong>: Code organization, modularity, coupling</li>
+</ol>
+<p><strong>Calculation</strong> (simplified):</p>
+<pre><code>TDG = (complexity_score × 0.2) +
+      (duplication_score × 0.2) +
+      (documentation_score × 0.2) +
+      (test_quality_score × 0.2) +
+      (maintainability_score × 0.2)
+</code></pre>
+<p>Each component scores 0-100 based on thresholds:</p>
+<p><strong>Complexity Score</strong>:</p>
+<ul>
+<li>Median cyclomatic ≤ 5: 100 points</li>
+<li>Median cyclomatic 6-10: 80 points</li>
+<li>Median cyclomatic 11-15: 60 points</li>
+<li>Median cyclomatic &gt; 15: 40 points</li>
+</ul>
+<p><strong>Duplication Score</strong>:</p>
+<ul>
+<li>Duplication &lt; 3%: 100 points</li>
+<li>Duplication 3-5%: 80 points</li>
+<li>Duplication 6-10%: 60 points</li>
+<li>Duplication &gt; 10%: 40 points</li>
+</ul>
+<p>Similar thresholds for other components.</p>
+<p><strong>Why it matters</strong>: TDG catches quality issues that individual metrics miss. A codebase might have low complexity but poor documentation, or great tests but high duplication. TDG reveals the weakest link.</p>
+<h2 id="pmat-in-practice"><a class="header" href="#pmat-in-practice">PMAT in Practice</a></h2>
+<h3 id="daily-development-workflow"><a class="header" href="#daily-development-workflow">Daily Development Workflow</a></h3>
+<p><strong>1. Pre-Development Check</strong></p>
+<p>Before starting work, check current quality:</p>
+<pre><code class="language-bash">pmat tdg .
+</code></pre>
+<p>Understand your baseline. TDG at 85? Good. TDG at 65? You’re adding to a problematic codebase.</p>
+<p><strong>2. During Development</strong></p>
+<p>Run complexity checks frequently:</p>
+<pre><code class="language-bash"># In watch mode
+cargo watch -x test -c "pmat analyze complexity --max-cyclomatic 20"
+
+# Or manually after each function
+pmat analyze complexity src/myfile.rs --max-cyclomatic 20
+</code></pre>
+<p>Catch complexity early, before it becomes entrenched.</p>
+<p><strong>3. Before Committing</strong></p>
+<p>Run full quality gate:</p>
+<pre><code class="language-bash">make quality-gate
+# or
+pmat analyze complexity --max-cyclomatic 20 --fail-on-violation
+pmat analyze satd --fail-on-violation
+pmat tdg .
+</code></pre>
+<p>Fix any violations before committing.</p>
+<p><strong>4. Post-Commit Verification</strong></p>
+<p>CI runs the same checks. If local gates passed but CI fails, your environment differs. Align them.</p>
+<h3 id="refactoring-guidance"><a class="header" href="#refactoring-guidance">Refactoring Guidance</a></h3>
+<p>PMAT guides refactoring:</p>
+<p><strong>Complexity Violations</strong></p>
+<pre><code class="language-bash">pmat analyze complexity --format detailed
+</code></pre>
+<p>Output shows exactly which functions exceed limits:</p>
+<pre><code>Function 'handle_request' (src/handler.rs:89)
+  Cyclomatic: 24
+  Cognitive: 19
+
+  High complexity due to:
+  - 12 if statements (8 nested)
+  - 3 match expressions
+  - 2 for loops
+
+  Recommendations:
+  1. Extract validation logic (lines 95-120) into validate_request()
+  2. Extract error handling (lines 145-180) into handle_errors()
+  3. Use early returns to reduce nesting (lines 200-230)
+</code></pre>
+<p>Follow the recommendations. After refactoring:</p>
+<pre><code class="language-bash">pmat analyze complexity src/handler.rs
+</code></pre>
+<p>Confirm complexity is now within limits.</p>
+<p><strong>Low TDG Score</strong></p>
+<pre><code class="language-bash">pmat tdg . --verbose
+</code></pre>
+<p>Shows which component drags down the score:</p>
+<pre><code>Component Scores:
+  Complexity:      92/100 ✅
+  Duplication:     45/100 ❌  (12% code duplication)
+  Documentation:   88/100 ✅
+  Test Quality:    91/100 ✅
+  Maintainability: 89/100 ✅
+
+Primary issue: Duplication
+
+Duplicated blocks:
+1. src/auth.rs:45-67 duplicates src/session.rs:89-111 (23 lines)
+2. src/parser.rs:120-145 duplicates src/validator.rs:200-225 (26 lines)
+
+Recommendation: Extract shared logic into common utilities
+</code></pre>
+<p>Focus refactoring on duplication to improve TDG.</p>
+<h3 id="cicd-integration"><a class="header" href="#cicd-integration">CI/CD Integration</a></h3>
+<p>Run PMAT in CI to enforce quality:</p>
+<pre><code class="language-yaml"># .github/workflows/quality.yml
+name: Quality Gates
+
+on: [push, pull_request]
+
+jobs:
+  pmat-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install PMAT
+        run: cargo install pmat
+
+      - name: Complexity Check
+        run: pmat analyze complexity --max-cyclomatic 20 --fail-on-violation
+
+      - name: SATD Check
+        run: pmat analyze satd --fail-on-violation
+
+      - name: TDG Check
+        run: |
+          SCORE=$(pmat tdg . --format json | jq -r '.score')
+          if (( $(echo "$SCORE &lt; 75" | bc -l) )); then
+            echo "TDG score $SCORE below minimum 75"
+            exit 1
+          fi
+
+      - name: Dead Code Check
+        run: pmat analyze dead-code --fail-on-violation
+
+      - name: Documentation Links
+        run: pmat validate-docs --fail-on-error
+</code></pre>
+<p>PRs cannot merge if PMAT checks fail.</p>
+<h2 id="interpreting-pmat-output"><a class="header" href="#interpreting-pmat-output">Interpreting PMAT Output</a></h2>
+<h3 id="green-flags-good-quality"><a class="header" href="#green-flags-good-quality">Green Flags (Good Quality)</a></h3>
+<pre><code># Complexity Analysis Summary
+
+📊 **Files analyzed**: 23
+🔧 **Total functions**: 187
+
+## Complexity Metrics
+
+- **Median Cyclomatic**: 3.0   ✅ (low)
+- **Median Cognitive**: 2.0    ✅ (low)
+- **Max Cyclomatic**: 12       ✅ (well below 20)
+- **90th Percentile**: 8       ✅ (healthy)
+
+## TDG Score: 94.6/100 (A)     ✅ (excellent)
+
+## SATD: 0 violations           ✅ (clean)
+
+## Dead Code: 0 functions       ✅ (no waste)
+</code></pre>
+<p>This codebase is production-ready. Maintain these standards.</p>
+<h3 id="yellow-flags-needs-attention"><a class="header" href="#yellow-flags-needs-attention">Yellow Flags (Needs Attention)</a></h3>
+<pre><code># Complexity Analysis Summary
+
+- **Median Cyclomatic**: 8.0   ⚠️  (rising)
+- **Max Cyclomatic**: 19       ⚠️  (approaching limit)
+- **90th Percentile**: 15      ⚠️  (many complex functions)
+
+## TDG Score: 78/100 (C+)       ⚠️  (acceptable but declining)
+
+## SATD: 12 violations          ⚠️  (accumulating debt)
+</code></pre>
+<p>Quality is declining. Act now before it becomes a red flag:</p>
+<ul>
+<li>Refactor the most complex functions</li>
+<li>Address SATD comments</li>
+<li>Improve the weakest TDG components</li>
+</ul>
+<h3 id="red-flags-action-required"><a class="header" href="#red-flags-action-required">Red Flags (Action Required)</a></h3>
+<pre><code># Complexity Analysis Summary
+
+- **Median Cyclomatic**: 15.0  ❌ (very high)
+- **Max Cyclomatic**: 34       ❌ (exceeds limit)
+- **90th Percentile**: 25      ❌ (systemic complexity)
+
+## TDG Score: 58/100 (D-)       ❌ (poor quality)
+
+## SATD: 47 violations          ❌ (heavy technical debt)
+
+## Dead Code: 23 functions      ❌ (maintenance burden)
+</code></pre>
+<p>This codebase has serious quality issues:</p>
+<ul>
+<li><strong>Stop feature development</strong></li>
+<li><strong>Dedicate sprint to quality</strong></li>
+<li><strong>Refactor highest complexity functions first</strong></li>
+<li><strong>Eliminate dead code</strong></li>
+<li><strong>Address all SATD comments</strong></li>
+</ul>
+<h3 id="pattern-recognition"><a class="header" href="#pattern-recognition">Pattern Recognition</a></h3>
+<p><strong>Gradual Decline</strong>:</p>
+<pre><code>Week 1: TDG 95/100
+Week 2: TDG 92/100
+Week 3: TDG 88/100
+Week 4: TDG 83/100
+</code></pre>
+<p>Trend is negative. Intervene before it drops below 75.</p>
+<p><strong>Stable Quality</strong>:</p>
+<pre><code>Week 1: TDG 88/100
+Week 2: TDG 87/100
+Week 3: TDG 89/100
+Week 4: TDG 88/100
+</code></pre>
+<p>Healthy stability. Maintain current practices.</p>
+<p><strong>Recovery</strong>:</p>
+<pre><code>Week 1: TDG 65/100 (dedicated quality sprint)
+Week 2: TDG 72/100 (refactoring)
+Week 3: TDG 79/100 (debt reduction)
+Week 4: TDG 85/100 (back to healthy)
+</code></pre>
+<p>Successful quality recovery. Document lessons learned.</p>
+<h2 id="troubleshooting-pmat"><a class="header" href="#troubleshooting-pmat">Troubleshooting PMAT</a></h2>
+<h3 id="pmat-command-not-found"><a class="header" href="#pmat-command-not-found">“PMAT command not found”</a></h3>
+<p><strong>Solution</strong>: Install PMAT globally:</p>
+<pre><code class="language-bash">cargo install pmat
+which pmat  # Verify installation
+</code></pre>
+<p>Or add to project:</p>
+<pre><code class="language-bash">cargo add pmat --dev
+cargo run --bin pmat -- analyze complexity
+</code></pre>
+<h3 id="complexity-calculation-seems-wrong"><a class="header" href="#complexity-calculation-seems-wrong">“Complexity calculation seems wrong”</a></h3>
+<p><strong>Check</strong>: Ensure you’re comparing the right metrics:</p>
+<pre><code class="language-bash"># Cyclomatic complexity
+pmat analyze complexity --show-cyclomatic
+
+# Cognitive complexity
+pmat analyze complexity --show-cognitive
+</code></pre>
+<p>They measure different things. A function can have low cyclomatic but high cognitive complexity (deep nesting).</p>
+<h3 id="tdg-score-unexpectedly-low"><a class="header" href="#tdg-score-unexpectedly-low">“TDG score unexpectedly low”</a></h3>
+<p><strong>Debug</strong>: Get detailed component breakdown:</p>
+<pre><code class="language-bash">pmat tdg . --verbose
+</code></pre>
+<p>Find which component scores lowest. Focus improvement there.</p>
+<h3 id="satd-detection-misses-comments"><a class="header" href="#satd-detection-misses-comments">“SATD detection misses comments”</a></h3>
+<p><strong>Check</strong>: PMAT looks for exact patterns:</p>
+<pre><code class="language-rust">// TODO: works          ✅ detected
+// todo: works          ✅ detected (case-insensitive)
+// Todo: works          ✅ detected
+// @TODO works          ❌ not detected (non-standard format)</code></pre>
+<p>Use standard markers: TODO, FIXME, HACK, XXX, BUG.</p>
+<h3 id="link-validation-fails-in-ci-but-passes-locally"><a class="header" href="#link-validation-fails-in-ci-but-passes-locally">“Link validation fails in CI but passes locally”</a></h3>
+<p><strong>Cause</strong>: Network differences. Local machine can reach internal URLs, CI cannot.</p>
+<p><strong>Solution</strong>: Use <code>--skip-external</code> flag in CI:</p>
+<pre><code class="language-bash">pmat validate-docs --fail-on-error --skip-external
+</code></pre>
+<p>Or mock external URLs in CI.</p>
+<h2 id="advanced-pmat-usage"><a class="header" href="#advanced-pmat-usage">Advanced PMAT Usage</a></h2>
+<h3 id="custom-metrics"><a class="header" href="#custom-metrics">Custom Metrics</a></h3>
+<p>Extend PMAT with custom analysis:</p>
+<pre><code class="language-bash"># Combine PMAT with other tools
+pmat analyze complexity --format json &gt; complexity.json
+pmat tdg . --format json &gt; tdg.json
+
+# Merge reports
+jq -s '.[0] + .[1]' complexity.json tdg.json &gt; combined.json
+</code></pre>
+<h3 id="historical-tracking"><a class="header" href="#historical-tracking">Historical Tracking</a></h3>
+<p>Track quality over time:</p>
+<pre><code class="language-bash"># Save metrics daily
+echo "$(date),$(pmat tdg . --format json | jq -r '.score')" &gt;&gt; metrics.csv
+
+# Plot trends
+gnuplot &lt;&lt; EOF
+  set datafile separator ","
+  set xdata time
+  set timefmt "%Y-%m-%d"
+  plot 'metrics.csv' using 1:2 with lines title 'TDG Score'
+EOF
+</code></pre>
+<h3 id="automated-refactoring"><a class="header" href="#automated-refactoring">Automated Refactoring</a></h3>
+<p>Use PMAT to prioritize refactoring:</p>
+<pre><code class="language-bash"># Find most complex functions
+pmat analyze complexity --format json | \
+  jq -r '.functions | sort_by(.cyclomatic) | reverse | .[0:5]'
+
+# Output: Top 5 most complex functions
+# Refactor these first for maximum impact
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>PMAT transforms quality from aspiration to enforcement. It:</p>
+<ul>
+<li><strong>Measures</strong> complexity, debt, and maintainability objectively</li>
+<li><strong>Enforces</strong> thresholds via fail-on-violation flags</li>
+<li><strong>Guides</strong> refactoring with specific recommendations</li>
+<li><strong>Tracks</strong> quality trends over time</li>
+</ul>
+<p>pforge integrates PMAT into every commit via pre-commit hooks and CI checks. This ensures code quality never regresses.</p>
+<p>Key takeaways:</p>
+<ol>
+<li><strong>Cyclomatic complexity &gt; 20</strong>: Refactor immediately</li>
+<li><strong>TDG &lt; 75</strong>: Quality is below acceptable threshold</li>
+<li><strong>SATD comments</strong>: Fix or remove, don’t defer</li>
+<li><strong>Broken doc links</strong>: Documentation is code, test it</li>
+</ol>
+<p>The next chapter explores <strong>complexity analysis</strong> in depth, showing how to identify, measure, and reduce code complexity systematically.</p>
 
                     </main>
 
