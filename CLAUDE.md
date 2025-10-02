@@ -259,7 +259,7 @@ All benchmarks in `benches/` directory:
 ## Pre-Commit Workflow
 
 Pre-commit hooks automatically run:
-0. `scripts/validate_markdown_links.sh` - Validate all markdown links
+0. `pmat validate-docs` - Validate all markdown links (local & HTTP)
 1. `cargo fmt --check` - Code formatting
 2. `cargo clippy -- -D warnings` - Linting
 3. `cargo test --all` - All tests
@@ -268,7 +268,7 @@ Pre-commit hooks automatically run:
 6. `cargo tarpaulin` - Coverage check (≥80%)
 7. `pmat analyze tdg` - Technical Debt Grade (≥0.75)
 
-Commits are **blocked** if any gate fails. This includes broken documentation links.
+Commits are **blocked** if any gate fails. This includes broken documentation links (both local files and external URLs with HTTP 404s).
 
 ## CI/CD Pipeline
 

@@ -118,5 +118,4 @@ fn arb_forge_config() -> impl Strategy<Value = ForgeConfig> {
 ## References
 
 - [Proptest Book](https://proptest-rs.github.io/proptest/intro.html)
-- [Property-Based Testing in Rust](https://www.lpalmieri.com/posts/property-based-testing-in-rust/)
 - [Phase 3 Roadmap](../../ROADMAP.md#phase-3-quality--testing-week-5-6---cycles-21-30)

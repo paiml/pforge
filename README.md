@@ -142,7 +142,7 @@ Contributions are welcome. Please:
 3. Ensure tests pass: `cargo test --all`
 4. Ensure quality gates pass: `make quality-gate`
 
-All commits are validated by pre-commit hooks that check code formatting, linting, tests, complexity, coverage, and **markdown link validity** to prevent broken documentation links.
+All commits are validated by pre-commit hooks that check code formatting, linting, tests, complexity, coverage, and **markdown link validity** (using `pmat validate-docs`) to prevent broken documentation links.
 
 ## License
 

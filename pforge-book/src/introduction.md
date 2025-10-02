@@ -182,7 +182,6 @@ impl Handler for GreetHandler {
 
 - **Repository**: [github.com/paiml/pforge](https://github.com/paiml/pforge)
 - **Issues**: [github.com/paiml/pforge/issues](https://github.com/paiml/pforge/issues)
-- **Discussions**: [github.com/paiml/pforge/discussions](https://github.com/paiml/pforge/discussions)
 - **Specification**: See `docs/specifications/pforge-specification.md`
 
 ## Let's Begin

@@ -593,7 +593,7 @@ pforge --help
 - Read the [Architecture Guide](./ARCHITECTURE.md)
 - Explore [Examples](../examples/)
 - Check the [API Documentation](https://docs.rs/pforge-runtime)
-- Join our [Community](https://github.com/paiml/pforge/discussions)
+- Report issues on [GitHub](https://github.com/paiml/pforge/issues)
 
 ## Support
 
