@@ -1,0 +1,17 @@
+[package]
+name = "pforge-integration-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+pforge-runtime = { workspace = true }
+pforge-config = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9"
+tokio = { workspace = true }
+
+[[test]]
+name = "integration"
+path = "integration_test.rs"

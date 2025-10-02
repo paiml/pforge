@@ -1,0 +1,23 @@
+[package]
+name = "pforge-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "pforge"
+path = "src/main.rs"
+
+[dependencies]
+pforge-runtime = { workspace = true }
+pforge-config = { workspace = true }
+pforge-codegen = { workspace = true }
+
+anyhow = { workspace = true }
+clap = { version = "4.4", features = ["derive"] }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.8"

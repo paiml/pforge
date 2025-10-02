@@ -1,0 +1,19 @@
+use pforge_runtime::*;
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct HelloParams {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct HelloResponse {
+    pub message: String,
+}
+
+pub async fn say_hello(params: HelloParams) -> Result<HelloResponse> {
+    Ok(HelloResponse {
+        message: format!("Hello, {}!", params.name),
+    })
+}

@@ -1,0 +1,16 @@
+forge:
+  name: {{PROJECT_NAME}}
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: native
+    name: hello
+    description: "Say hello to someone"
+    handler:
+      path: handlers::hello::say_hello
+    params:
+      name:
+        type: string
+        required: true
+        description: "Name to greet"

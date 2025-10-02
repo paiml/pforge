@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  build-release:
+    name: Build Release
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: pforge-linux-amd64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset_name: pforge-linux-amd64-musl
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_name: pforge-macos-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: pforge-macos-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: pforge-windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/pforge.exe ${{ matrix.asset_name }}
+          else
+            cp target/${{ matrix.target }}/release/pforge ${{ matrix.asset_name }}
+            chmod +x ${{ matrix.asset_name }}
+          fi
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.asset_name }}
+          asset_name: ${{ matrix.asset_name }}
+          asset_content_type: application/octet-stream
+
+  publish-crate:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: build-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish pforge-config
+        run: cd crates/pforge-config && cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        continue-on-error: true
+
+      - name: Wait for crates.io
+        run: sleep 30
+
+      - name: Publish pforge-runtime
+        run: cd crates/pforge-runtime && cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        continue-on-error: true
+
+      - name: Wait for crates.io
+        run: sleep 30
+
+      - name: Publish pforge-codegen
+        run: cd crates/pforge-codegen && cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        continue-on-error: true
+
+      - name: Wait for crates.io
+        run: sleep 30
+
+      - name: Publish pforge-cli
+        run: cd crates/pforge-cli && cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        continue-on-error: true

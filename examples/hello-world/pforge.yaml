@@ -1,0 +1,27 @@
+forge:
+  name: hello-world
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: native
+    name: greet
+    description: "Greet a person by name"
+    handler:
+      path: handlers::greet::say_hello
+    params:
+      name:
+        type: string
+        required: true
+        description: "Name of the person to greet"
+      greeting:
+        type: string
+        required: false
+        default: "Hello"
+        description: "Custom greeting word"
+
+  - type: cli
+    name: whoami
+    description: "Get current username"
+    command: whoami
+    args: []

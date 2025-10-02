@@ -1,0 +1,1008 @@
+# pforge: Declarative MCP Server Framework - Implementation Roadmap
+# Extreme TDD with Zero Tolerance Quality Gates
+
+meta:
+  project: pforge
+  code_name: Pragmatic Forge
+  version: 0.1.0-alpha
+  repository: github.com/paiml/pforge
+  approach: Extreme Test-Driven Development
+  quality_gates:
+    max_complexity: 20
+    max_cognitive: 15
+    min_coverage: 0.80
+    min_mutation_score: 0.90
+    satd_tolerance: 0
+    tdg_min_score: 0.75
+  execution:
+    ticket_workflow: RED-GREEN-REFACTOR
+    commit_strategy: atomic_per_ticket
+    build_verification: mandatory_clean
+    cycle_time: 5_minutes_max
+
+phases:
+  # PHASE 1: Foundation (Cycles 1-10) - Week 1-2
+  - id: phase-1
+    name: "Foundation"
+    goal: "Minimal viable server with stdio transport"
+    duration: 2_weeks
+    cycles: 10
+    tickets:
+      - id: PFORGE-1001
+        title: "Project scaffolding and build system"
+        priority: critical
+        cycle: 1
+        time_estimate: 2_hours
+        requirements:
+          - "Cargo workspace with 5 crates"
+          - "Build system with proper dependencies"
+          - "Project template generation"
+          - "Quality gate infrastructure (PMAT integration)"
+        tests:
+          - "test_new_project_structure"
+          - "test_generated_pforge_yaml_valid"
+          - "test_generated_project_compiles"
+          - "test_cargo_toml_has_correct_dependencies"
+          - "test_quality_gates_configuration_exists"
+        acceptance:
+          - "cargo build --release succeeds"
+          - "All crates compile independently"
+          - "Project scaffold creates valid structure"
+          - "PMAT quality gates configured"
+
+      - id: PFORGE-1002
+        title: "YAML Configuration Schema and Parser"
+        priority: critical
+        cycle: 2
+        time_estimate: 3_hours
+        requirements:
+          - "Complete ForgeConfig type definitions"
+          - "serde_yml integration with validation"
+          - "ToolDef enum (Native, CLI, HTTP, Pipeline)"
+          - "ParamSchema with validation support"
+          - "Comprehensive error messages"
+        tests:
+          - "test_parse_minimal_config"
+          - "test_parse_all_tool_types"
+          - "test_invalid_config_fails"
+          - "test_parameter_validation_parsing"
+          - "test_config_roundtrip_serialization"
+          - "proptest_config_parsing_correctness"
+        acceptance:
+          - "100% test coverage on parser"
+          - "All example configs parse correctly"
+          - "Validation errors are actionable"
+          - "Property tests pass 10K iterations"
+
+      - id: PFORGE-1003
+        title: "Handler Trait and Registry Foundation"
+        priority: critical
+        cycle: 3
+        time_estimate: 3_hours
+        requirements:
+          - "Handler trait with async_trait"
+          - "HandlerRegistry with FxHashMap"
+          - "O(1) average-case dispatch"
+          - "Type-safe input/output with JsonSchema"
+          - "Error handling with thiserror"
+        tests:
+          - "test_handler_registration"
+          - "test_handler_dispatch"
+          - "test_nonexistent_handler_error"
+          - "test_registry_performance"
+          - "proptest_dispatch_correctness"
+        acceptance:
+          - "Dispatch latency < 1μs"
+          - "1000 handlers registered without slowdown"
+          - "Zero-cost abstractions verified"
+          - "All error paths tested"
+
+      - id: PFORGE-1004
+        title: "Code Generation (build.rs) Infrastructure"
+        priority: critical
+        cycle: 4
+        time_estimate: 4_hours
+        requirements:
+          - "build.rs reads pforge.yaml"
+          - "Generate parameter structs with derives"
+          - "Generate handler registration code"
+          - "Generate JsonSchema implementations"
+          - "Compile-time validation"
+        tests:
+          - "test_generate_param_struct"
+          - "test_generate_handler_registration"
+          - "test_generated_code_compiles"
+          - "test_schema_generation_correctness"
+          - "integration_test_full_codegen_pipeline"
+        acceptance:
+          - "Generated code compiles without warnings"
+          - "Type safety enforced at compile-time"
+          - "Schema matches YAML definition"
+          - "Codegen completes in <1s"
+
+      - id: PFORGE-1005
+        title: "pmcp Integration and Server Builder"
+        priority: critical
+        cycle: 5
+        time_estimate: 3_hours
+        requirements:
+          - "pmcp ServerBuilder integration"
+          - "TypedTool registration"
+          - "Transport abstraction (stdio first)"
+          - "Server lifecycle management"
+        tests:
+          - "test_pmcp_server_initialization"
+          - "test_typed_tool_registration"
+          - "test_schema_generation"
+          - "test_server_lifecycle"
+          - "integration_test_mcp_protocol"
+        acceptance:
+          - "Server starts in <100ms"
+          - "MCP protocol v2024-10-07 compliant"
+          - "All pmcp features accessible"
+          - "Clean shutdown handling"
+
+      - id: PFORGE-1006
+        title: "CLI Handler Implementation"
+        priority: high
+        cycle: 6-7
+        time_estimate: 4_hours
+        requirements:
+          - "CliHandler struct with command execution"
+          - "Environment variable support"
+          - "Working directory control"
+          - "Streaming output support"
+          - "Timeout handling"
+        tests:
+          - "test_cli_handler_basic"
+          - "test_cli_handler_with_env"
+          - "test_cli_handler_streaming"
+          - "test_cli_handler_error"
+          - "test_cli_handler_timeout"
+          - "proptest_cli_handler_safety"
+        acceptance:
+          - "Commands execute correctly"
+          - "Streaming works for long-running commands"
+          - "Timeouts enforced"
+          - "No command injection vulnerabilities"
+
+      - id: PFORGE-1007
+        title: "HTTP Handler Implementation"
+        priority: high
+        cycle: 7-8
+        time_estimate: 4_hours
+        requirements:
+          - "HttpHandler with reqwest client"
+          - "Authentication (Bearer, Basic, API Key)"
+          - "Template interpolation (handlebars)"
+          - "Request/response handling"
+          - "Connection pooling"
+        tests:
+          - "test_http_handler_get"
+          - "test_http_handler_post_with_body"
+          - "test_http_handler_with_auth"
+          - "test_template_interpolation"
+          - "test_connection_pooling"
+          - "integration_test_real_endpoints"
+        acceptance:
+          - "All HTTP methods supported"
+          - "Auth mechanisms working"
+          - "Templates render correctly"
+          - "Connection reuse verified"
+
+      - id: PFORGE-1008
+        title: "Pipeline Handler Implementation"
+        priority: high
+        cycle: 8-9
+        time_estimate: 4_hours
+        requirements:
+          - "PipelineHandler with step execution"
+          - "Variable interpolation between steps"
+          - "Conditional execution support"
+          - "Error policy (FailFast, Continue)"
+          - "Step result aggregation"
+        tests:
+          - "test_pipeline_sequential_execution"
+          - "test_pipeline_conditional_execution"
+          - "test_pipeline_error_handling"
+          - "test_variable_interpolation"
+          - "proptest_pipeline_determinism"
+        acceptance:
+          - "All steps execute in order"
+          - "Conditionals work correctly"
+          - "Error policies enforced"
+          - "Variables pass between steps"
+
+      - id: PFORGE-1009
+        title: "End-to-End Integration Tests"
+        priority: critical
+        cycle: 9
+        time_estimate: 3_hours
+        requirements:
+          - "Full server startup/shutdown tests"
+          - "MCP protocol compliance tests"
+          - "Multi-handler workflow tests"
+          - "Error recovery tests"
+        tests:
+          - "e2e_test_hello_world_server"
+          - "e2e_test_multi_tool_server"
+          - "e2e_test_mcp_compliance"
+          - "e2e_test_error_recovery"
+          - "e2e_test_concurrent_requests"
+        acceptance:
+          - "All E2E tests pass"
+          - "MCP protocol fully compliant"
+          - "Concurrent requests handled"
+          - "Error recovery works"
+
+      - id: PFORGE-1010
+        title: "CLI Command Implementation (pforge new/build/serve)"
+        priority: critical
+        cycle: 10
+        time_estimate: 3_hours
+        requirements:
+          - "pforge new <name> scaffolding"
+          - "pforge build compilation"
+          - "pforge serve execution"
+          - "pforge dev hot-reload"
+          - "Template system for project generation"
+        tests:
+          - "test_pforge_new_command"
+          - "test_pforge_build_command"
+          - "test_pforge_serve_command"
+          - "test_pforge_dev_watch_mode"
+          - "integration_test_full_workflow"
+        acceptance:
+          - "All CLI commands working"
+          - "Project generation functional"
+          - "Hot reload works correctly"
+          - "User-friendly error messages"
+
+  # PHASE 2: Advanced Features (Cycles 11-20) - Week 3-4
+  - id: phase-2
+    name: "Advanced Features"
+    goal: "Production-ready handlers and optimization"
+    duration: 2_weeks
+    cycles: 10
+    tickets:
+      - id: PFORGE-2001
+        title: "Resource Management and Prompts"
+        priority: high
+        cycle: 11
+        time_estimate: 3_hours
+        requirements:
+          - "ResourceDef configuration support"
+          - "URI template matching"
+          - "Subscribe capability for resources"
+          - "PromptDef with handlebars templates"
+        tests:
+          - "test_resource_uri_matching"
+          - "test_resource_subscription"
+          - "test_prompt_template_rendering"
+          - "test_prompt_argument_validation"
+        acceptance:
+          - "Resources accessible via MCP"
+          - "Subscriptions work correctly"
+          - "Prompts render properly"
+          - "Type-safe prompt arguments"
+
+      - id: PFORGE-2002
+        title: "State Management (Sled Backend)"
+        priority: high
+        cycle: 12
+        time_estimate: 4_hours
+        requirements:
+          - "StateManager with Sled backend"
+          - "Get/Set/Delete operations"
+          - "TTL support for keys"
+          - "Memory backend for testing"
+          - "Concurrent access handling"
+        tests:
+          - "test_sled_state_backend"
+          - "test_state_ttl"
+          - "test_concurrent_state_access"
+          - "test_state_persistence"
+          - "proptest_state_consistency"
+        acceptance:
+          - "State persists across restarts"
+          - "TTL expires correctly"
+          - "Concurrent access safe"
+          - "Memory backend working"
+
+      - id: PFORGE-2003
+        title: "Middleware Chain and Request Processing"
+        priority: medium
+        cycle: 13
+        time_estimate: 3_hours
+        requirements:
+          - "Middleware trait definition"
+          - "Chain composition"
+          - "Request/response transformation"
+          - "Logging and metrics middleware"
+        tests:
+          - "test_middleware_chain_execution"
+          - "test_middleware_request_transform"
+          - "test_logging_middleware"
+          - "test_metrics_middleware"
+        acceptance:
+          - "Middleware executes in order"
+          - "Transformations applied correctly"
+          - "Logging captures all requests"
+          - "Metrics collected accurately"
+
+      - id: PFORGE-2004
+        title: "Timeout and Retry Mechanisms"
+        priority: high
+        cycle: 14
+        time_estimate: 3_hours
+        requirements:
+          - "Timeout configuration per tool"
+          - "Retry policy (exponential backoff)"
+          - "Circuit breaker pattern"
+          - "Fallback handling"
+        tests:
+          - "test_timeout_handling"
+          - "test_retry_on_transient_failure"
+          - "test_circuit_breaker"
+          - "test_fallback_execution"
+          - "proptest_retry_bounds"
+        acceptance:
+          - "Timeouts enforced correctly"
+          - "Retries bounded properly"
+          - "Circuit breaker opens/closes"
+          - "Fallbacks executed on failure"
+
+      - id: PFORGE-2005
+        title: "Multi-Transport Support (SSE and WebSocket)"
+        priority: high
+        cycle: 15-16
+        time_estimate: 4_hours
+        requirements:
+          - "SSE transport implementation"
+          - "WebSocket transport implementation"
+          - "Transport abstraction trait"
+          - "Transport selection via config"
+        tests:
+          - "test_sse_transport"
+          - "test_websocket_transport"
+          - "test_transport_switching"
+          - "e2e_test_sse_server"
+          - "e2e_test_websocket_server"
+        acceptance:
+          - "All transports working"
+          - "Hot-switching between transports"
+          - "MCP protocol on all transports"
+          - "Performance meets targets"
+
+      - id: PFORGE-2006
+        title: "Language Bridge Architecture (FFI)"
+        priority: medium
+        cycle: 16-17
+        time_estimate: 5_hours
+        requirements:
+          - "C ABI handler interface"
+          - "BridgeHandler wrapper"
+          - "Zero-copy parameter passing"
+          - "Error propagation across FFI"
+        tests:
+          - "test_c_handler_interface"
+          - "test_bridge_handler_dispatch"
+          - "test_ffi_error_handling"
+          - "test_zero_copy_optimization"
+        acceptance:
+          - "FFI boundary stable"
+          - "Zero-copy verified"
+          - "Errors propagate correctly"
+          - "Memory safe (valgrind clean)"
+
+      - id: PFORGE-2007
+        title: "Python Bridge Implementation"
+        priority: medium
+        cycle: 17-18
+        time_estimate: 4_hours
+        requirements:
+          - "Python ctypes integration"
+          - "PforgeHandler Python class"
+          - "to_c_handler conversion"
+          - "Python error handling"
+        tests:
+          - "test_python_handler_registration"
+          - "test_python_handler_execution"
+          - "test_python_error_propagation"
+          - "integration_test_polyglot_server"
+        acceptance:
+          - "Python handlers working"
+          - "Errors map correctly"
+          - "Performance acceptable"
+          - "Examples working"
+
+      - id: PFORGE-2008
+        title: "Go Bridge Implementation"
+        priority: medium
+        cycle: 18-19
+        time_estimate: 4_hours
+        requirements:
+          - "Go cgo integration"
+          - "Handler func type"
+          - "ExecuteHandler export"
+          - "Memory management across boundary"
+        tests:
+          - "test_go_handler_registration"
+          - "test_go_handler_execution"
+          - "test_go_memory_management"
+          - "integration_test_go_handlers"
+        acceptance:
+          - "Go handlers working"
+          - "No memory leaks"
+          - "Performance acceptable"
+          - "Examples working"
+
+      - id: PFORGE-2009
+        title: "Performance Benchmarking Suite"
+        priority: critical
+        cycle: 19
+        time_estimate: 3_hours
+        requirements:
+          - "Dispatch latency benchmarks"
+          - "Throughput benchmarks"
+          - "Memory usage benchmarks"
+          - "Cold start benchmarks"
+          - "Criterion integration"
+        tests:
+          - "bench_handler_dispatch"
+          - "bench_config_parsing"
+          - "bench_schema_generation"
+          - "bench_sustained_throughput"
+        acceptance:
+          - "Dispatch < 1μs verified"
+          - "Throughput > 100K req/s"
+          - "Cold start < 100ms"
+          - "Memory < 512KB baseline"
+
+      - id: PFORGE-2010
+        title: "Error Recovery and Resilience"
+        priority: high
+        cycle: 20
+        time_estimate: 3_hours
+        requirements:
+          - "Graceful degradation"
+          - "Partial failure handling"
+          - "Recovery strategies"
+          - "Health check endpoints"
+        tests:
+          - "test_graceful_degradation"
+          - "test_partial_failure_handling"
+          - "test_recovery_strategies"
+          - "test_health_endpoints"
+          - "chaos_test_cascading_failures"
+        acceptance:
+          - "System degrades gracefully"
+          - "Partial failures isolated"
+          - "Recovery automatic"
+          - "Health checks accurate"
+
+  # PHASE 3: Quality and Testing (Cycles 21-30) - Week 5-6
+  - id: phase-3
+    name: "Quality and Testing"
+    goal: "PMAT integration and quality enforcement"
+    duration: 2_weeks
+    cycles: 10
+    tickets:
+      - id: PFORGE-3001
+        title: "PMAT Quality Gate Integration"
+        priority: critical
+        cycle: 21
+        time_estimate: 3_hours
+        requirements:
+          - "Pre-commit hook with PMAT checks"
+          - "Complexity analysis (max 20)"
+          - "SATD detection (zero tolerance)"
+          - "TDG score calculation (min 0.75)"
+          - "Coverage tracking (min 80%)"
+        tests:
+          - "test_pmat_quality_gate"
+          - "test_complexity_enforcement"
+          - "test_satd_detection"
+          - "test_tdg_score"
+          - "test_coverage_tracking"
+        acceptance:
+          - "Quality gates block violations"
+          - "All metrics enforced"
+          - "Pre-commit hook works"
+          - "CI/CD integration complete"
+
+      - id: PFORGE-3002
+        title: "Property-Based Testing with Proptest"
+        priority: high
+        cycle: 22
+        time_estimate: 4_hours
+        requirements:
+          - "Config roundtrip properties"
+          - "Handler dispatch properties"
+          - "Pipeline execution properties"
+          - "State consistency properties"
+        tests:
+          - "proptest_config_roundtrip"
+          - "proptest_handler_dispatch_always_valid_json"
+          - "proptest_pipeline_determinism"
+          - "proptest_state_consistency"
+        acceptance:
+          - "All properties pass 10K iterations"
+          - "No panics discovered"
+          - "Edge cases covered"
+          - "Shrinking works correctly"
+
+      - id: PFORGE-3003
+        title: "Mutation Testing with cargo-mutants"
+        priority: high
+        cycle: 23
+        time_estimate: 3_hours
+        requirements:
+          - "cargo-mutants configuration"
+          - "Mutation test baseline"
+          - "Kill rate > 90%"
+          - "CI integration"
+        tests:
+          - "mutation_test_handler_logic"
+          - "mutation_test_validation_logic"
+          - "mutation_test_error_handling"
+        acceptance:
+          - "Mutation score > 90%"
+          - "All critical paths covered"
+          - "Tests catch regressions"
+          - "CI fails on score drop"
+
+      - id: PFORGE-3004
+        title: "Fuzzing Infrastructure"
+        priority: medium
+        cycle: 24
+        time_estimate: 3_hours
+        requirements:
+          - "cargo-fuzz integration"
+          - "Config parsing fuzzing"
+          - "Handler input fuzzing"
+          - "Crash detection"
+        tests:
+          - "fuzz_config_parser"
+          - "fuzz_handler_inputs"
+          - "fuzz_template_engine"
+        acceptance:
+          - "Fuzzers run without crashes"
+          - "Code coverage increased"
+          - "Edge cases discovered"
+          - "CI runs fuzzers nightly"
+
+      - id: PFORGE-3005
+        title: "Integration Test Suite Expansion"
+        priority: high
+        cycle: 25
+        time_estimate: 4_hours
+        requirements:
+          - "Multi-server orchestration tests"
+          - "Real-world scenario tests"
+          - "Performance regression tests"
+          - "Security vulnerability tests"
+        tests:
+          - "integration_test_multi_server_workflow"
+          - "integration_test_pmat_analysis_server"
+          - "integration_test_performance_regression"
+          - "integration_test_security_scanning"
+        acceptance:
+          - "All integration tests pass"
+          - "Real-world scenarios covered"
+          - "Performance regressions caught"
+          - "Security issues detected"
+
+      - id: PFORGE-3006
+        title: "Memory Safety Verification"
+        priority: critical
+        cycle: 26
+        time_estimate: 3_hours
+        requirements:
+          - "Valgrind leak checks"
+          - "AddressSanitizer integration"
+          - "MIRI unsafe code verification"
+          - "Memory profiling (heaptrack)"
+        tests:
+          - "valgrind_test_no_leaks"
+          - "asan_test_no_violations"
+          - "miri_test_unsafe_code"
+          - "heaptrack_test_memory_usage"
+        acceptance:
+          - "Zero memory leaks"
+          - "No undefined behavior"
+          - "All unsafe code verified"
+          - "Memory usage within bounds"
+
+      - id: PFORGE-3007
+        title: "Security Audit and Hardening"
+        priority: critical
+        cycle: 27
+        time_estimate: 4_hours
+        requirements:
+          - "cargo-audit integration"
+          - "Dependency vulnerability scanning"
+          - "Input validation hardening"
+          - "Sandbox execution for CLI tools"
+        tests:
+          - "test_cargo_audit_clean"
+          - "test_input_validation"
+          - "test_cli_sandbox"
+          - "test_no_command_injection"
+        acceptance:
+          - "Zero known vulnerabilities"
+          - "Input validation comprehensive"
+          - "CLI tools sandboxed"
+          - "Security best practices followed"
+
+      - id: PFORGE-3008
+        title: "Performance Profiling and Optimization"
+        priority: high
+        cycle: 28
+        time_estimate: 4_hours
+        requirements:
+          - "Flamegraph generation"
+          - "Bottleneck identification"
+          - "Hot path optimization"
+          - "Allocation reduction"
+        tests:
+          - "profile_test_dispatch_latency"
+          - "profile_test_throughput"
+          - "profile_test_cold_start"
+          - "profile_test_memory_allocations"
+        acceptance:
+          - "All performance targets met"
+          - "Bottlenecks identified and fixed"
+          - "Hot path allocations minimized"
+          - "Flamegraphs show optimal profile"
+
+      - id: PFORGE-3009
+        title: "Documentation Generation and Validation"
+        priority: high
+        cycle: 29
+        time_estimate: 3_hours
+        requirements:
+          - "API documentation (rustdoc)"
+          - "User guide documentation"
+          - "Example gallery"
+          - "Documentation tests (doctest)"
+        tests:
+          - "test_all_public_apis_documented"
+          - "test_documentation_examples_compile"
+          - "test_documentation_coverage"
+        acceptance:
+          - "100% public API documented"
+          - "All examples compile and run"
+          - "Documentation coverage > 95%"
+          - "Doctests pass"
+
+      - id: PFORGE-3010
+        title: "CI/CD Pipeline Hardening"
+        priority: critical
+        cycle: 30
+        time_estimate: 3_hours
+        requirements:
+          - "GitHub Actions workflow"
+          - "Matrix testing (OS, Rust versions)"
+          - "Release automation"
+          - "Performance regression detection"
+        tests:
+          - "ci_test_build_on_all_platforms"
+          - "ci_test_all_rust_versions"
+          - "ci_test_release_process"
+          - "ci_test_performance_gates"
+        acceptance:
+          - "CI runs on all platforms"
+          - "All Rust versions tested"
+          - "Release automation working"
+          - "Performance gates enforced"
+
+  # PHASE 4: Production Readiness (Cycles 31-40) - Week 7-8
+  - id: phase-4
+    name: "Production Readiness"
+    goal: "Polish, examples, and deployment"
+    duration: 2_weeks
+    cycles: 10
+    tickets:
+      - id: PFORGE-4001
+        title: "Example: Hello World Server"
+        priority: high
+        cycle: 31
+        time_estimate: 2_hours
+        requirements:
+          - "Complete hello-world example"
+          - "README with instructions"
+          - "Integration test for example"
+        tests:
+          - "example_test_hello_world"
+        acceptance:
+          - "Example compiles and runs"
+          - "README clear and accurate"
+          - "Test verifies functionality"
+
+      - id: PFORGE-4002
+        title: "Example: PMAT Analysis Server"
+        priority: high
+        cycle: 32
+        time_estimate: 4_hours
+        requirements:
+          - "PMAT integration example"
+          - "Complexity analysis tool"
+          - "TDG analysis tool"
+          - "README with real usage"
+        tests:
+          - "example_test_pmat_server"
+        acceptance:
+          - "Example working end-to-end"
+          - "Real PMAT analysis functional"
+          - "Documentation complete"
+
+      - id: PFORGE-4003
+        title: "Example: Polyglot Multi-Language Server"
+        priority: high
+        cycle: 33
+        time_estimate: 4_hours
+        requirements:
+          - "Rust + Python + Go handlers"
+          - "Language bridge demonstration"
+          - "README with architecture"
+        tests:
+          - "example_test_polyglot_server"
+        acceptance:
+          - "All languages working together"
+          - "Bridge architecture demonstrated"
+          - "Documentation explains design"
+
+      - id: PFORGE-4004
+        title: "Example: Production-Ready Full-Featured Server"
+        priority: high
+        cycle: 34
+        time_estimate: 4_hours
+        requirements:
+          - "All handler types demonstrated"
+          - "State management example"
+          - "Middleware chain example"
+          - "Production configuration"
+        tests:
+          - "example_test_production_server"
+        acceptance:
+          - "All features demonstrated"
+          - "Production best practices shown"
+          - "README comprehensive"
+
+      - id: PFORGE-4005
+        title: "User Guide Documentation"
+        priority: critical
+        cycle: 35
+        time_estimate: 4_hours
+        requirements:
+          - "Getting started guide"
+          - "Configuration reference"
+          - "Handler development guide"
+          - "Deployment guide"
+        tests:
+          - "test_documentation_links_valid"
+        acceptance:
+          - "All guides complete"
+          - "Examples functional"
+          - "Links working"
+
+      - id: PFORGE-4006
+        title: "Architecture Documentation"
+        priority: high
+        cycle: 36
+        time_estimate: 3_hours
+        requirements:
+          - "Architecture overview"
+          - "Component interaction diagrams"
+          - "Performance characteristics"
+          - "Design decisions rationale"
+        tests:
+          - "test_diagrams_render_correctly"
+        acceptance:
+          - "Architecture clear"
+          - "Diagrams accurate"
+          - "Design rationale documented"
+
+      - id: PFORGE-4007
+        title: "Release Automation and Versioning"
+        priority: critical
+        cycle: 37
+        time_estimate: 3_hours
+        requirements:
+          - "Semantic versioning enforcement"
+          - "Changelog automation"
+          - "crates.io publishing workflow"
+          - "GitHub release automation"
+        tests:
+          - "test_version_consistency"
+          - "test_changelog_generation"
+          - "test_release_workflow"
+        acceptance:
+          - "Versions consistent"
+          - "Changelog auto-generated"
+          - "Release process automated"
+
+      - id: PFORGE-4008
+        title: "Package Distribution (cargo install, homebrew, etc.)"
+        priority: high
+        cycle: 38
+        time_estimate: 3_hours
+        requirements:
+          - "crates.io publication"
+          - "Homebrew formula"
+          - "Binary releases (GitHub)"
+          - "Docker images"
+        tests:
+          - "test_cargo_install"
+          - "test_homebrew_installation"
+          - "test_docker_image_build"
+        acceptance:
+          - "All distribution methods working"
+          - "Installation smooth"
+          - "Binaries optimized"
+
+      - id: PFORGE-4009
+        title: "Telemetry and Observability"
+        priority: medium
+        cycle: 39
+        time_estimate: 3_hours
+        requirements:
+          - "Structured logging (tracing)"
+          - "Metrics collection (prometheus)"
+          - "Distributed tracing"
+          - "Health and readiness endpoints"
+        tests:
+          - "test_logging_output"
+          - "test_metrics_collection"
+          - "test_tracing_spans"
+          - "test_health_endpoints"
+        acceptance:
+          - "Logging structured and useful"
+          - "Metrics expose key data"
+          - "Tracing works across handlers"
+          - "Health checks accurate"
+
+      - id: PFORGE-4010
+        title: "Final Quality Gate and Release Candidate"
+        priority: critical
+        cycle: 40
+        time_estimate: 4_hours
+        requirements:
+          - "All quality gates passing"
+          - "All examples working"
+          - "All documentation complete"
+          - "Performance targets met"
+          - "Security audit clean"
+        tests:
+          - "final_test_all_quality_gates"
+          - "final_test_all_examples"
+          - "final_test_all_benchmarks"
+          - "final_test_all_platforms"
+        acceptance:
+          - "100% test pass rate"
+          - "All quality metrics green"
+          - "Ready for v0.1.0 release"
+          - "Production deployment ready"
+
+validation:
+  continuous_integration:
+    - cargo build --release --all-features
+    - cargo test --all-features
+    - cargo clippy --all-targets -- -D warnings
+    - cargo fmt -- --check
+    - cargo tarpaulin --out Lcov --output-path coverage/lcov.info
+    - cargo mutants --minimum-score 0.90
+    - cargo audit
+    - pmat analyze complexity --max 20
+    - pmat analyze satd --zero-tolerance
+    - pmat analyze tdg --min 0.75
+
+  quality_gates:
+    - max_cyclomatic_complexity: 20
+    - max_cognitive_complexity: 15
+    - min_test_coverage: 0.80
+    - min_mutation_score: 0.90
+    - min_tdg_score: 0.75
+    - satd_count: 0
+    - max_unwrap_in_production: 0
+
+  performance_benchmarks:
+    - cold_start_p99: 100ms
+    - tool_dispatch_p99: 1μs
+    - config_parse: 10ms
+    - schema_generation: 1ms
+    - memory_baseline: 512KB
+    - memory_per_tool: 256B
+    - throughput_sequential: 100000/s
+    - throughput_concurrent_8core: 500000/s
+
+execution_protocol:
+  ticket_workflow:
+    - step: write_failing_tests
+      description: "RED: Write comprehensive test suite that fails"
+      deliverable: "Red tests committed to branch"
+      time_limit: 2_minutes
+
+    - step: minimal_implementation
+      description: "GREEN: Implement just enough to pass tests"
+      deliverable: "Green tests, no extras, no refactoring yet"
+      time_limit: 2_minutes
+
+    - step: refactor_with_quality
+      description: "REFACTOR: Clean code while maintaining green"
+      deliverable: "Clean code, all quality metrics pass"
+      time_limit: 1_minute
+
+    - step: quality_gate_check
+      description: "Run all quality gates"
+      deliverable: "PMAT quality gates pass"
+      time_limit: 30_seconds
+
+    - step: atomic_commit
+      description: "Single commit per ticket with [TICKET-ID] prefix"
+      deliverable: "Git log shows ticket complete"
+      required: true
+
+    - step: clean_build
+      description: "Verify build passes all checks"
+      deliverable: "CI/CD green, ready to merge"
+      required: true
+
+metrics_tracking:
+  per_ticket:
+    - test_coverage_percentage
+    - mutation_score
+    - cyclomatic_complexity
+    - cognitive_complexity
+    - tdg_score
+    - performance_benchmarks
+    - time_to_complete
+
+  per_phase:
+    - velocity_tickets_per_week
+    - defect_rate
+    - technical_debt_score
+    - test_suite_runtime
+    - build_time
+    - documentation_coverage
+
+success_criteria:
+  phase_1_mvp:
+    - all_tickets_complete: true
+    - stdio_server_working: true
+    - native_cli_http_handlers_working: true
+    - quality_gates_passing: true
+    - test_coverage: ">80%"
+
+  phase_2_advanced:
+    - all_transports_working: true
+    - language_bridges_functional: true
+    - state_management_working: true
+    - performance_targets_met: true
+
+  phase_3_quality:
+    - pmat_integration_complete: true
+    - mutation_score: ">90%"
+    - security_audit_clean: true
+    - memory_safety_verified: true
+
+  phase_4_production:
+    - all_examples_working: true
+    - documentation_complete: true
+    - release_automation_working: true
+    - production_deployment_ready: true
+
+deployment_strategy:
+  version: 0.1.0-alpha
+  target_release_date: "Week 8"
+  rollout:
+    - phase: internal_testing
+      duration: 1_week
+      users: paiml_team
+    - phase: beta_release
+      duration: 2_weeks
+      users: selected_partners
+    - phase: public_release
+      duration: ongoing
+      users: everyone

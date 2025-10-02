@@ -1,0 +1,31 @@
+gates:
+  - name: complexity
+    max_cyclomatic: 20
+    max_cognitive: 15
+    fail_on_violation: true
+
+  - name: satd
+    max_count: 0
+    fail_on_violation: true
+
+  - name: test_coverage
+    min_line_coverage: 80
+    min_branch_coverage: 75
+    fail_on_violation: true
+
+  - name: tdg_score
+    min_grade: 0.75
+    fail_on_violation: true
+
+  - name: dead_code
+    max_count: 0
+    fail_on_violation: false  # Warning only
+
+  - name: lints
+    fail_on_warnings: true
+
+  - name: formatting
+    enforce_rustfmt: true
+
+  - name: security_audit
+    fail_on_vulnerabilities: true
