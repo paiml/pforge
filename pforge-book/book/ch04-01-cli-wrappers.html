@@ -158,8 +158,629 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch04-01-cli-wrappersmd"><a class="header" href="#ch04-01-cli-wrappersmd">ch04-01-cli-wrappers.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="cli-wrappers-argument-templating-and-output-parsing"><a class="header" href="#cli-wrappers-argument-templating-and-output-parsing">CLI Wrappers: Argument Templating and Output Parsing</a></h1>
+<p>CLI wrappers transform shell commands into type-safe MCP tools. This chapter covers advanced argument handling, parameter interpolation, and output parsing strategies.</p>
+<h2 id="argument-flow-architecture"><a class="header" href="#argument-flow-architecture">Argument Flow Architecture</a></h2>
+<p>Understanding how arguments flow through CLI handlers:</p>
+<pre><code>YAML Config       User Input        Command Execution
+-----------       ----------        -----------------
+command: git      params: {         git
+args: [           repo: "/foo",  -&gt; -C /foo
+  "-C",           format: "json"    log
+  "{{repo}}",     }                 --format=json
+  "log",
+  "--format={{format}}"
+]
+</code></pre>
+<h2 id="parameter-interpolation"><a class="header" href="#parameter-interpolation">Parameter Interpolation</a></h2>
+<h3 id="basic-string-substitution"><a class="header" href="#basic-string-substitution">Basic String Substitution</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: docker_run
+    description: "Run a Docker container"
+    command: docker
+    args:
+      - "run"
+      - "--name"
+      - "{{container_name}}"
+      - "{{image}}"
+    params:
+      container_name:
+        type: string
+        required: true
+      image:
+        type: string
+        required: true
+</code></pre>
+<p><strong>Execution</strong>:</p>
+<pre><code class="language-json">// Input
+{ "container_name": "my-app", "image": "nginx:latest" }
+
+// Command
+docker run --name my-app nginx:latest
+</code></pre>
+<h3 id="multiple-parameter-types"><a class="header" href="#multiple-parameter-types">Multiple Parameter Types</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: ffmpeg_convert
+    description: "Convert video files"
+    command: ffmpeg
+    args:
+      - "-i"
+      - "{{input_file}}"
+      - "-b:v"
+      - "{{bitrate}}k"
+      - "-r"
+      - "{{framerate}}"
+      - "{{output_file}}"
+    params:
+      input_file:
+        type: string
+        required: true
+      bitrate:
+        type: integer
+        required: false
+        default: 1000
+      framerate:
+        type: integer
+        required: false
+        default: 30
+      output_file:
+        type: string
+        required: true
+</code></pre>
+<p><strong>Type conversion</strong>:</p>
+<ul>
+<li><code>string</code> → passed as-is</li>
+<li><code>integer</code> → converted to string</li>
+<li><code>float</code> → converted to string</li>
+<li><code>boolean</code> → “true” or “false”</li>
+</ul>
+<h3 id="conditional-arguments"><a class="header" href="#conditional-arguments">Conditional Arguments</a></h3>
+<p>For conditional arguments, use a Native handler wrapper:</p>
+<pre><code class="language-rust">use pforge_runtime::{Handler, Result, Error};
+use tokio::process::Command;
+
+#[derive(Deserialize, JsonSchema)]
+struct GrepInput {
+    pattern: String,
+    file: String,
+    case_insensitive: bool,
+    line_numbers: bool,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct GrepOutput {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+}
+
+pub struct GrepHandler;
+
+#[async_trait::async_trait]
+impl Handler for GrepHandler {
+    type Input = GrepInput;
+    type Output = GrepOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        let mut cmd = Command::new("grep");
+
+        if input.case_insensitive {
+            cmd.arg("-i");
+        }
+
+        if input.line_numbers {
+            cmd.arg("-n");
+        }
+
+        cmd.arg(&amp;input.pattern);
+        cmd.arg(&amp;input.file);
+
+        let output = cmd.output().await
+            .map_err(|e| Error::Handler(format!("grep failed: {}", e)))?;
+
+        Ok(GrepOutput {
+            stdout: String::from_utf8_lossy(&amp;output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&amp;output.stderr).to_string(),
+            exit_code: output.status.code().unwrap_or(-1),
+        })
+    }
+}</code></pre>
+<p><strong>Why Native for conditional args?</strong></p>
+<ul>
+<li>YAML is declarative, not conditional</li>
+<li>Rust provides full control over arg construction</li>
+<li>Type-safe boolean-to-flag conversion</li>
+</ul>
+<h2 id="output-parsing-strategies"><a class="header" href="#output-parsing-strategies">Output Parsing Strategies</a></h2>
+<h3 id="strategy-1-raw-output-default"><a class="header" href="#strategy-1-raw-output-default">Strategy 1: Raw Output (Default)</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: list_files
+    command: ls
+    args: ["-lah"]
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code class="language-json">{
+  "stdout": "total 24K\ndrwxr-xr-x 3 user user 4.0K...",
+  "stderr": "",
+  "exit_code": 0
+}
+</code></pre>
+<p><strong>Use when</strong>: Client will parse output (LLMs are good at this!)</p>
+<h3 id="strategy-2-structured-output-with-jq"><a class="header" href="#strategy-2-structured-output-with-jq">Strategy 2: Structured Output with jq</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: docker_inspect
+    description: "Get Docker container details as JSON"
+    command: sh
+    args:
+      - "-c"
+      - "docker inspect {{container}} | jq -c '.[0]'"
+    params:
+      container:
+        type: string
+        required: true
+</code></pre>
+<p><strong>Output</strong>:</p>
+<pre><code class="language-json">{
+  "stdout": "{\"Id\":\"abc123\",\"Name\":\"my-app\",\"State\":{\"Status\":\"running\"}}",
+  "stderr": "",
+  "exit_code": 0
+}
+</code></pre>
+<p><strong>Client parsing</strong>:</p>
+<pre><code class="language-javascript">const result = await client.callTool("docker_inspect", { container: "my-app" });
+const parsed = JSON.parse(result.stdout);
+console.log(parsed.State.Status); // "running"
+</code></pre>
+<h3 id="strategy-3-native-handler-post-processing"><a class="header" href="#strategy-3-native-handler-post-processing">Strategy 3: Native Handler Post-Processing</a></h3>
+<pre><code class="language-rust">#[derive(Serialize, JsonSchema)]
+struct ProcessedOutput {
+    files: Vec&lt;FileInfo&gt;,
+    total_size: u64,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct FileInfo {
+    name: String,
+    size: u64,
+    modified: String,
+}
+
+pub struct LsHandler;
+
+#[async_trait::async_trait]
+impl Handler for LsHandler {
+    type Input = LsInput;
+    type Output = ProcessedOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        let output = Command::new("ls")
+            .arg("-lh")
+            .arg(&amp;input.directory)
+            .output()
+            .await?;
+
+        let stdout = String::from_utf8_lossy(&amp;output.stdout);
+        let files = parse_ls_output(&amp;stdout)?;
+        let total_size = files.iter().map(|f| f.size).sum();
+
+        Ok(ProcessedOutput {
+            files,
+            total_size,
+        })
+    }
+}
+
+fn parse_ls_output(output: &amp;str) -&gt; Result&lt;Vec&lt;FileInfo&gt;&gt; {
+    // Parse ls -lh output into structured data
+    output.lines()
+        .skip(1) // Skip "total" line
+        .map(|line| {
+            let parts: Vec&lt;&amp;str&gt; = line.split_whitespace().collect();
+            Ok(FileInfo {
+                name: parts.last().unwrap_or(&amp;"").to_string(),
+                size: parse_size(parts.get(4).unwrap_or(&amp;"0"))?,
+                modified: format!("{} {} {}",
+                    parts.get(5).unwrap_or(&amp;""),
+                    parts.get(6).unwrap_or(&amp;""),
+                    parts.get(7).unwrap_or(&amp;"")),
+            })
+        })
+        .collect()
+}</code></pre>
+<p><strong>Use when</strong>:</p>
+<ul>
+<li>Output needs transformation</li>
+<li>Type safety required downstream</li>
+<li>Complex parsing logic</li>
+</ul>
+<h3 id="strategy-4-streaming-parser"><a class="header" href="#strategy-4-streaming-parser">Strategy 4: Streaming Parser</a></h3>
+<p>For large outputs, parse incrementally:</p>
+<pre><code class="language-rust">use tokio::io::{AsyncBufReadExt, BufReader};
+
+pub async fn stream_parse_logs(
+    command: &amp;str,
+    args: &amp;[String],
+) -&gt; Result&lt;Vec&lt;LogEntry&gt;&gt; {
+    let mut child = Command::new(command)
+        .args(args)
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child.stdout.take()
+        .ok_or_else(|| Error::Handler("Failed to capture stdout".into()))?;
+
+    let reader = BufReader::new(stdout);
+    let mut lines = reader.lines();
+    let mut entries = Vec::new();
+
+    while let Some(line) = lines.next_line().await? {
+        if let Ok(entry) = parse_log_line(&amp;line) {
+            entries.push(entry);
+        }
+    }
+
+    Ok(entries)
+}</code></pre>
+<h2 id="working-directory-management"><a class="header" href="#working-directory-management">Working Directory Management</a></h2>
+<h3 id="static-working-directory"><a class="header" href="#static-working-directory">Static Working Directory</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: npm_install
+    command: npm
+    args: ["install"]
+    cwd: /home/user/project
+</code></pre>
+<p><strong>Security</strong>: Safe - directory is hardcoded.</p>
+<h3 id="dynamic-working-directory-requires-native"><a class="header" href="#dynamic-working-directory-requires-native">Dynamic Working Directory (Requires Native)</a></h3>
+<pre><code class="language-rust">#[derive(Deserialize, JsonSchema)]
+struct NpmInput {
+    project_path: String,
+}
+
+async fn handle(&amp;self, input: NpmInput) -&gt; Result&lt;NpmOutput&gt; {
+    // Validate path is safe
+    validate_project_path(&amp;input.project_path)?;
+
+    let output = Command::new("npm")
+        .arg("install")
+        .current_dir(&amp;input.project_path)
+        .output()
+        .await?;
+
+    // ... return output
+}
+
+fn validate_project_path(path: &amp;str) -&gt; Result&lt;()&gt; {
+    // Prevent directory traversal
+    if path.contains("..") {
+        return Err(Error::Validation("Invalid path".into()));
+    }
+
+    // Ensure path exists and is a directory
+    let path_obj = std::path::Path::new(path);
+    if !path_obj.is_dir() {
+        return Err(Error::Validation("Not a directory".into()));
+    }
+
+    Ok(())
+}</code></pre>
+<h2 id="environment-variable-handling"><a class="header" href="#environment-variable-handling">Environment Variable Handling</a></h2>
+<h3 id="static-environment-variables"><a class="header" href="#static-environment-variables">Static Environment Variables</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: run_script
+    command: ./script.sh
+    env:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      API_URL: https://api.example.com
+</code></pre>
+<h3 id="dynamic-environment-variables"><a class="header" href="#dynamic-environment-variables">Dynamic Environment Variables</a></h3>
+<p>CLI handlers accept env vars at runtime:</p>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: aws_cli
+    command: aws
+    args: ["s3", "ls"]
+    env:
+      AWS_REGION: us-east-1
+    params:
+      bucket:
+        type: string
+        required: true
+</code></pre>
+<p><strong>Runtime override</strong>:</p>
+<pre><code class="language-json">{
+  "tool": "aws_cli",
+  "params": {
+    "bucket": "my-bucket",
+    "env": {
+      "AWS_REGION": "eu-west-1"  // Overrides static value
+    }
+  }
+}
+</code></pre>
+<p><strong>Merge strategy</strong>:</p>
+<ol>
+<li>Start with system environment</li>
+<li>Apply static YAML env vars</li>
+<li>Apply runtime input env vars (highest priority)</li>
+</ol>
+<h2 id="exit-code-handling"><a class="header" href="#exit-code-handling">Exit Code Handling</a></h2>
+<p>CLI handlers don’t fail on non-zero exit codes - they return the code:</p>
+<pre><code class="language-json">{
+  "stdout": "",
+  "stderr": "grep: pattern not found",
+  "exit_code": 1
+}
+</code></pre>
+<p><strong>Client-side handling</strong>:</p>
+<pre><code class="language-javascript">const result = await client.callTool("grep_files", { pattern: "TODO" });
+
+if (result.exit_code !== 0) {
+  if (result.exit_code === 1) {
+    console.log("Pattern not found (expected)");
+  } else {
+    throw new Error(`grep failed: ${result.stderr}`);
+  }
+}
+</code></pre>
+<p><strong>Native handler with validation</strong>:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let output = Command::new("grep")
+        .args(&amp;input.args)
+        .output()
+        .await?;
+
+    let exit_code = output.status.code().unwrap_or(-1);
+
+    match exit_code {
+        0 =&gt; Ok(Output {
+            stdout: String::from_utf8_lossy(&amp;output.stdout).to_string(),
+        }),
+        1 =&gt; Ok(Output {
+            stdout: String::new(), // Pattern not found - not an error
+        }),
+        _ =&gt; Err(Error::Handler(format!(
+            "grep failed with code {}: {}",
+            exit_code,
+            String::from_utf8_lossy(&amp;output.stderr)
+        ))),
+    }
+}</code></pre>
+<h2 id="complex-command-construction"><a class="header" href="#complex-command-construction">Complex Command Construction</a></h2>
+<h3 id="multi-command-pipelines"><a class="header" href="#multi-command-pipelines">Multi-command Pipelines</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: count_rust_files
+    command: sh
+    args:
+      - "-c"
+      - "find {{directory}} -name '*.rs' | wc -l"
+    params:
+      directory:
+        type: string
+        required: true
+</code></pre>
+<p><strong>Security note</strong>: Use <code>sh -c</code> sparingly - validate input thoroughly!</p>
+<h3 id="argument-quoting"><a class="header" href="#argument-quoting">Argument Quoting</a></h3>
+<p>pforge automatically quotes arguments with spaces:</p>
+<pre><code class="language-yaml">command: git
+args:
+  - "commit"
+  - "-m"
+  - "{{message}}"
+
+# Input: { "message": "fix: resolve bug #123" }
+# Executes: git commit -m "fix: resolve bug #123"
+</code></pre>
+<p><strong>Manual quoting not needed</strong> - pforge handles it.</p>
+<h2 id="real-world-example-docker-wrapper"><a class="header" href="#real-world-example-docker-wrapper">Real-World Example: Docker Wrapper</a></h2>
+<pre><code class="language-yaml">forge:
+  name: docker-wrapper
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: cli
+    name: docker_ps
+    description: "List running containers"
+    command: docker
+    args: ["ps", "--format", "json"]
+
+  - type: cli
+    name: docker_logs
+    description: "Get container logs"
+    command: docker
+    args: ["logs", "--tail", "{{lines}}", "{{container}}"]
+    timeout_ms: 10000
+    params:
+      container:
+        type: string
+        required: true
+      lines:
+        type: integer
+        required: false
+        default: 100
+
+  - type: cli
+    name: docker_exec
+    description: "Execute command in container"
+    command: docker
+    args: ["exec", "-i", "{{container}}", "{{command}}"]
+    params:
+      container:
+        type: string
+        required: true
+      command:
+        type: string
+        required: true
+
+  - type: cli
+    name: docker_stats
+    description: "Stream container stats"
+    command: docker
+    args: ["stats", "--no-stream", "--format", "json"]
+    stream: true
+</code></pre>
+<h2 id="testing-cli-wrappers"><a class="header" href="#testing-cli-wrappers">Testing CLI Wrappers</a></h2>
+<h3 id="unit-test-argument-construction"><a class="header" href="#unit-test-argument-construction">Unit Test: Argument Construction</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_cli_handler_builds_args_correctly() {
+    let handler = CliHandler::new(
+        "git".to_string(),
+        vec!["log".to_string(), "--oneline".to_string()],
+        None,
+        HashMap::new(),
+        None,
+        false,
+    );
+
+    assert_eq!(handler.command, "git");
+    assert_eq!(handler.args, vec!["log", "--oneline"]);
+}</code></pre>
+<h3 id="integration-test-full-execution"><a class="header" href="#integration-test-full-execution">Integration Test: Full Execution</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_cli_wrapper_git_log() {
+    let handler = CliHandler::new(
+        "git".to_string(),
+        vec!["log".to_string(), "--oneline".to_string(), "-n".to_string()],
+        Some("/path/to/repo".to_string()),
+        HashMap::new(),
+        Some(5000),
+        false,
+    );
+
+    let input = CliInput {
+        args: vec!["5".to_string()],
+        env: HashMap::new(),
+    };
+
+    let result = handler.execute(input).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert!(!result.stdout.is_empty());
+}</code></pre>
+<h3 id="property-test-exit-code-range"><a class="header" href="#property-test-exit-code-range">Property Test: Exit Code Range</a></h3>
+<pre><code class="language-rust">use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn cli_handler_returns_valid_exit_code(
+        cmd in "[a-z]{1,10}",
+        args in prop::collection::vec("[a-z]{1,5}", 0..5)
+    ) {
+        tokio_test::block_on(async {
+            let handler = CliHandler::new(
+                cmd,
+                args,
+                None,
+                HashMap::new(),
+                Some(1000),
+                false,
+            );
+
+            let result = handler.execute(CliInput::default()).await;
+
+            if let Ok(output) = result {
+                prop_assert!(output.exit_code &gt;= -1);
+                prop_assert!(output.exit_code &lt;= 255);
+            }
+        });
+    }
+}</code></pre>
+<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
+<h3 id="reuse-command-instances"><a class="header" href="#reuse-command-instances">Reuse Command Instances</a></h3>
+<p>Don’t recreate CLI handlers per request:</p>
+<pre><code class="language-rust">// SLOW - recreates handler each time
+pub async fn slow_wrapper(input: Input) -&gt; Result&lt;Output&gt; {
+    let handler = CliHandler::new(...);
+    handler.execute(input).await
+}
+
+// FAST - reuse handler instance
+pub struct FastWrapper {
+    handler: CliHandler,
+}
+
+impl FastWrapper {
+    pub fn new() -&gt; Self {
+        Self {
+            handler: CliHandler::new(...),
+        }
+    }
+
+    pub async fn execute(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+        self.handler.execute(input).await
+    }
+}</code></pre>
+<h3 id="minimize-argument-allocations"><a class="header" href="#minimize-argument-allocations">Minimize Argument Allocations</a></h3>
+<p>pforge optimizes argument building - but you can help:</p>
+<pre><code class="language-yaml"># SLOW - many small allocations
+args: ["--opt1", "{{val1}}", "--opt2", "{{val2}}", "--opt3", "{{val3}}"]
+
+# FAST - fewer, larger args
+args: ["--config", "{{config_file}}"]  # Config file contains all options
+</code></pre>
+<h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common Pitfalls</a></h2>
+<h3 id="pitfall-1-shell-metacharacter-injection"><a class="header" href="#pitfall-1-shell-metacharacter-injection">Pitfall 1: Shell Metacharacter Injection</a></h3>
+<pre><code class="language-yaml"># UNSAFE
+command: sh
+args: ["-c", "ls {{user_input}}"]
+
+# Input: { "user_input": "; rm -rf /" }
+# Executes: ls ; rm -rf /   # DANGER!
+</code></pre>
+<p><strong>Fix</strong>: Validate input or avoid shell:</p>
+<pre><code class="language-yaml"># SAFE
+command: ls
+args: ["{{directory}}"]
+
+# Validation in Native handler
+fn validate_directory(dir: &amp;str) -&gt; Result&lt;()&gt; {
+    if dir.contains(';') || dir.contains('|') {
+        return Err(Error::Validation("Invalid characters".into()));
+    }
+    Ok(())
+}
+</code></pre>
+<h3 id="pitfall-2-timeout-too-short"><a class="header" href="#pitfall-2-timeout-too-short">Pitfall 2: Timeout Too Short</a></h3>
+<pre><code class="language-yaml"># WRONG - npm install can take minutes
+- type: cli
+  command: npm
+  args: ["install"]
+  timeout_ms: 5000  # 5 seconds - too short!
+</code></pre>
+<p><strong>Fix</strong>: Set realistic timeouts:</p>
+<pre><code class="language-yaml">- type: cli
+  command: npm
+  args: ["install"]
+  timeout_ms: 300000  # 5 minutes
+  stream: true  # Show progress
+</code></pre>
+<h3 id="pitfall-3-ignoring-exit-codes"><a class="header" href="#pitfall-3-ignoring-exit-codes">Pitfall 3: Ignoring Exit Codes</a></h3>
+<pre><code class="language-javascript">// WRONG - assumes success
+const result = await client.callTool("deploy_app", {});
+console.log("Deployed:", result.stdout);
+
+// RIGHT - check exit code
+const result = await client.callTool("deploy_app", {});
+if (result.exit_code !== 0) {
+    throw new Error(`Deploy failed: ${result.stderr}`);
+}
+console.log("Deployed:", result.stdout);
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 4.2 covers streaming output for long-running commands, including real-time log parsing and progress reporting.</p>
+<hr />
+<blockquote>
+<p>“Wrap, don’t rewrite. CLI handlers preserve the Unix philosophy.” - pforge design principle</p>
+</blockquote>
 
                     </main>
 

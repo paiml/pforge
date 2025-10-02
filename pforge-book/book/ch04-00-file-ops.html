@@ -158,8 +158,334 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch04-00-file-opsmd"><a class="header" href="#ch04-00-file-opsmd">ch04-00-file-ops.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="file-operations-cli-handler-overview"><a class="header" href="#file-operations-cli-handler-overview">File Operations: CLI Handler Overview</a></h1>
+<p>The CLI handler is pforge’s bridge to the shell - it wraps command-line tools as MCP tools with <strong>zero custom code</strong>. This chapter demonstrates building a file operations server using common Unix utilities.</p>
+<h2 id="why-cli-handlers"><a class="header" href="#why-cli-handlers">Why CLI Handlers?</a></h2>
+<p><strong>Use CLI handlers when</strong>:</p>
+<ul>
+<li>You want to expose existing shell commands</li>
+<li>The logic already exists in a CLI tool</li>
+<li>You need streaming output from long-running commands</li>
+<li>You’re prototyping quickly without writing Rust</li>
+</ul>
+<p><strong>Don’t use CLI handlers when</strong>:</p>
+<ul>
+<li>You need complex validation (use Native handlers)</li>
+<li>Performance is critical (&lt; 1μs dispatch - use Native)</li>
+<li>The command has security implications (validate in Rust first)</li>
+</ul>
+<h2 id="the-file-operations-server"><a class="header" href="#the-file-operations-server">The File Operations Server</a></h2>
+<p>Let’s build a server that wraps common file operations:</p>
+<pre><code class="language-yaml">forge:
+  name: file-ops-server
+  version: 0.1.0
+  transport: stdio
+  optimization: release
+
+tools:
+  - type: cli
+    name: list_files
+    description: "List files in a directory"
+    command: ls
+    args: ["-lah"]
+    params:
+      path:
+        type: string
+        required: false
+        default: "."
+        description: "Directory to list"
+
+  - type: cli
+    name: file_info
+    description: "Get detailed file information"
+    command: stat
+    args: []
+    params:
+      file:
+        type: string
+        required: true
+        description: "Path to file"
+
+  - type: cli
+    name: search_files
+    description: "Search for files by name pattern"
+    command: find
+    args: []
+    params:
+      directory:
+        type: string
+        required: false
+        default: "."
+      pattern:
+        type: string
+        required: true
+        description: "File name pattern (e.g., '*.rs')"
+
+  - type: cli
+    name: count_lines
+    description: "Count lines in a file"
+    command: wc
+    args: ["-l"]
+    params:
+      file:
+        type: string
+        required: true
+        description: "Path to file"
+</code></pre>
+<h2 id="cli-handler-anatomy"><a class="header" href="#cli-handler-anatomy">CLI Handler Anatomy</a></h2>
+<p>Every CLI handler has these components:</p>
+<h3 id="1-command-and-arguments"><a class="header" href="#1-command-and-arguments">1. Command and Arguments</a></h3>
+<pre><code class="language-yaml">command: ls
+args: ["-lah"]
+</code></pre>
+<p><strong>Base configuration</strong>:</p>
+<ul>
+<li><code>command</code>: The executable to run (<code>ls</code>, <code>git</code>, <code>docker</code>, etc.)</li>
+<li><code>args</code>: Static arguments always passed to the command</li>
+</ul>
+<h3 id="2-dynamic-parameters"><a class="header" href="#2-dynamic-parameters">2. Dynamic Parameters</a></h3>
+<pre><code class="language-yaml">params:
+  path:
+    type: string
+    required: false
+    default: "."
+</code></pre>
+<p><strong>Parameter flow</strong>:</p>
+<ol>
+<li>Client sends: <code>{ "path": "/home/user" }</code></li>
+<li>pforge appends to args: <code>["ls", "-lah", "/home/user"]</code></li>
+<li>Executes: <code>ls -lah /home/user</code></li>
+</ol>
+<h3 id="3-execution-options"><a class="header" href="#3-execution-options">3. Execution Options</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: long_running_task
+    command: ./process.sh
+    timeout_ms: 60000  # 60 seconds
+    cwd: /tmp
+    env:
+      LOG_LEVEL: debug
+    stream: true  # Enable output streaming
+</code></pre>
+<p><strong>Options</strong>:</p>
+<ul>
+<li><code>timeout_ms</code>: Max execution time (default: 30s)</li>
+<li><code>cwd</code>: Working directory</li>
+<li><code>env</code>: Environment variables</li>
+<li><code>stream</code>: Stream output in real-time</li>
+</ul>
+<h2 id="input-and-output-structure"><a class="header" href="#input-and-output-structure">Input and Output Structure</a></h2>
+<p>CLI handlers use a standard schema:</p>
+<h3 id="input"><a class="header" href="#input">Input</a></h3>
+<pre><code class="language-rust">{
+  "args": ["additional", "arguments"],  // Optional
+  "env": {                              // Optional
+    "CUSTOM_VAR": "value"
+  }
+}</code></pre>
+<h3 id="output"><a class="header" href="#output">Output</a></h3>
+<pre><code class="language-rust">{
+  "stdout": "command output here",
+  "stderr": "any errors here",
+  "exit_code": 0
+}</code></pre>
+<h2 id="practical-example-git-integration"><a class="header" href="#practical-example-git-integration">Practical Example: Git Integration</a></h2>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: git_status
+    description: "Get git repository status"
+    command: git
+    args: ["status", "--short"]
+    cwd: "{{repo_path}}"
+    params:
+      repo_path:
+        type: string
+        required: true
+        description: "Path to git repository"
+
+  - type: cli
+    name: git_log
+    description: "Show git commit history"
+    command: git
+    args: ["log", "--oneline"]
+    params:
+      repo_path:
+        type: string
+        required: true
+      max_count:
+        type: integer
+        required: false
+        default: 10
+        description: "Number of commits to show"
+</code></pre>
+<p><strong>Usage</strong>:</p>
+<pre><code class="language-json">// Request
+{
+  "tool": "git_log",
+  "params": {
+    "repo_path": "/home/user/project",
+    "max_count": 5
+  }
+}
+
+// Response
+{
+  "stdout": "abc123 feat: add new feature\ndef456 fix: resolve bug\n...",
+  "stderr": "",
+  "exit_code": 0
+}
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<p>CLI handlers return errors when:</p>
+<ol>
+<li><strong>Command not found</strong>:</li>
+</ol>
+<pre><code class="language-json">{
+  "error": "Handler: Failed to execute command 'nonexistent': No such file or directory"
+}
+</code></pre>
+<ol start="2">
+<li><strong>Timeout exceeded</strong>:</li>
+</ol>
+<pre><code class="language-json">{
+  "error": "Timeout: Command exceeded 30000ms timeout"
+}
+</code></pre>
+<ol start="3">
+<li><strong>Non-zero exit code</strong>:</li>
+</ol>
+<pre><code class="language-json">{
+  "stdout": "",
+  "stderr": "fatal: not a git repository",
+  "exit_code": 128
+}
+</code></pre>
+<p><strong>Important</strong>: CLI handlers don’t automatically fail on non-zero exit codes. Check <code>exit_code</code> in your client.</p>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>
+<tr><td>Dispatch overhead</td><td>5-10μs</td></tr>
+<tr><td>Command spawn time</td><td>1-5ms</td></tr>
+<tr><td>Output processing</td><td>10μs/KB</td></tr>
+<tr><td>Memory per command</td><td>~2KB</td></tr>
+</tbody></table>
+</div>
+<p><strong>Compared to Native handlers</strong>:</p>
+<ul>
+<li>5-10x slower dispatch</li>
+<li>Higher memory usage</li>
+<li>But zero implementation code!</li>
+</ul>
+<h2 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h2>
+<h3 id="1-command-injection-prevention"><a class="header" href="#1-command-injection-prevention">1. Command Injection Prevention</a></h3>
+<pre><code class="language-yaml"># SAFE - static command and args
+command: ls
+args: ["-lah"]
+
+# UNSAFE - user input in command (pforge blocks this)
+command: "{{user_command}}"  # NOT ALLOWED
+</code></pre>
+<p>pforge <strong>never</strong> allows dynamic commands - only static binaries with dynamic arguments.</p>
+<h3 id="2-argument-validation"><a class="header" href="#2-argument-validation">2. Argument Validation</a></h3>
+<pre><code class="language-yaml">params:
+  path:
+    type: string
+    required: true
+    pattern: "^[a-zA-Z0-9_/.-]+$"  # Restrict characters
+</code></pre>
+<p><strong>Best practice</strong>: Use JSON Schema validation to restrict input patterns.</p>
+<h3 id="3-working-directory-restrictions"><a class="header" href="#3-working-directory-restrictions">3. Working Directory Restrictions</a></h3>
+<pre><code class="language-yaml">cwd: /safe/directory  # Static, safe path
+# NOT: cwd: "{{user_path}}"  # Would be security risk
+</code></pre>
+<h2 id="when-to-use-each-handler-type"><a class="header" href="#when-to-use-each-handler-type">When to Use Each Handler Type</a></h2>
+<p><strong>CLI Handler</strong> - Wrapping existing tools:</p>
+<pre><code class="language-yaml">type: cli
+command: ffmpeg
+args: ["-i", "{{input}}", "{{output}}"]
+</code></pre>
+<p><strong>Native Handler</strong> - Complex validation:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    validate_path(&amp;input.path)?;
+    let output = Command::new("ls")
+        .arg(&amp;input.path)
+        .output()
+        .await?;
+    // Custom processing...
+}</code></pre>
+<p><strong>HTTP Handler</strong> - External APIs:</p>
+<pre><code class="language-yaml">type: http
+endpoint: "https://api.github.com/repos/{{owner}}/{{repo}}"
+method: GET
+</code></pre>
+<p><strong>Pipeline Handler</strong> - Multi-step workflows:</p>
+<pre><code class="language-yaml">type: pipeline
+steps:
+  - tool: list_files
+    output_var: files
+  - tool: count_lines
+    input: { file: "{{files}}" }
+</code></pre>
+<h2 id="common-cli-handler-patterns"><a class="header" href="#common-cli-handler-patterns">Common CLI Handler Patterns</a></h2>
+<h3 id="pattern-1-optional-arguments"><a class="header" href="#pattern-1-optional-arguments">Pattern 1: Optional Arguments</a></h3>
+<pre><code class="language-yaml">params:
+  verbose:
+    type: boolean
+    required: false
+    default: false
+
+# In YAML, conditionally include args based on params
+# (Future feature - current workaround: use Native handler)
+</code></pre>
+<h3 id="pattern-2-environment-configuration"><a class="header" href="#pattern-2-environment-configuration">Pattern 2: Environment Configuration</a></h3>
+<pre><code class="language-yaml">env:
+  PATH: "/usr/local/bin:/usr/bin"
+  LANG: "en_US.UTF-8"
+  CUSTOM_CONFIG: "{{config_path}}"
+</code></pre>
+<h3 id="pattern-3-streaming-large-output"><a class="header" href="#pattern-3-streaming-large-output">Pattern 3: Streaming Large Output</a></h3>
+<pre><code class="language-yaml">stream: true
+timeout_ms: 300000  # 5 minutes
+
+# For commands like:
+# - docker build (long running)
+# - tail -f (continuous output)
+# - npm install (progress updates)
+</code></pre>
+<h2 id="testing-cli-handlers"><a class="header" href="#testing-cli-handlers">Testing CLI Handlers</a></h2>
+<p>CLI handlers are tested at the <strong>integration level</strong>:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_cli_handler_ls() {
+    let handler = CliHandler::new(
+        "ls".to_string(),
+        vec!["-lah".to_string()],
+        None,
+        HashMap::new(),
+        None,
+        false,
+    );
+
+    let input = CliInput {
+        args: vec![".".to_string()],
+        env: HashMap::new(),
+    };
+
+    let result = handler.execute(input).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("total"));
+}</code></pre>
+<p><strong>Test coverage requirements</strong>:</p>
+<ul>
+<li>Happy path: command succeeds</li>
+<li>Error path: command fails</li>
+<li>Timeout: long-running command</li>
+<li>Environment: env vars passed correctly</li>
+</ul>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>In Chapter 4.1, we’ll dive deep into wrapping shell commands, including argument templating and output parsing strategies.</p>
+<hr />
+<blockquote>
+<p>“The best code is no code. CLI handlers let Unix tools do the work.” - pforge philosophy</p>
+</blockquote>
 
                     </main>
 

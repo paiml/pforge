@@ -158,8 +158,489 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch12-00-middlewaremd"><a class="header" href="#ch12-00-middlewaremd">ch12-00-middleware.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-12-middleware"><a class="header" href="#chapter-12-middleware">Chapter 12: Middleware</a></h1>
+<p>This chapter explores pforge’s middleware chain architecture, built-in middleware, and custom middleware patterns for cross-cutting concerns.</p>
+<h2 id="what-is-middleware"><a class="header" href="#what-is-middleware">What is Middleware?</a></h2>
+<p>Middleware intercepts requests and responses, enabling cross-cutting functionality:</p>
+<ul>
+<li>Logging and monitoring</li>
+<li>Authentication and authorization</li>
+<li>Request validation</li>
+<li>Response transformation</li>
+<li>Error handling</li>
+<li>Performance tracking</li>
+</ul>
+<h2 id="middleware-chain-architecture"><a class="header" href="#middleware-chain-architecture">Middleware Chain Architecture</a></h2>
+<p>pforge executes middleware in a layered approach:</p>
+<pre><code>Request → Middleware 1 → Middleware 2 → ... → Handler → ... → Middleware 2 → Middleware 1 → Response
+          (before)       (before)              (execute)       (after)        (after)
+</code></pre>
+<h3 id="execution-order"><a class="header" href="#execution-order">Execution Order</a></h3>
+<pre><code class="language-rust">// From crates/pforge-runtime/src/middleware.rs
+
+pub async fn execute&lt;F, Fut&gt;(&amp;self, mut request: Value, handler: F) -&gt; Result&lt;Value&gt;
+where
+    F: FnOnce(Value) -&gt; Fut,
+    Fut: std::future::Future&lt;Output = Result&lt;Value&gt;&gt;,
+{
+    // Execute "before" phase in order
+    for middleware in &amp;self.middlewares {
+        request = middleware.before(request).await?;
+    }
+
+    // Execute handler
+    let result = handler(request.clone()).await;
+
+    // Execute "after" phase in reverse order or "on_error" if failed
+    match result {
+        Ok(mut response) =&gt; {
+            for middleware in self.middlewares.iter().rev() {
+                response = middleware.after(request.clone(), response).await?;
+            }
+            Ok(response)
+        }
+        Err(error) =&gt; {
+            let mut current_error = error;
+            for middleware in self.middlewares.iter().rev() {
+                match middleware.on_error(request.clone(), current_error).await {
+                    Ok(recovery_response) =&gt; return Ok(recovery_response),
+                    Err(new_error) =&gt; current_error = new_error,
+                }
+            }
+            Err(current_error)
+        }
+    }
+}</code></pre>
+<h2 id="built-in-middleware"><a class="header" href="#built-in-middleware">Built-in Middleware</a></h2>
+<h3 id="1-logging-middleware"><a class="header" href="#1-logging-middleware">1. Logging Middleware</a></h3>
+<p>Logs all requests and responses:</p>
+<pre><code class="language-yaml">middleware:
+  - type: logging
+    tag: "my-server"
+    level: info
+    include_request: true
+    include_response: true
+</code></pre>
+<p>Implementation:</p>
+<pre><code class="language-rust">pub struct LoggingMiddleware {
+    tag: String,
+}
+
+#[async_trait::async_trait]
+impl Middleware for LoggingMiddleware {
+    async fn before(&amp;self, request: Value) -&gt; Result&lt;Value&gt; {
+        eprintln!(
+            "[{}] Request: {}",
+            self.tag,
+            serde_json::to_string(&amp;request).unwrap_or_default()
+        );
+        Ok(request)
+    }
+
+    async fn after(&amp;self, _request: Value, response: Value) -&gt; Result&lt;Value&gt; {
+        eprintln!(
+            "[{}] Response: {}",
+            self.tag,
+            serde_json::to_string(&amp;response).unwrap_or_default()
+        );
+        Ok(response)
+    }
+
+    async fn on_error(&amp;self, _request: Value, error: Error) -&gt; Result&lt;Value&gt; {
+        eprintln!("[{}] Error: {}", self.tag, error);
+        Err(error)
+    }
+}</code></pre>
+<h3 id="2-validation-middleware"><a class="header" href="#2-validation-middleware">2. Validation Middleware</a></h3>
+<p>Validates request structure before processing:</p>
+<pre><code class="language-yaml">middleware:
+  - type: validation
+    required_fields:
+      - user_id
+      - session_token
+    schema: request_schema.json
+</code></pre>
+<pre><code class="language-rust">pub struct ValidationMiddleware {
+    required_fields: Vec&lt;String&gt;,
+}
+
+#[async_trait::async_trait]
+impl Middleware for ValidationMiddleware {
+    async fn before(&amp;self, request: Value) -&gt; Result&lt;Value&gt; {
+        if let Value::Object(obj) = &amp;request {
+            for field in &amp;self.required_fields {
+                if !obj.contains_key(field) {
+                    return Err(Error::Handler(format!("Missing required field: {}", field)));
+                }
+            }
+        }
+        Ok(request)
+    }
+}</code></pre>
+<h3 id="3-transform-middleware"><a class="header" href="#3-transform-middleware">3. Transform Middleware</a></h3>
+<p>Applies transformations to requests/responses:</p>
+<pre><code class="language-yaml">middleware:
+  - type: transform
+    request:
+      uppercase_fields: [name, email]
+      add_timestamp: true
+    response:
+      remove_fields: [internal_id]
+      format: compact
+</code></pre>
+<pre><code class="language-rust">pub struct TransformMiddleware&lt;BeforeFn, AfterFn&gt;
+where
+    BeforeFn: Fn(Value) -&gt; Result&lt;Value&gt; + Send + Sync,
+    AfterFn: Fn(Value) -&gt; Result&lt;Value&gt; + Send + Sync,
+{
+    before_fn: BeforeFn,
+    after_fn: AfterFn,
+}
+
+#[async_trait::async_trait]
+impl&lt;BeforeFn, AfterFn&gt; Middleware for TransformMiddleware&lt;BeforeFn, AfterFn&gt;
+where
+    BeforeFn: Fn(Value) -&gt; Result&lt;Value&gt; + Send + Sync,
+    AfterFn: Fn(Value) -&gt; Result&lt;Value&gt; + Send + Sync,
+{
+    async fn before(&amp;self, request: Value) -&gt; Result&lt;Value&gt; {
+        (self.before_fn)(request)
+    }
+
+    async fn after(&amp;self, _request: Value, response: Value) -&gt; Result&lt;Value&gt; {
+        (self.after_fn)(response)
+    }
+}</code></pre>
+<h3 id="4-recovery-middleware"><a class="header" href="#4-recovery-middleware">4. Recovery Middleware</a></h3>
+<p>Fault tolerance (covered in Chapter 11):</p>
+<pre><code class="language-yaml">middleware:
+  - type: recovery
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+    error_tracking:
+      enabled: true
+</code></pre>
+<h2 id="custom-middleware"><a class="header" href="#custom-middleware">Custom Middleware</a></h2>
+<h3 id="implementing-the-middleware-trait"><a class="header" href="#implementing-the-middleware-trait">Implementing the Middleware Trait</a></h3>
+<pre><code class="language-rust">use pforge_runtime::{Middleware, Result, Error};
+use serde_json::Value;
+
+pub struct CustomMiddleware {
+    config: CustomConfig,
+}
+
+#[async_trait::async_trait]
+impl Middleware for CustomMiddleware {
+    /// Process request before handler execution
+    async fn before(&amp;self, request: Value) -&gt; Result&lt;Value&gt; {
+        // Modify or validate request
+        let mut req = request;
+
+        // Add custom fields
+        if let Value::Object(ref mut obj) = req {
+            obj.insert("timestamp".to_string(), Value::Number(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs()
+                    .into()
+            ));
+        }
+
+        Ok(req)
+    }
+
+    /// Process response after handler execution
+    async fn after(&amp;self, request: Value, response: Value) -&gt; Result&lt;Value&gt; {
+        // Transform response
+        let mut resp = response;
+
+        // Add request ID from request
+        if let (Value::Object(ref req_obj), Value::Object(ref mut resp_obj)) = (&amp;request, &amp;mut resp) {
+            if let Some(req_id) = req_obj.get("request_id") {
+                resp_obj.insert("request_id".to_string(), req_id.clone());
+            }
+        }
+
+        Ok(resp)
+    }
+
+    /// Handle errors from handler or downstream middleware
+    async fn on_error(&amp;self, request: Value, error: Error) -&gt; Result&lt;Value&gt; {
+        // Log error details
+        eprintln!("Error processing request: {:?}, error: {}", request, error);
+
+        // Optionally recover or transform error
+        Err(error)
+    }
+}</code></pre>
+<h3 id="real-world-example-authentication-middleware"><a class="header" href="#real-world-example-authentication-middleware">Real-World Example: Authentication Middleware</a></h3>
+<pre><code class="language-rust">use pforge_runtime::{Middleware, Result, Error};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+pub struct AuthMiddleware {
+    sessions: Arc&lt;RwLock&lt;HashMap&lt;String, SessionInfo&gt;&gt;&gt;,
+}
+
+#[derive(Clone)]
+struct SessionInfo {
+    user_id: String,
+    expires_at: std::time::SystemTime,
+}
+
+impl AuthMiddleware {
+    pub fn new() -&gt; Self {
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Middleware for AuthMiddleware {
+    async fn before(&amp;self, mut request: Value) -&gt; Result&lt;Value&gt; {
+        // Extract session token from request
+        let token = request.get("session_token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::Handler("Missing session_token".into()))?;
+
+        // Validate session
+        let sessions = self.sessions.read().await;
+        let session = sessions.get(token)
+            .ok_or_else(|| Error::Handler("Invalid session".into()))?;
+
+        // Check expiration
+        if session.expires_at &lt; std::time::SystemTime::now() {
+            return Err(Error::Handler("Session expired".into()));
+        }
+
+        // Add user_id to request
+        if let Value::Object(ref mut obj) = request {
+            obj.insert("user_id".to_string(), Value::String(session.user_id.clone()));
+        }
+
+        Ok(request)
+    }
+}</code></pre>
+<h2 id="middleware-composition"><a class="header" href="#middleware-composition">Middleware Composition</a></h2>
+<h3 id="sequential-middleware"><a class="header" href="#sequential-middleware">Sequential Middleware</a></h3>
+<pre><code class="language-yaml">middleware:
+  - type: logging
+    tag: "request-log"
+
+  - type: auth
+    session_store: redis
+
+  - type: validation
+    required_fields: [user_id]
+
+  - type: transform
+    request:
+      sanitize: true
+
+  - type: recovery
+    circuit_breaker:
+      enabled: true
+</code></pre>
+<h3 id="conditional-middleware"><a class="header" href="#conditional-middleware">Conditional Middleware</a></h3>
+<p>Apply middleware only to specific tools:</p>
+<pre><code class="language-yaml">tools:
+  - type: native
+    name: public_tool
+    handler:
+      path: handlers::PublicHandler
+    # No auth middleware
+
+  - type: native
+    name: protected_tool
+    handler:
+      path: handlers::ProtectedHandler
+    middleware:
+      - type: auth
+        required_role: admin
+      - type: audit
+        log_level: debug
+</code></pre>
+<h2 id="performance-middleware"><a class="header" href="#performance-middleware">Performance Middleware</a></h2>
+<p>Track execution time and metrics:</p>
+<pre><code class="language-rust">use std::time::Instant;
+
+pub struct PerformanceMiddleware {
+    metrics: Arc&lt;DashMap&lt;String, Vec&lt;Duration&gt;&gt;&gt;,
+}
+
+#[async_trait::async_trait]
+impl Middleware for PerformanceMiddleware {
+    async fn before(&amp;self, mut request: Value) -&gt; Result&lt;Value&gt; {
+        // Store start time in request
+        if let Value::Object(ref mut obj) = request {
+            obj.insert("_start_time".to_string(),
+                Value::String(Instant::now().elapsed().as_nanos().to_string()));
+        }
+        Ok(request)
+    }
+
+    async fn after(&amp;self, request: Value, response: Value) -&gt; Result&lt;Value&gt; {
+        // Calculate elapsed time
+        if let Value::Object(ref obj) = request {
+            if let Some(Value::String(start)) = obj.get("_start_time") {
+                if let Ok(start_nanos) = start.parse::&lt;u128&gt;() {
+                    let elapsed = Duration::from_nanos(
+                        Instant::now().elapsed().as_nanos().saturating_sub(start_nanos) as u64
+                    );
+
+                    // Store metric
+                    let tool_name = obj.get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+
+                    self.metrics.entry(tool_name.to_string())
+                        .or_insert_with(Vec::new)
+                        .push(elapsed);
+                }
+            }
+        }
+
+        Ok(response)
+    }
+}</code></pre>
+<h2 id="error-recovery-middleware"><a class="header" href="#error-recovery-middleware">Error Recovery Middleware</a></h2>
+<pre><code class="language-rust">pub struct ErrorRecoveryMiddleware {
+    fallback_fn: Arc&lt;dyn Fn(Error) -&gt; Value + Send + Sync&gt;,
+}
+
+#[async_trait::async_trait]
+impl Middleware for ErrorRecoveryMiddleware {
+    async fn on_error(&amp;self, _request: Value, error: Error) -&gt; Result&lt;Value&gt; {
+        // Attempt recovery
+        match error {
+            Error::Timeout =&gt; {
+                // Return cached or default data
+                Ok((self.fallback_fn)(error))
+            }
+            Error::Handler(ref msg) if msg.contains("503") =&gt; {
+                // Service unavailable - use fallback
+                Ok((self.fallback_fn)(error))
+            }
+            _ =&gt; {
+                // Cannot recover - propagate error
+                Err(error)
+            }
+        }
+    }
+}</code></pre>
+<h2 id="testing-middleware"><a class="header" href="#testing-middleware">Testing Middleware</a></h2>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_middleware_chain_execution_order() {
+        struct TestMiddleware {
+            tag: String,
+        }
+
+        #[async_trait::async_trait]
+        impl Middleware for TestMiddleware {
+            async fn before(&amp;self, mut request: Value) -&gt; Result&lt;Value&gt; {
+                if let Value::Object(ref mut obj) = request {
+                    obj.insert(format!("{}_before", self.tag), Value::Bool(true));
+                }
+                Ok(request)
+            }
+
+            async fn after(&amp;self, _request: Value, mut response: Value) -&gt; Result&lt;Value&gt; {
+                if let Value::Object(ref mut obj) = response {
+                    obj.insert(format!("{}_after", self.tag), Value::Bool(true));
+                }
+                Ok(response)
+            }
+        }
+
+        let mut chain = MiddlewareChain::new();
+        chain.add(Arc::new(TestMiddleware { tag: "first".to_string() }));
+        chain.add(Arc::new(TestMiddleware { tag: "second".to_string() }));
+
+        let request = json!({});
+        let result = chain.execute(request, |req| async move {
+            // Verify before hooks ran
+            assert!(req["first_before"].as_bool().unwrap_or(false));
+            assert!(req["second_before"].as_bool().unwrap_or(false));
+            Ok(json!({}))
+        }).await.unwrap();
+
+        // Verify after hooks ran in reverse order
+        assert!(result["second_after"].as_bool().unwrap_or(false));
+        assert!(result["first_after"].as_bool().unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn test_validation_middleware() {
+        let middleware = ValidationMiddleware::new(vec!["name".to_string(), "age".to_string()]);
+
+        // Valid request
+        let valid = json!({"name": "Alice", "age": 30});
+        assert!(middleware.before(valid).await.is_ok());
+
+        // Invalid request
+        let invalid = json!({"name": "Alice"});
+        assert!(middleware.before(invalid).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_error_recovery_middleware() {
+        struct RecoveryMiddleware;
+
+        #[async_trait::async_trait]
+        impl Middleware for RecoveryMiddleware {
+            async fn on_error(&amp;self, _request: Value, error: Error) -&gt; Result&lt;Value&gt; {
+                if error.to_string().contains("recoverable") {
+                    Ok(json!({"recovered": true}))
+                } else {
+                    Err(error)
+                }
+            }
+        }
+
+        let mut chain = MiddlewareChain::new();
+        chain.add(Arc::new(RecoveryMiddleware));
+
+        // Recoverable error
+        let result = chain.execute(json!({}), |_| async {
+            Err(Error::Handler("recoverable error".into()))
+        }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()["recovered"], true);
+    }
+}</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Keep middleware focused</strong>: Each middleware should have a single responsibility</li>
+<li><strong>Order matters</strong>: Place authentication before authorization, logging first</li>
+<li><strong>Performance</strong>: Minimize work in hot path (before/after)</li>
+<li><strong>Error handling</strong>: Decide whether to recover or propagate</li>
+<li><strong>State sharing</strong>: Use Arc for shared state</li>
+<li><strong>Testing</strong>: Test middleware in isolation and in chains</li>
+<li><strong>Documentation</strong>: Document middleware execution order</li>
+</ol>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>pforge’s middleware system provides:</p>
+<ul>
+<li><strong>Layered architecture</strong>: Request → Middleware → Handler → Middleware → Response</li>
+<li><strong>Built-in middleware</strong>: Logging, validation, transformation, recovery</li>
+<li><strong>Custom middleware</strong>: Implement the Middleware trait</li>
+<li><strong>Flexible composition</strong>: Sequential and conditional middleware</li>
+<li><strong>Error handling</strong>: Recovery and propagation patterns</li>
+<li><strong>Performance tracking</strong>: Execution time monitoring</li>
+</ul>
+<p>Middleware enables clean separation of concerns and reusable cross-cutting functionality.</p>
+<hr />
+<p><strong>Next:</strong> <a href="ch13-00-resources-prompts.html">Resources &amp; Prompts</a></p>
 
                     </main>
 

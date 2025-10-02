@@ -158,8 +158,638 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch01-04-migrationmd"><a class="header" href="#ch01-04-migrationmd">ch01-04-migration.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-14-migration-between-pforge-and-pmcp"><a class="header" href="#chapter-14-migration-between-pforge-and-pmcp">Chapter 1.4: Migration Between pforge and pmcp</a></h1>
+<p>This chapter provides practical migration strategies for moving between pforge and pmcp, including real-world examples and best practices.</p>
+<h2 id="why-migrate"><a class="header" href="#why-migrate">Why Migrate?</a></h2>
+<h3 id="common-migration-scenarios"><a class="header" href="#common-migration-scenarios">Common Migration Scenarios</a></h3>
+<p><strong>pmcp → pforge:</strong></p>
+<ul>
+<li>Reduce boilerplate code</li>
+<li>Standardize on declarative configuration</li>
+<li>Add built-in quality gates</li>
+<li>Improve iteration speed</li>
+<li>Simplify maintenance</li>
+</ul>
+<p><strong>pforge → pmcp:</strong></p>
+<ul>
+<li>Need custom protocol extensions</li>
+<li>Require complex stateful logic</li>
+<li>Build library/SDK</li>
+<li>Need WebAssembly support</li>
+<li>Require custom transports</li>
+</ul>
+<h2 id="handler-compatibility"><a class="header" href="#handler-compatibility">Handler Compatibility</a></h2>
+<p>The good news: <strong>pforge handlers are compatible with pmcp!</strong></p>
+<p>Both frameworks share the same handler trait pattern, making migration straightforward.</p>
+<pre><code class="language-rust">// This handler works in BOTH pforge and pmcp
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalculateInput {
+    a: f64,
+    b: f64,
+    operation: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CalculateOutput {
+    result: f64,
+}
+
+pub struct CalculateHandler;
+
+#[async_trait]
+impl pforge_runtime::Handler for CalculateHandler {
+    type Input = CalculateInput;
+    type Output = CalculateOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; pforge_runtime::Result&lt;Self::Output&gt; {
+        let result = match input.operation.as_str() {
+            "add" =&gt; input.a + input.b,
+            "subtract" =&gt; input.a - input.b,
+            "multiply" =&gt; input.a * input.b,
+            "divide" =&gt; {
+                if input.b == 0.0 {
+                    return Err(pforge_runtime::Error::Handler(
+                        "Division by zero".into()
+                    ));
+                }
+                input.a / input.b
+            }
+            _ =&gt; return Err(pforge_runtime::Error::Handler(
+                "Unknown operation".into()
+            )),
+        };
+
+        Ok(CalculateOutput { result })
+    }
+}</code></pre>
+<h2 id="migrating-from-pmcp-to-pforge"><a class="header" href="#migrating-from-pmcp-to-pforge">Migrating from pmcp to pforge</a></h2>
+<h3 id="step-1-analyze-your-pmcp-server"><a class="header" href="#step-1-analyze-your-pmcp-server">Step 1: Analyze Your pmcp Server</a></h3>
+<p>Identify your tools and their types:</p>
+<pre><code class="language-rust">// Existing pmcp server
+let server = ServerBuilder::new()
+    .name("my-server")
+    .tool_typed("calculate", /* handler */)     // → Native handler
+    .tool_typed("run_git", /* subprocess */)     // → CLI handler
+    .tool_typed("fetch_api", /* HTTP call */)    // → HTTP handler
+    .tool_typed("complex", /* custom logic */)   // → Keep in pmcp
+    .build()?;</code></pre>
+<h3 id="step-2-extract-handlers"><a class="header" href="#step-2-extract-handlers">Step 2: Extract Handlers</a></h3>
+<p>Convert tool closures to handler structs:</p>
+<pre><code class="language-rust">// Before (pmcp inline closure)
+.tool_typed("calculate", |input: CalcInput, _| {
+    Box::pin(async move {
+        let result = input.a + input.b;
+        Ok(serde_json::json!({ "result": result }))
+    })
+})
+
+// After (pforge handler struct)
+pub struct CalculateHandler;
+
+#[async_trait]
+impl Handler for CalculateHandler {
+    type Input = CalcInput;
+    type Output = CalcOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        Ok(CalcOutput { result: input.a + input.b })
+    }
+}</code></pre>
+<h3 id="step-3-create-forgeyaml"><a class="header" href="#step-3-create-forgeyaml">Step 3: Create forge.yaml</a></h3>
+<p>Map your tools to pforge configuration:</p>
+<pre><code class="language-yaml">forge:
+  name: my-server
+  version: 1.0.0
+  transport: stdio
+
+tools:
+  # Native handlers (from pmcp tool_typed)
+  - type: native
+    name: calculate
+    description: "Perform calculations"
+    handler:
+      path: handlers::CalculateHandler
+    params:
+      a: { type: float, required: true }
+      b: { type: float, required: true }
+      operation: { type: string, required: true }
+
+  # CLI handlers (from subprocess calls)
+  - type: cli
+    name: run_git
+    description: "Run git commands"
+    command: git
+    args: ["{{subcommand}}", "{{args}}"]
+    cwd: /path/to/repo
+    stream: true
+
+  # HTTP handlers (from reqwest calls)
+  - type: http
+    name: fetch_api
+    description: "Fetch from external API"
+    endpoint: "https://api.example.com/{{path}}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{API_TOKEN}}"
+</code></pre>
+<h3 id="step-4-migrate-state"><a class="header" href="#step-4-migrate-state">Step 4: Migrate State</a></h3>
+<pre><code class="language-rust">// Before (pmcp manual state)
+struct AppState {
+    data: Arc&lt;RwLock&lt;HashMap&lt;String, Value&gt;&gt;&gt;,
+}
+
+let state = Arc::new(AppState {
+    data: Arc::new(RwLock::new(HashMap::new())),
+});
+
+// After (pforge declarative state)
+// In forge.yaml:
+// state:
+//   backend: sled
+//   path: /tmp/my-server-state
+//   cache_size: 1000
+
+// In handler:
+async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let value = self.state.get("key").await?;
+    self.state.set("key", value, None).await?;
+    Ok(Output { value })
+}</code></pre>
+<h3 id="step-5-test-migration"><a class="header" href="#step-5-test-migration">Step 5: Test Migration</a></h3>
+<pre><code class="language-bash"># Run existing pmcp tests
+cargo test --all
+
+# Generate pforge server
+pforge build
+
+# Run pforge tests
+pforge test
+
+# Compare behavior
+diff &lt;(echo '{"a": 5, "b": 3}' | ./pmcp-server) \
+     &lt;(echo '{"a": 5, "b": 3}' | pforge serve)
+</code></pre>
+<h3 id="complete-example-pmcp--pforge"><a class="header" href="#complete-example-pmcp--pforge">Complete Example: pmcp → pforge</a></h3>
+<p><strong>Before (pmcp):</strong></p>
+<pre><code class="language-rust">// src/main.rs (120 lines)
+use pmcp::{ServerBuilder, TypedTool};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct CalcInput {
+    a: f64,
+    b: f64,
+    operation: String,
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let state = Arc::new(RwLock::new(HashMap::new()));
+
+    let server = ServerBuilder::new()
+        .name("calculator")
+        .version("1.0.0")
+        .tool_typed("calculate", {
+            let state = state.clone();
+            move |input: CalcInput, _| {
+                let state = state.clone();
+                Box::pin(async move {
+                    // 20 lines of logic
+                    let result = match input.operation.as_str() {
+                        "add" =&gt; input.a + input.b,
+                        // ... more operations
+                    };
+
+                    // Update state
+                    state.write().await.insert("last_result", result);
+
+                    Ok(serde_json::json!({ "result": result }))
+                })
+            }
+        })
+        .tool_typed("run_command", |input: CmdInput, _| {
+            Box::pin(async move {
+                // 30 lines of subprocess handling
+                let output = Command::new(&amp;input.cmd)
+                    .args(&amp;input.args)
+                    .output()
+                    .await?;
+                // ... error handling
+                Ok(serde_json::json!({ "output": String::from_utf8(output.stdout)? }))
+            })
+        })
+        .build()?;
+
+    server.run_stdio().await
+}</code></pre>
+<p><strong>After (pforge):</strong></p>
+<pre><code class="language-yaml"># forge.yaml (25 lines)
+forge:
+  name: calculator
+  version: 1.0.0
+  transport: stdio
+
+state:
+  backend: sled
+  path: /tmp/calculator-state
+
+tools:
+  - type: native
+    name: calculate
+    description: "Perform arithmetic operations"
+    handler:
+      path: handlers::CalculateHandler
+    params:
+      a: { type: float, required: true }
+      b: { type: float, required: true }
+      operation: { type: string, required: true }
+
+  - type: cli
+    name: run_command
+    description: "Run shell commands"
+    command: "{{cmd}}"
+    args: "{{args}}"
+    stream: true
+</code></pre>
+<pre><code class="language-rust">// src/handlers.rs (30 lines)
+use pforge_runtime::{Handler, Result, Error};
+use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalcInput {
+    a: f64,
+    b: f64,
+    operation: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CalcOutput {
+    result: f64,
+}
+
+pub struct CalculateHandler;
+
+#[async_trait::async_trait]
+impl Handler for CalculateHandler {
+    type Input = CalcInput;
+    type Output = CalcOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        let result = match input.operation.as_str() {
+            "add" =&gt; input.a + input.b,
+            "subtract" =&gt; input.a - input.b,
+            "multiply" =&gt; input.a * input.b,
+            "divide" =&gt; {
+                if input.b == 0.0 {
+                    return Err(Error::Handler("Division by zero".into()));
+                }
+                input.a / input.b
+            }
+            _ =&gt; return Err(Error::Handler("Unknown operation".into())),
+        };
+
+        // State is managed automatically
+        self.state.set("last_result", &amp;result.to_string(), None).await?;
+
+        Ok(CalcOutput { result })
+    }
+}</code></pre>
+<p><strong>Result:</strong></p>
+<ul>
+<li><strong>Code reduction:</strong> 120 lines → 55 lines (54% reduction)</li>
+<li><strong>Complexity:</strong> Manual state → Automatic state</li>
+<li><strong>Maintenance:</strong> Easier to modify (YAML vs Rust)</li>
+</ul>
+<h2 id="migrating-from-pforge-to-pmcp"><a class="header" href="#migrating-from-pforge-to-pmcp">Migrating from pforge to pmcp</a></h2>
+<h3 id="step-1-keep-your-handlers"><a class="header" href="#step-1-keep-your-handlers">Step 1: Keep Your Handlers</a></h3>
+<p>pforge handlers work directly in pmcp:</p>
+<pre><code class="language-rust">// handlers.rs - NO CHANGES NEEDED
+pub struct MyHandler;
+
+#[async_trait]
+impl pforge_runtime::Handler for MyHandler {
+    type Input = MyInput;
+    type Output = MyOutput;
+    type Error = pforge_runtime::Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; pforge_runtime::Result&lt;Self::Output&gt; {
+        // Handler logic stays the same
+        Ok(MyOutput { result: process(input) })
+    }
+}</code></pre>
+<h3 id="step-2-convert-yaml-to-pmcp-code"><a class="header" href="#step-2-convert-yaml-to-pmcp-code">Step 2: Convert YAML to pmcp Code</a></h3>
+<pre><code class="language-yaml"># forge.yaml (pforge)
+forge:
+  name: my-server
+  version: 1.0.0
+
+tools:
+  - type: native
+    name: process
+    handler:
+      path: handlers::MyHandler
+    params:
+      input: { type: string, required: true }
+</code></pre>
+<p>Becomes:</p>
+<pre><code class="language-rust">// main.rs (pmcp)
+use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let server = ServerBuilder::new()
+        .name("my-server")
+        .version("1.0.0")
+        .tool_typed("process", |input: MyInput, _| {
+            Box::pin(async move {
+                let handler = MyHandler;
+                let output = handler.handle(input).await?;
+                Ok(serde_json::to_value(output)?)
+            })
+        })
+        .build()?;
+
+    server.run_stdio().await
+}</code></pre>
+<h3 id="step-3-add-custom-logic"><a class="header" href="#step-3-add-custom-logic">Step 3: Add Custom Logic</a></h3>
+<p>Now you can extend beyond pforge’s capabilities:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let server = ServerBuilder::new()
+        .name("advanced-server")
+        .version("1.0.0")
+
+        // Keep existing pforge handlers
+        .tool_typed("basic", |input: BasicInput, _| {
+            Box::pin(async move {
+                let handler = BasicHandler;
+                let output = handler.handle(input).await?;
+                Ok(serde_json::to_value(output)?)
+            })
+        })
+
+        // Add custom complex logic (not possible in pforge)
+        .tool_typed("complex", |input: ComplexInput, _| {
+            Box::pin(async move {
+                // Custom database transactions
+                let mut tx = db_pool.begin().await?;
+
+                // Complex business logic
+                let result = perform_analysis(&amp;mut tx, input).await?;
+
+                // Custom error handling
+                match result {
+                    Ok(data) =&gt; {
+                        tx.commit().await?;
+                        Ok(serde_json::to_value(data)?)
+                    }
+                    Err(e) =&gt; {
+                        tx.rollback().await?;
+                        Err(pmcp::Error::Handler(e.to_string()))
+                    }
+                }
+            })
+        })
+
+        // Custom protocol extensions
+        .custom_method("custom/analyze", |params| {
+            Box::pin(async move {
+                custom_protocol_handler(params).await
+            })
+        })
+
+        .build()?;
+
+    server.run_stdio().await
+}</code></pre>
+<h2 id="hybrid-approach-using-both"><a class="header" href="#hybrid-approach-using-both">Hybrid Approach: Using Both</a></h2>
+<p>You can use pforge and pmcp together in the same project:</p>
+<h3 id="strategy-1-pforge-for-simple-pmcp-for-complex"><a class="header" href="#strategy-1-pforge-for-simple-pmcp-for-complex">Strategy 1: pforge for Simple, pmcp for Complex</a></h3>
+<pre><code class="language-rust">// Use pforge for 80% of simple tools
+mod pforge_tools {
+    include!(concat!(env!("OUT_DIR"), "/pforge_generated.rs"));
+}
+
+// Use pmcp for 20% of complex tools
+use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let mut builder = ServerBuilder::new()
+        .name("hybrid-server")
+        .version("1.0.0");
+
+    // Add all pforge-generated tools
+    for (name, handler) in pforge_tools::handlers() {
+        builder = builder.tool_typed(name, handler);
+    }
+
+    // Add custom complex tools
+    builder = builder
+        .tool_typed("complex_analysis", |input: AnalysisInput, _| {
+            Box::pin(async move {
+                // Complex logic not expressible in pforge
+                let result = ml_model.predict(input).await?;
+                Ok(serde_json::to_value(result)?)
+            })
+        })
+        .tool_typed("database_query", |input: QueryInput, _| {
+            Box::pin(async move {
+                // Complex transactional database operations
+                let mut tx = pool.begin().await?;
+                let result = execute_query(&amp;mut tx, input).await?;
+                tx.commit().await?;
+                Ok(serde_json::to_value(result)?)
+            })
+        });
+
+    let server = builder.build()?;
+    server.run_stdio().await
+}</code></pre>
+<h3 id="strategy-2-parallel-servers"><a class="header" href="#strategy-2-parallel-servers">Strategy 2: Parallel Servers</a></h3>
+<p>Run pforge and pmcp servers side-by-side:</p>
+<pre><code class="language-bash"># Terminal 1: pforge server for standard tools
+cd pforge-server
+pforge serve
+
+# Terminal 2: pmcp server for custom tools
+cd pmcp-server
+cargo run --release
+</code></pre>
+<pre><code class="language-yaml"># Claude Desktop config
+{
+  "mcpServers": {
+    "standard-tools": {
+      "command": "pforge",
+      "args": ["serve"],
+      "cwd": "/path/to/pforge-server"
+    },
+    "custom-tools": {
+      "command": "/path/to/pmcp-server/target/release/custom-server",
+      "cwd": "/path/to/pmcp-server"
+    }
+  }
+}
+</code></pre>
+<h2 id="migration-checklist"><a class="header" href="#migration-checklist">Migration Checklist</a></h2>
+<h3 id="pmcp--pforge-migration"><a class="header" href="#pmcp--pforge-migration">pmcp → pforge Migration</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Identify tool types (native/cli/http/pipeline)</li>
+<li><input disabled="" type="checkbox"/>
+Extract handlers from closures</li>
+<li><input disabled="" type="checkbox"/>
+Create forge.yaml configuration</li>
+<li><input disabled="" type="checkbox"/>
+Convert state management to pforge state backend</li>
+<li><input disabled="" type="checkbox"/>
+Set up quality gates (PMAT)</li>
+<li><input disabled="" type="checkbox"/>
+Write tests for migrated handlers</li>
+<li><input disabled="" type="checkbox"/>
+Benchmark performance (should improve)</li>
+<li><input disabled="" type="checkbox"/>
+Update documentation</li>
+<li><input disabled="" type="checkbox"/>
+Deploy and monitor</li>
+</ul>
+<h3 id="pforge--pmcp-migration"><a class="header" href="#pforge--pmcp-migration">pforge → pmcp Migration</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Keep existing handler implementations</li>
+<li><input disabled="" type="checkbox"/>
+Convert forge.yaml to ServerBuilder code</li>
+<li><input disabled="" type="checkbox"/>
+Add custom logic as needed</li>
+<li><input disabled="" type="checkbox"/>
+Implement custom state management (if needed)</li>
+<li><input disabled="" type="checkbox"/>
+Set up CI/CD (manual configuration)</li>
+<li><input disabled="" type="checkbox"/>
+Write additional tests</li>
+<li><input disabled="" type="checkbox"/>
+Update documentation</li>
+<li><input disabled="" type="checkbox"/>
+Deploy and monitor</li>
+</ul>
+<h2 id="common-migration-pitfalls"><a class="header" href="#common-migration-pitfalls">Common Migration Pitfalls</a></h2>
+<h3 id="pitfall-1-state-management-mismatch"><a class="header" href="#pitfall-1-state-management-mismatch">Pitfall 1: State Management Mismatch</a></h3>
+<p><strong>Problem:</strong></p>
+<pre><code class="language-rust">// pmcp: Manual Arc&lt;RwLock&gt;
+let data = state.read().await.get("key").cloned();
+
+// pforge: Async state backend
+let data = self.state.get("key").await?;</code></pre>
+<p><strong>Solution:</strong> Choose consistent state backend or use adapter pattern.</p>
+<h3 id="pitfall-2-error-handling-differences"><a class="header" href="#pitfall-2-error-handling-differences">Pitfall 2: Error Handling Differences</a></h3>
+<p><strong>Problem:</strong></p>
+<pre><code class="language-rust">// pmcp: Custom error types
+Err(MyError::Database(e))
+
+// pforge: Standardized errors
+Err(Error::Handler(e.to_string()))</code></pre>
+<p><strong>Solution:</strong> Map custom errors to pforge Error types:</p>
+<pre><code class="language-rust">impl From&lt;MyError&gt; for pforge_runtime::Error {
+    fn from(err: MyError) -&gt; Self {
+        match err {
+            MyError::Database(e) =&gt; Error::Handler(format!("DB: {}", e)),
+            MyError::Validation(msg) =&gt; Error::Validation(msg),
+            MyError::Timeout =&gt; Error::Timeout,
+        }
+    }
+}</code></pre>
+<h3 id="pitfall-3-missing-clihttp-wrappers"><a class="header" href="#pitfall-3-missing-clihttp-wrappers">Pitfall 3: Missing CLI/HTTP Wrappers</a></h3>
+<p><strong>Problem:</strong> pmcp requires manual subprocess/HTTP handling.</p>
+<p><strong>Solution:</strong> Extract to separate pforge server or use libraries:</p>
+<pre><code class="language-rust">// Instead of reinventing CLI wrapper
+use tokio::process::Command;
+
+// Use pforge CLI handler type or simple wrapper
+async fn run_command(cmd: &amp;str, args: &amp;[String]) -&gt; Result&lt;String&gt; {
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .await?;
+
+    String::from_utf8(output.stdout)
+        .map_err(|e| Error::Handler(e.to_string()))
+}</code></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<h3 id="pmcp--pforge"><a class="header" href="#pmcp--pforge">pmcp → pforge</a></h3>
+<p><strong>Expected improvements:</strong></p>
+<ul>
+<li>Tool dispatch: 11x faster (perfect hash vs HashMap)</li>
+<li>Throughput: 1.5-1.7x higher</li>
+<li>Memory per tool: ~50% reduction</li>
+</ul>
+<p><strong>Trade-offs:</strong></p>
+<ul>
+<li>Cold start: ~2x slower (code generation)</li>
+<li>Binary size: 2-3x larger</li>
+</ul>
+<h3 id="pforge--pmcp"><a class="header" href="#pforge--pmcp">pforge → pmcp</a></h3>
+<p><strong>Expected changes:</strong></p>
+<ul>
+<li>More control over performance tuning</li>
+<li>Custom allocator options</li>
+<li>Zero-copy optimizations possible</li>
+<li>Manual optimization needed</li>
+</ul>
+<h2 id="testing-migration"><a class="header" href="#testing-migration">Testing Migration</a></h2>
+<h3 id="compatibility-test"><a class="header" href="#compatibility-test">Compatibility Test</a></h3>
+<pre><code class="language-rust">#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_handler_compatibility() {
+        // Test handler works in both pforge and pmcp
+        let handler = MyHandler;
+
+        let input = MyInput { value: 42 };
+        let output = handler.handle(input).await.unwrap();
+
+        assert_eq!(output.result, 84);
+    }
+
+    #[tokio::test]
+    async fn test_behavior_equivalence() {
+        // Compare pforge and pmcp server responses
+        let pforge_response = test_pforge_server(input.clone()).await?;
+        let pmcp_response = test_pmcp_server(input.clone()).await?;
+
+        assert_eq!(pforge_response, pmcp_response);
+    }
+}</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Migration between pforge and pmcp is straightforward thanks to handler compatibility:</p>
+<p><strong>Key Points:</strong></p>
+<ol>
+<li>pforge handlers work in pmcp without changes</li>
+<li>pmcp → pforge reduces code by ~50%</li>
+<li>pforge → pmcp adds flexibility for complex cases</li>
+<li>Hybrid approach combines benefits of both</li>
+<li>Choose based on current needs, migrate as requirements evolve</li>
+</ol>
+<p><strong>Migration Decision:</strong></p>
+<ul>
+<li>More tools becoming standard? → Migrate to pforge</li>
+<li>Need custom protocols? → Migrate to pmcp</li>
+<li>Mixed requirements? → Use hybrid approach</li>
+</ul>
+<hr />
+<p><strong>Next:</strong> <a href="ch01-05-architecture-pmcp.html">Architecture: How pforge Uses pmcp</a></p>
 
                     </main>
 

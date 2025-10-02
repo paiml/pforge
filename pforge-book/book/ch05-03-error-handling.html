@@ -158,8 +158,360 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch05-03-error-handlingmd"><a class="header" href="#ch05-03-error-handlingmd">ch05-03-error-handling.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="http-error-handling"><a class="header" href="#http-error-handling">HTTP Error Handling</a></h1>
+<p>HTTP handlers must gracefully handle network failures, timeouts, and API errors. This chapter covers retry strategies, circuit breakers, and graceful degradation.</p>
+<h2 id="error-types"><a class="header" href="#error-types">Error Types</a></h2>
+<h3 id="network-errors"><a class="header" href="#network-errors">Network Errors</a></h3>
+<pre><code class="language-json">{
+  "error": "Http: Connection refused"
+}
+</code></pre>
+<h3 id="http-status-errors"><a class="header" href="#http-status-errors">HTTP Status Errors</a></h3>
+<p>HTTP handlers return status codes, not errors:</p>
+<pre><code class="language-json">{
+  "status": 404,
+  "body": { "message": "Not Found" },
+  "headers": {...}
+}
+</code></pre>
+<p><strong>Client handles status</strong>:</p>
+<pre><code class="language-javascript">if (result.status &gt;= 400) {
+  throw new APIError(result.status, result.body);
+}
+</code></pre>
+<h3 id="timeout-errors"><a class="header" href="#timeout-errors">Timeout Errors</a></h3>
+<pre><code class="language-json">{
+  "error": "Timeout: Request exceeded 30000ms"
+}
+</code></pre>
+<h2 id="retry-strategies"><a class="header" href="#retry-strategies">Retry Strategies</a></h2>
+<h3 id="exponential-backoff-native-handler"><a class="header" href="#exponential-backoff-native-handler">Exponential Backoff (Native Handler)</a></h3>
+<pre><code class="language-rust">use backoff::{ExponentialBackoff, Error as BackoffError};
+use std::time::Duration;
+
+async fn handle_with_retry(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let backoff = ExponentialBackoff {
+        initial_interval: Duration::from_millis(100),
+        multiplier: 2.0,
+        max_interval: Duration::from_secs(30),
+        max_elapsed_time: Some(Duration::from_mins(5)),
+        ..Default::default()
+    };
+
+    backoff::retry(backoff, || async {
+        match self.client.get(&amp;input.url).send().await {
+            Ok(resp) if resp.status().is_success() =&gt; Ok(resp),
+            Ok(resp) if resp.status().is_server_error() =&gt; {
+                // Retry 5xx errors
+                Err(BackoffError::transient(Error::Http(...)))
+            },
+            Ok(resp) =&gt; {
+                // Don't retry 4xx errors
+                Err(BackoffError::permanent(Error::Http(...)))
+            },
+            Err(e) if e.is_timeout() =&gt; {
+                // Retry timeouts
+                Err(BackoffError::transient(Error::from(e)))
+            },
+            Err(e) =&gt; Err(BackoffError::permanent(Error::from(e))),
+        }
+    }).await
+}</code></pre>
+<h3 id="retry-with-jitter"><a class="header" href="#retry-with-jitter">Retry with Jitter</a></h3>
+<pre><code class="language-rust">use rand::Rng;
+
+async fn retry_with_jitter&lt;F, Fut, T&gt;(
+    max_attempts: u32,
+    base_delay_ms: u64,
+    operation: F,
+) -&gt; Result&lt;T&gt;
+where
+    F: Fn() -&gt; Fut,
+    Fut: std::future::Future&lt;Output = Result&lt;T&gt;&gt;,
+{
+    let mut attempt = 0;
+    let mut rng = rand::thread_rng();
+
+    loop {
+        match operation().await {
+            Ok(result) =&gt; return Ok(result),
+            Err(e) if attempt &gt;= max_attempts - 1 =&gt; return Err(e),
+            Err(_) =&gt; {
+                let jitter = rng.gen_range(0..base_delay_ms / 2);
+                let delay = (base_delay_ms * 2_u64.pow(attempt)) + jitter;
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+                attempt += 1;
+            }
+        }
+    }
+}</code></pre>
+<h2 id="circuit-breaker-pattern"><a class="header" href="#circuit-breaker-pattern">Circuit Breaker Pattern</a></h2>
+<h3 id="implementation"><a class="header" href="#implementation">Implementation</a></h3>
+<pre><code class="language-rust">use std::sync::Arc;
+use tokio::sync::RwLock;
+use std::time::{Instant, Duration};
+
+#[derive(Clone)]
+enum CircuitState {
+    Closed,
+    Open { opened_at: Instant },
+    HalfOpen,
+}
+
+struct CircuitBreaker {
+    state: Arc&lt;RwLock&lt;CircuitState&gt;&gt;,
+    failure_threshold: u32,
+    timeout: Duration,
+    failures: Arc&lt;RwLock&lt;u32&gt;&gt;,
+}
+
+impl CircuitBreaker {
+    async fn call&lt;F, Fut, T&gt;(&amp;self, operation: F) -&gt; Result&lt;T&gt;
+    where
+        F: FnOnce() -&gt; Fut,
+        Fut: std::future::Future&lt;Output = Result&lt;T&gt;&gt;,
+    {
+        // Check state
+        let state = self.state.read().await.clone();
+
+        match state {
+            CircuitState::Open { opened_at } =&gt; {
+                if opened_at.elapsed() &gt; self.timeout {
+                    // Transition to HalfOpen
+                    *self.state.write().await = CircuitState::HalfOpen;
+                } else {
+                    return Err(Error::CircuitOpen);
+                }
+            }
+            CircuitState::HalfOpen | CircuitState::Closed =&gt; {}
+        }
+
+        // Execute operation
+        match operation().await {
+            Ok(result) =&gt; {
+                // Success - close circuit
+                *self.state.write().await = CircuitState::Closed;
+                *self.failures.write().await = 0;
+                Ok(result)
+            }
+            Err(e) =&gt; {
+                // Failure - increment counter
+                let mut failures = self.failures.write().await;
+                *failures += 1;
+
+                if *failures &gt;= self.failure_threshold {
+                    // Open circuit
+                    *self.state.write().await = CircuitState::Open {
+                        opened_at: Instant::now(),
+                    };
+                }
+
+                Err(e)
+            }
+        }
+    }
+}</code></pre>
+<h3 id="usage"><a class="header" href="#usage">Usage</a></h3>
+<pre><code class="language-rust">let breaker = CircuitBreaker::new(
+    5,  // failure_threshold
+    Duration::from_secs(60),  // timeout
+);
+
+let result = breaker.call(|| async {
+    self.client.get(&amp;url).send().await
+}).await?;</code></pre>
+<h2 id="fallback-patterns"><a class="header" href="#fallback-patterns">Fallback Patterns</a></h2>
+<h3 id="primarysecondary-endpoints"><a class="header" href="#primarysecondary-endpoints">Primary/Secondary Endpoints</a></h3>
+<pre><code class="language-rust">async fn handle_with_fallback(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    // Try primary endpoint
+    match self.client.get(&amp;self.primary_url).send().await {
+        Ok(resp) if resp.status().is_success() =&gt; {
+            return Ok(resp.json().await?);
+        }
+        Err(e) =&gt; {
+            tracing::warn!("Primary endpoint failed: {}", e);
+        }
+        _ =&gt; {}
+    }
+
+    // Fallback to secondary
+    tracing::info!("Using fallback endpoint");
+    let resp = self.client.get(&amp;self.fallback_url).send().await?;
+    Ok(resp.json().await?)
+}</code></pre>
+<h3 id="cached-response-fallback"><a class="header" href="#cached-response-fallback">Cached Response Fallback</a></h3>
+<pre><code class="language-rust">use lru::LruCache;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+struct CachedHandler {
+    client: Client,
+    cache: Arc&lt;Mutex&lt;LruCache&lt;String, serde_json::Value&gt;&gt;&gt;,
+}
+
+impl CachedHandler {
+    async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+        let cache_key = format!("{}-{}", input.resource, input.id);
+
+        // Try API
+        match self.client.get(&amp;input.url).send().await {
+            Ok(resp) if resp.status().is_success() =&gt; {
+                let data: serde_json::Value = resp.json().await?;
+
+                // Update cache
+                self.cache.lock().await.put(cache_key.clone(), data.clone());
+
+                Ok(Output { data })
+            }
+            _ =&gt; {
+                // Fallback to cache
+                if let Some(cached) = self.cache.lock().await.get(&amp;cache_key) {
+                    tracing::warn!("Using cached response");
+                    return Ok(Output { data: cached.clone() });
+                }
+
+                Err(Error::Unavailable)
+            }
+        }
+    }
+}</code></pre>
+<h2 id="rate-limiting"><a class="header" href="#rate-limiting">Rate Limiting</a></h2>
+<h3 id="token-bucket-implementation"><a class="header" href="#token-bucket-implementation">Token Bucket Implementation</a></h3>
+<pre><code class="language-rust">use std::time::Instant;
+
+struct TokenBucket {
+    tokens: f64,
+    capacity: f64,
+    rate: f64,  // tokens per second
+    last_refill: Instant,
+}
+
+impl TokenBucket {
+    async fn acquire(&amp;mut self) -&gt; Result&lt;()&gt; {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
+
+        // Refill tokens
+        self.tokens = (self.tokens + elapsed * self.rate).min(self.capacity);
+        self.last_refill = now;
+
+        if self.tokens &gt;= 1.0 {
+            self.tokens -= 1.0;
+            Ok(())
+        } else {
+            let wait_time = ((1.0 - self.tokens) / self.rate) * 1000.0;
+            tokio::time::sleep(Duration::from_millis(wait_time as u64)).await;
+            self.tokens = 0.0;
+            Ok(())
+        }
+    }
+}
+
+// Usage
+async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    self.rate_limiter.lock().await.acquire().await?;
+    let resp = self.client.get(&amp;input.url).send().await?;
+    Ok(resp.json().await?)
+}</code></pre>
+<h2 id="timeout-management"><a class="header" href="#timeout-management">Timeout Management</a></h2>
+<h3 id="adaptive-timeouts"><a class="header" href="#adaptive-timeouts">Adaptive Timeouts</a></h3>
+<pre><code class="language-rust">use std::collections::VecDeque;
+
+struct AdaptiveTimeout {
+    latencies: VecDeque&lt;Duration&gt;,
+    window_size: usize,
+}
+
+impl AdaptiveTimeout {
+    fn get_timeout(&amp;self) -&gt; Duration {
+        if self.latencies.is_empty() {
+            return Duration::from_secs(30);  // Default
+        }
+
+        let avg: Duration = self.latencies.iter().sum::&lt;Duration&gt;() / self.latencies.len() as u32;
+        avg * 3  // 3x average latency
+    }
+
+    fn record(&amp;mut self, latency: Duration) {
+        self.latencies.push_back(latency);
+        if self.latencies.len() &gt; self.window_size {
+            self.latencies.pop_front();
+        }
+    }
+}
+
+async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let timeout_duration = self.adaptive_timeout.lock().await.get_timeout();
+    let start = Instant::now();
+
+    let result = tokio::time::timeout(
+        timeout_duration,
+        self.client.get(&amp;input.url).send()
+    ).await??;
+
+    self.adaptive_timeout.lock().await.record(start.elapsed());
+    Ok(result.json().await?)
+}</code></pre>
+<h2 id="error-recovery-patterns"><a class="header" href="#error-recovery-patterns">Error Recovery Patterns</a></h2>
+<h3 id="pattern-1-retry-then-circuit"><a class="header" href="#pattern-1-retry-then-circuit">Pattern 1: Retry-Then-Circuit</a></h3>
+<pre><code class="language-rust">async fn robust_call(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    // Try with retries
+    let result = retry_with_backoff(3, || async {
+        self.client.get(&amp;input.url).send().await
+    }).await;
+
+    // If retries exhausted, open circuit
+    match result {
+        Ok(resp) =&gt; Ok(resp.json().await?),
+        Err(_) =&gt; {
+            self.circuit_breaker.open();
+            Err(Error::Unavailable)
+        }
+    }
+}</code></pre>
+<h3 id="pattern-2-parallel-requests"><a class="header" href="#pattern-2-parallel-requests">Pattern 2: Parallel Requests</a></h3>
+<pre><code class="language-rust">async fn parallel_fallback(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let primary = self.client.get(&amp;self.primary_url).send();
+    let secondary = self.client.get(&amp;self.secondary_url).send();
+
+    // Use first successful response
+    tokio::select! {
+        Ok(resp) = primary =&gt; Ok(resp.json().await?),
+        Ok(resp) = secondary =&gt; {
+            tracing::info!("Used secondary endpoint");
+            Ok(resp.json().await?)
+        },
+        else =&gt; Err(Error::Unavailable),
+    }
+}</code></pre>
+<h2 id="testing-error-scenarios"><a class="header" href="#testing-error-scenarios">Testing Error Scenarios</a></h2>
+<h3 id="mock-network-failures"><a class="header" href="#mock-network-failures">Mock Network Failures</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_retry_on_failure() {
+    let mock_server = MockServer::start().await;
+
+    // Fail twice, succeed third time
+    mock_server.register_as_sequence(vec![
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500)),
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500)),
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200)
+                .set_body_json(json!({"success": true}))),
+    ]).await;
+
+    let handler = RetryHandler::new(mock_server.uri(), 3);
+    let result = handler.handle(Input {}).await.unwrap();
+
+    assert_eq!(result.data["success"], true);
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 6.0 introduces Pipeline handlers for composing multiple tools into workflows.</p>
+<hr />
+<blockquote>
+<p>“Errors are inevitable. Recovery is engineering.” - pforge resilience principle</p>
+</blockquote>
 
                     </main>
 

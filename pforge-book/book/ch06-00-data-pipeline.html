@@ -158,8 +158,307 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch06-00-data-pipelinemd"><a class="header" href="#ch06-00-data-pipelinemd">ch06-00-data-pipeline.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="data-pipeline-pipeline-handler-overview"><a class="header" href="#data-pipeline-pipeline-handler-overview">Data Pipeline: Pipeline Handler Overview</a></h1>
+<p>Pipeline handlers compose multiple tools into workflows. This chapter demonstrates building data processing pipelines with conditional execution and state management.</p>
+<h2 id="why-pipeline-handlers"><a class="header" href="#why-pipeline-handlers">Why Pipeline Handlers?</a></h2>
+<p><strong>Use pipeline handlers when</strong>:</p>
+<ul>
+<li>Chaining multiple tools together</li>
+<li>Output of one tool feeds input of next</li>
+<li>Conditional execution based on results</li>
+<li>Multi-step workflows with shared state</li>
+</ul>
+<p><strong>Don’t use pipeline handlers when</strong>:</p>
+<ul>
+<li>Single tool suffices</li>
+<li>Complex branching logic (use Native)</li>
+<li>Real-time streaming required</li>
+<li>Tools are independent (call separately)</li>
+</ul>
+<h2 id="example-data-processing-pipeline"><a class="header" href="#example-data-processing-pipeline">Example: Data Processing Pipeline</a></h2>
+<pre><code class="language-yaml">forge:
+  name: data-pipeline
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: pipeline
+    name: process_user_data
+    description: "Fetch, validate, transform, and store user data"
+    steps:
+      - tool: fetch_user
+        input:
+          user_id: "{{user_id}}"
+        output_var: user_data
+
+      - tool: validate_user
+        input:
+          data: "{{user_data}}"
+        output_var: validated
+        condition: "user_data"
+
+      - tool: transform_data
+        input:
+          raw: "{{validated}}"
+        output_var: transformed
+        condition: "validated"
+
+      - tool: store_data
+        input:
+          data: "{{transformed}}"
+        error_policy: fail_fast
+    params:
+      user_id:
+        type: string
+        required: true
+</code></pre>
+<h2 id="pipeline-anatomy"><a class="header" href="#pipeline-anatomy">Pipeline Anatomy</a></h2>
+<h3 id="steps"><a class="header" href="#steps">Steps</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: step_name        # Tool to execute
+    input: {...}           # Input template
+    output_var: result     # Store output in variable
+    condition: "var_name"  # Execute if variable exists
+    error_policy: continue # Or fail_fast
+</code></pre>
+<h3 id="variable-interpolation"><a class="header" href="#variable-interpolation">Variable Interpolation</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: get_data
+    input:
+      id: "{{request_id}}"
+    output_var: data
+
+  - tool: process
+    input:
+      payload: "{{data}}"  # Uses output from previous step
+</code></pre>
+<h3 id="error-policies"><a class="header" href="#error-policies">Error Policies</a></h3>
+<p><strong>fail_fast</strong> (default): Stop on first error</p>
+<pre><code class="language-yaml">error_policy: fail_fast
+</code></pre>
+<p><strong>continue</strong>: Skip failed steps, continue pipeline</p>
+<pre><code class="language-yaml">error_policy: continue
+</code></pre>
+<h2 id="complete-pipeline-example"><a class="header" href="#complete-pipeline-example">Complete Pipeline Example</a></h2>
+<pre><code class="language-yaml">tools:
+  # Individual tools
+  - type: http
+    name: fetch_weather
+    endpoint: "https://api.weather.com/{{city}}"
+    method: GET
+    params:
+      city: { type: string, required: true }
+
+  - type: native
+    name: parse_weather
+    handler:
+      path: handlers::parse_weather
+    params:
+      raw_data: { type: object, required: true }
+
+  - type: http
+    name: send_notification
+    endpoint: "https://notify.example.com/send"
+    method: POST
+    body:
+      message: "{{message}}"
+    params:
+      message: { type: string, required: true }
+
+  # Pipeline composing them
+  - type: pipeline
+    name: weather_alert
+    description: "Fetch weather and send alerts if needed"
+    steps:
+      - tool: fetch_weather
+        input:
+          city: "{{city}}"
+        output_var: raw_weather
+
+      - tool: parse_weather
+        input:
+          raw_data: "{{raw_weather}}"
+        output_var: weather
+        condition: "raw_weather"
+
+      - tool: send_notification
+        input:
+          message: "Alert: {{weather.condition}} in {{city}}"
+        condition: "weather.is_alert"
+        error_policy: continue
+
+    params:
+      city: { type: string, required: true }
+</code></pre>
+<h2 id="pipeline-execution-flow"><a class="header" href="#pipeline-execution-flow">Pipeline Execution Flow</a></h2>
+<pre><code>Input: { "city": "Boston" }
+  ↓
+Step 1: fetch_weather(city="Boston")
+  → Output: { "temp": 32, "condition": "snow" }
+  → Store in: raw_weather
+  ↓
+Step 2: parse_weather(raw_data=raw_weather)
+  → Condition: raw_weather exists ✓
+  → Output: { "is_alert": true, "condition": "Heavy Snow" }
+  → Store in: weather
+  ↓
+Step 3: send_notification(message="Alert: Heavy Snow in Boston")
+  → Condition: weather.is_alert=true ✓
+  → Output: { "sent": true }
+  ↓
+Pipeline Result: { "results": [...], "variables": {...} }
+</code></pre>
+<h2 id="inputoutput-structure"><a class="header" href="#inputoutput-structure">Input/Output Structure</a></h2>
+<h3 id="pipeline-input"><a class="header" href="#pipeline-input">Pipeline Input</a></h3>
+<pre><code class="language-json">{
+  "variables": {
+    "city": "Boston",
+    "user_id": "123"
+  }
+}
+</code></pre>
+<h3 id="pipeline-output"><a class="header" href="#pipeline-output">Pipeline Output</a></h3>
+<pre><code class="language-json">{
+  "results": [
+    {
+      "tool": "fetch_weather",
+      "success": true,
+      "output": { "temp": 32, "condition": "snow" },
+      "error": null
+    },
+    {
+      "tool": "parse_weather",
+      "success": true,
+      "output": { "is_alert": true },
+      "error": null
+    },
+    {
+      "tool": "send_notification",
+      "success": true,
+      "output": { "sent": true },
+      "error": null
+    }
+  ],
+  "variables": {
+    "city": "Boston",
+    "raw_weather": {...},
+    "weather": {...}
+  }
+}
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<h3 id="fail-fast-default"><a class="header" href="#fail-fast-default">Fail Fast (Default)</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: critical_step
+    input: {...}
+    # Implicit: error_policy: fail_fast
+
+  - tool: next_step
+    input: {...}
+    # Won't execute if critical_step fails
+</code></pre>
+<h3 id="continue-on-error"><a class="header" href="#continue-on-error">Continue on Error</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: optional_step
+    input: {...}
+    error_policy: continue  # Pipeline continues even if this fails
+
+  - tool: final_step
+    input: {...}
+    # Executes regardless of optional_step outcome
+</code></pre>
+<h2 id="real-world-example-etl-pipeline"><a class="header" href="#real-world-example-etl-pipeline">Real-World Example: ETL Pipeline</a></h2>
+<pre><code class="language-yaml">tools:
+  - type: pipeline
+    name: etl_pipeline
+    description: "Extract, Transform, Load data pipeline"
+    steps:
+      # Extract
+      - tool: extract_from_api
+        input:
+          endpoint: "{{source_url}}"
+          api_key: "{{api_key}}"
+        output_var: raw_data
+        error_policy: fail_fast
+
+      # Transform
+      - tool: clean_data
+        input:
+          data: "{{raw_data}}"
+        output_var: cleaned
+        condition: "raw_data"
+
+      - tool: enrich_data
+        input:
+          data: "{{cleaned}}"
+        output_var: enriched
+        condition: "cleaned"
+
+      - tool: aggregate_data
+        input:
+          data: "{{enriched}}"
+        output_var: aggregated
+        condition: "enriched"
+
+      # Load
+      - tool: validate_schema
+        input:
+          data: "{{aggregated}}"
+        output_var: validated
+        error_policy: fail_fast
+
+      - tool: load_to_database
+        input:
+          data: "{{validated}}"
+          table: "{{target_table}}"
+        error_policy: fail_fast
+
+      # Notify
+      - tool: send_success_notification
+        input:
+          message: "ETL completed: {{aggregated.count}} records"
+        error_policy: continue
+
+    params:
+      source_url: { type: string, required: true }
+      api_key: { type: string, required: true }
+      target_table: { type: string, required: true }
+</code></pre>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>
+<tr><td>Dispatch overhead</td><td>50-100μs per step</td></tr>
+<tr><td>Variable lookup</td><td>O(1) HashMap</td></tr>
+<tr><td>Condition evaluation</td><td>&lt; 1μs</td></tr>
+<tr><td>State memory</td><td>~100B per variable</td></tr>
+</tbody></table>
+</div>
+<h2 id="when-to-use-native-vs-pipeline"><a class="header" href="#when-to-use-native-vs-pipeline">When to Use Native vs Pipeline</a></h2>
+<p><strong>Pipeline Handler</strong> - Linear workflows:</p>
+<pre><code class="language-yaml">type: pipeline
+steps:
+  - tool: fetch
+  - tool: process
+  - tool: store
+</code></pre>
+<p><strong>Native Handler</strong> - Complex logic:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let data = fetch().await?;
+
+    if data.requires_processing() {
+        let processed = complex_transform(data)?;
+        store(processed).await?;
+    } else {
+        quick_store(data).await?;
+    }
+
+    Ok(Output { ... })
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 6.1 covers tool composition patterns, including parallel execution and error propagation.</p>
+<hr />
+<blockquote>
+<p>“Pipelines compose tools. Tools compose behavior.” - pforge composition principle</p>
+</blockquote>
 
                     </main>
 

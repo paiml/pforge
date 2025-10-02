@@ -158,8 +158,274 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch05-00-github-apimd"><a class="header" href="#ch05-00-github-apimd">ch05-00-github-api.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="github-api-http-handler-overview"><a class="header" href="#github-api-http-handler-overview">GitHub API: HTTP Handler Overview</a></h1>
+<p>HTTP handlers wrap REST APIs as MCP tools with zero boilerplate. This chapter demonstrates building a GitHub API integration using HTTP handlers.</p>
+<h2 id="why-http-handlers"><a class="header" href="#why-http-handlers">Why HTTP Handlers?</a></h2>
+<p><strong>Use HTTP handlers when</strong>:</p>
+<ul>
+<li>Wrapping existing REST APIs</li>
+<li>No complex logic needed (just proxying)</li>
+<li>URL parameters can be templated</li>
+<li>Response doesn’t need transformation</li>
+</ul>
+<p><strong>Don’t use HTTP handlers when</strong>:</p>
+<ul>
+<li>Complex authentication flow (OAuth, JWT refresh)</li>
+<li>Response needs parsing/transformation</li>
+<li>API requires request signing</li>
+<li>Stateful session management needed</li>
+</ul>
+<h2 id="github-api-server-example"><a class="header" href="#github-api-server-example">GitHub API Server Example</a></h2>
+<pre><code class="language-yaml">forge:
+  name: github-api
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: http
+    name: get_user
+    description: "Get GitHub user information"
+    endpoint: "https://api.github.com/users/{{username}}"
+    method: GET
+    headers:
+      User-Agent: "pforge-github-client"
+      Accept: "application/vnd.github.v3+json"
+    params:
+      username:
+        type: string
+        required: true
+        description: "GitHub username"
+
+  - type: http
+    name: get_repos
+    description: "List user repositories"
+    endpoint: "https://api.github.com/users/{{username}}/repos"
+    method: GET
+    headers:
+      User-Agent: "pforge-github-client"
+      Accept: "application/vnd.github.v3+json"
+    params:
+      username:
+        type: string
+        required: true
+
+  - type: http
+    name: search_repos
+    description: "Search GitHub repositories"
+    endpoint: "https://api.github.com/search/repositories"
+    method: GET
+    headers:
+      User-Agent: "pforge-github-client"
+      Accept: "application/vnd.github.v3+json"
+    query:
+      q: "{{query}}"
+      sort: "{{sort}}"
+      order: "{{order}}"
+    params:
+      query:
+        type: string
+        required: true
+      sort:
+        type: string
+        required: false
+        default: "stars"
+      order:
+        type: string
+        required: false
+        default: "desc"
+</code></pre>
+<h2 id="http-handler-anatomy"><a class="header" href="#http-handler-anatomy">HTTP Handler Anatomy</a></h2>
+<h3 id="1-endpoint-and-method"><a class="header" href="#1-endpoint-and-method">1. Endpoint and Method</a></h3>
+<pre><code class="language-yaml">endpoint: "https://api.github.com/users/{{username}}"
+method: GET
+</code></pre>
+<p><strong>Supported methods</strong>: GET, POST, PUT, DELETE, PATCH</p>
+<h3 id="2-url-templating"><a class="header" href="#2-url-templating">2. URL Templating</a></h3>
+<pre><code class="language-yaml">endpoint: "https://api.example.com/{{resource}}/{{id}}"
+
+# Input: { "resource": "users", "id": "123" }
+# URL: https://api.example.com/users/123
+</code></pre>
+<h3 id="3-headers"><a class="header" href="#3-headers">3. Headers</a></h3>
+<pre><code class="language-yaml">headers:
+  User-Agent: "pforge-client"
+  Accept: "application/json"
+  Content-Type: "application/json"
+  X-API-Key: "{{api_key}}"  # Can be templated
+</code></pre>
+<h3 id="4-query-parameters"><a class="header" href="#4-query-parameters">4. Query Parameters</a></h3>
+<pre><code class="language-yaml">query:
+  page: "{{page}}"
+  limit: "{{limit}}"
+
+# Input: { "page": "2", "limit": "50" }
+# URL: ?page=2&amp;limit=50
+</code></pre>
+<h3 id="5-request-body-postput"><a class="header" href="#5-request-body-postput">5. Request Body (POST/PUT)</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: create_issue
+    endpoint: "https://api.github.com/repos/{{owner}}/{{repo}}/issues"
+    method: POST
+    headers:
+      Authorization: "token {{token}}"
+    body:
+      title: "{{title}}"
+      body: "{{description}}"
+      labels: "{{labels}}"
+    params:
+      owner:
+        type: string
+        required: true
+      repo:
+        type: string
+        required: true
+      token:
+        type: string
+        required: true
+      title:
+        type: string
+        required: true
+      description:
+        type: string
+        required: false
+      labels:
+        type: array
+        items: { type: string }
+        required: false
+</code></pre>
+<h2 id="inputoutput-structure"><a class="header" href="#inputoutput-structure">Input/Output Structure</a></h2>
+<h3 id="http-input"><a class="header" href="#http-input">HTTP Input</a></h3>
+<pre><code class="language-json">{
+  "body": {  // Optional - for POST/PUT/PATCH
+    "key": "value"
+  },
+  "query": {  // Optional - query parameters
+    "param": "value"
+  }
+}
+</code></pre>
+<h3 id="http-output"><a class="header" href="#http-output">HTTP Output</a></h3>
+<pre><code class="language-json">{
+  "status": 200,
+  "body": { /* JSON response */ },
+  "headers": {
+    "content-type": "application/json",
+    "x-ratelimit-remaining": "59"
+  }
+}
+</code></pre>
+<h2 id="real-world-example-complete-github-integration"><a class="header" href="#real-world-example-complete-github-integration">Real-World Example: Complete GitHub Integration</a></h2>
+<pre><code class="language-yaml">forge:
+  name: github-mcp
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  # User operations
+  - type: http
+    name: get_user
+    description: "Get user profile"
+    endpoint: "https://api.github.com/users/{{username}}"
+    method: GET
+    headers:
+      User-Agent: "pforge-github"
+
+  # Repository operations
+  - type: http
+    name: get_repo
+    description: "Get repository details"
+    endpoint: "https://api.github.com/repos/{{owner}}/{{repo}}"
+    method: GET
+    headers:
+      User-Agent: "pforge-github"
+
+  - type: http
+    name: list_commits
+    description: "List repository commits"
+    endpoint: "https://api.github.com/repos/{{owner}}/{{repo}}/commits"
+    method: GET
+    query:
+      per_page: "{{per_page}}"
+      page: "{{page}}"
+    params:
+      owner: { type: string, required: true }
+      repo: { type: string, required: true }
+      per_page: { type: integer, required: false, default: 30 }
+      page: { type: integer, required: false, default: 1 }
+
+  # Issue operations
+  - type: http
+    name: list_issues
+    description: "List repository issues"
+    endpoint: "https://api.github.com/repos/{{owner}}/{{repo}}/issues"
+    method: GET
+    query:
+      state: "{{state}}"
+      labels: "{{labels}}"
+    params:
+      owner: { type: string, required: true }
+      repo: { type: string, required: true }
+      state: { type: string, required: false, default: "open" }
+      labels: { type: string, required: false }
+
+  - type: http
+    name: create_issue
+    description: "Create a new issue"
+    endpoint: "https://api.github.com/repos/{{owner}}/{{repo}}/issues"
+    method: POST
+    headers:
+      Authorization: "token {{token}}"
+    body:
+      title: "{{title}}"
+      body: "{{body}}"
+    params:
+      owner: { type: string, required: true }
+      repo: { type: string, required: true }
+      token: { type: string, required: true }
+      title: { type: string, required: true }
+      body: { type: string, required: false }
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<p>HTTP handlers return errors on:</p>
+<ol>
+<li><strong>Network failures</strong>: Connection refused, timeout</li>
+<li><strong>HTTP 4xx/5xx</strong>: Client/server errors</li>
+<li><strong>Invalid JSON</strong>: Response parsing failed</li>
+</ol>
+<p><strong>Error format</strong>:</p>
+<pre><code class="language-json">{
+  "error": "Http: Request failed: 404 Not Found"
+}
+</code></pre>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>
+<tr><td>Dispatch overhead</td><td>10-20μs</td></tr>
+<tr><td>HTTP request time</td><td>50-500ms (network dependent)</td></tr>
+<tr><td>JSON parsing</td><td>1-10μs/KB</td></tr>
+<tr><td>Memory per request</td><td>~5KB</td></tr>
+</tbody></table>
+</div>
+<h2 id="when-to-use-native-vs-http-handler"><a class="header" href="#when-to-use-native-vs-http-handler">When to Use Native vs HTTP Handler</a></h2>
+<p><strong>HTTP Handler</strong> - Simple API proxying:</p>
+<pre><code class="language-yaml">type: http
+endpoint: "https://api.example.com/{{resource}}"
+method: GET
+</code></pre>
+<p><strong>Native Handler</strong> - Complex logic:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    // Validate input
+    // Make HTTP request
+    // Transform response
+    // Handle pagination
+    Ok(output)
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 5.1 covers HTTP configuration in depth, including advanced header management, authentication patterns, and retry strategies.</p>
+<hr />
+<blockquote>
+<p>“APIs are tools. HTTP handlers make them accessible.” - pforge HTTP philosophy</p>
+</blockquote>
 
                     </main>
 

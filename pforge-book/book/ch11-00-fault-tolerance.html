@@ -158,8 +158,601 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch11-00-fault-tolerancemd"><a class="header" href="#ch11-00-fault-tolerancemd">ch11-00-fault-tolerance.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-11-fault-tolerance"><a class="header" href="#chapter-11-fault-tolerance">Chapter 11: Fault Tolerance</a></h1>
+<p>This chapter covers pforge’s built-in fault tolerance mechanisms, including circuit breakers, retries, exponential backoff, and error recovery patterns.</p>
+<h2 id="why-fault-tolerance-matters"><a class="header" href="#why-fault-tolerance-matters">Why Fault Tolerance Matters</a></h2>
+<p>MCP servers often interact with unreliable external systems:</p>
+<ul>
+<li>Network requests can fail or timeout</li>
+<li>CLI commands might hang</li>
+<li>External APIs may be temporarily unavailable</li>
+<li>Services can become overloaded</li>
+</ul>
+<p>pforge provides production-ready fault tolerance patterns out of the box.</p>
+<h2 id="circuit-breakers"><a class="header" href="#circuit-breakers">Circuit Breakers</a></h2>
+<p>Circuit breakers prevent cascading failures by “opening” when too many errors occur, giving failing services time to recover.</p>
+<h3 id="circuit-breaker-states"><a class="header" href="#circuit-breaker-states">Circuit Breaker States</a></h3>
+<pre><code class="language-rust">pub enum CircuitState {
+    Closed,   // Normal operation - requests pass through
+    Open,     // Too many failures - reject requests immediately
+    HalfOpen, // Testing recovery - allow limited requests
+}</code></pre>
+<p><strong>State transitions:</strong></p>
+<ol>
+<li><strong>Closed → Open</strong>: After <code>failure_threshold</code> consecutive failures</li>
+<li><strong>Open → HalfOpen</strong>: After <code>timeout</code> duration elapses</li>
+<li><strong>HalfOpen → Closed</strong>: After <code>success_threshold</code> consecutive successes</li>
+<li><strong>HalfOpen → Open</strong>: On any failure during testing</li>
+</ol>
+<h3 id="configuration"><a class="header" href="#configuration">Configuration</a></h3>
+<pre><code class="language-yaml"># forge.yaml
+forge:
+  name: resilient-server
+  version: 1.0.0
+
+# Configure circuit breaker globally
+fault_tolerance:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5      # Open after 5 failures
+    timeout: 60s              # Wait 60s before testing recovery
+    success_threshold: 2      # Close after 2 successes
+
+tools:
+  - type: http
+    name: fetch_api
+    endpoint: "https://api.example.com/data"
+    method: GET
+    # Circuit breaker applies automatically
+</code></pre>
+<h3 id="programmatic-usage"><a class="header" href="#programmatic-usage">Programmatic Usage</a></h3>
+<pre><code class="language-rust">use pforge_runtime::recovery::{CircuitBreaker, CircuitBreakerConfig};
+use std::time::Duration;
+
+// Create circuit breaker
+let config = CircuitBreakerConfig {
+    failure_threshold: 5,
+    timeout: Duration::from_secs(60),
+    success_threshold: 2,
+};
+
+let circuit_breaker = CircuitBreaker::new(config);
+
+// Use circuit breaker
+async fn call_external_service() -&gt; Result&lt;Response&gt; {
+    circuit_breaker.call(|| async {
+        // Your fallible operation
+        external_api_call().await
+    }).await
+}</code></pre>
+<h3 id="real-world-example"><a class="header" href="#real-world-example">Real-World Example</a></h3>
+<pre><code class="language-rust">use pforge_runtime::{Handler, Result, Error};
+use pforge_runtime::recovery::{CircuitBreaker, CircuitBreakerConfig};
+use std::sync::Arc;
+use std::time::Duration;
+
+pub struct ResilientApiHandler {
+    circuit_breaker: Arc&lt;CircuitBreaker&gt;,
+    http_client: reqwest::Client,
+}
+
+impl ResilientApiHandler {
+    pub fn new() -&gt; Self {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 3,
+            timeout: Duration::from_secs(30),
+            success_threshold: 2,
+        };
+
+        Self {
+            circuit_breaker: Arc::new(CircuitBreaker::new(config)),
+            http_client: reqwest::Client::new(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Handler for ResilientApiHandler {
+    type Input = ApiInput;
+    type Output = ApiOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        // Circuit breaker wraps the HTTP call
+        let response = self.circuit_breaker.call(|| async {
+            let resp = self.http_client
+                .get(&amp;input.url)
+                .send()
+                .await
+                .map_err(|e| Error::Handler(format!("HTTP error: {}", e)))?;
+
+            let data = resp.text().await
+                .map_err(|e| Error::Handler(format!("Parse error: {}", e)))?;
+
+            Ok(data)
+        }).await?;
+
+        Ok(ApiOutput { data: response })
+    }
+}</code></pre>
+<h3 id="monitoring-circuit-breaker-state"><a class="header" href="#monitoring-circuit-breaker-state">Monitoring Circuit Breaker State</a></h3>
+<pre><code class="language-rust">// Get current state
+let state = circuit_breaker.get_state().await;
+
+match state {
+    CircuitState::Closed =&gt; println!("Operating normally"),
+    CircuitState::Open =&gt; println!("Circuit OPEN - rejecting requests"),
+    CircuitState::HalfOpen =&gt; println!("Testing recovery"),
+}
+
+// Get statistics
+let stats = circuit_breaker.get_stats();
+println!("Failures: {}", stats.failure_count);
+println!("Successes: {}", stats.success_count);</code></pre>
+<h2 id="retry-strategies"><a class="header" href="#retry-strategies">Retry Strategies</a></h2>
+<p>pforge supports automatic retries with exponential backoff for transient failures.</p>
+<h3 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: fetch_data
+    endpoint: "https://api.example.com/data"
+    method: GET
+    retry:
+      max_attempts: 3
+      initial_delay: 100ms
+      max_delay: 5s
+      multiplier: 2.0
+      jitter: true
+</code></pre>
+<h3 id="retry-behavior"><a class="header" href="#retry-behavior">Retry Behavior</a></h3>
+<pre><code>Attempt 1: immediate
+Attempt 2: 100ms delay
+Attempt 3: 200ms delay (with jitter: 150-250ms)
+Attempt 4: 400ms delay (with jitter: 300-500ms)
+</code></pre>
+<h3 id="custom-retry-logic"><a class="header" href="#custom-retry-logic">Custom Retry Logic</a></h3>
+<pre><code class="language-rust">use pforge_runtime::recovery::RetryPolicy;
+use std::time::Duration;
+
+pub struct CustomRetryPolicy {
+    max_attempts: usize,
+    base_delay: Duration,
+}
+
+impl RetryPolicy for CustomRetryPolicy {
+    fn should_retry(&amp;self, attempt: usize, error: &amp;Error) -&gt; bool {
+        // Only retry on specific errors
+        match error {
+            Error::Timeout =&gt; attempt &lt; self.max_attempts,
+            Error::Handler(msg) if msg.contains("503") =&gt; true,
+            _ =&gt; false,
+        }
+    }
+
+    fn delay(&amp;self, attempt: usize) -&gt; Duration {
+        // Exponential backoff: base * 2^attempt
+        let multiplier = 2_u32.pow(attempt as u32);
+        self.base_delay * multiplier
+
+        // Add jitter to prevent thundering herd
+        + Duration::from_millis(rand::random::&lt;u64&gt;() % 100)
+    }
+}</code></pre>
+<h2 id="fallback-handlers"><a class="header" href="#fallback-handlers">Fallback Handlers</a></h2>
+<p>When all retries fail, fallback handlers provide graceful degradation.</p>
+<h3 id="configuration-2"><a class="header" href="#configuration-2">Configuration</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: fetch_user_data
+    endpoint: "https://api.example.com/users/{{user_id}}"
+    method: GET
+    fallback:
+      type: native
+      handler: handlers::UserDataFallback
+      # Returns cached or default data
+</code></pre>
+<h3 id="implementation"><a class="header" href="#implementation">Implementation</a></h3>
+<pre><code class="language-rust">use pforge_runtime::recovery::FallbackHandler;
+use serde_json::Value;
+
+pub struct UserDataFallback {
+    cache: Arc&lt;DashMap&lt;String, Value&gt;&gt;,
+}
+
+impl FallbackHandler for UserDataFallback {
+    async fn handle_error(&amp;self, error: Error) -&gt; Result&lt;Value&gt; {
+        eprintln!("Primary handler failed: {}, using fallback", error);
+
+        // Try cache first
+        if let Some(user_id) = extract_user_id_from_error(&amp;error) {
+            if let Some(cached) = self.cache.get(&amp;user_id) {
+                return Ok(cached.clone());
+            }
+        }
+
+        // Return default user data
+        Ok(serde_json::json!({
+            "id": "unknown",
+            "name": "Guest User",
+            "email": "guest@example.com",
+            "cached": true
+        }))
+    }
+}</code></pre>
+<h3 id="fallback-chain"><a class="header" href="#fallback-chain">Fallback Chain</a></h3>
+<p>Multiple fallbacks can be chained:</p>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: fetch_data
+    endpoint: "https://primary-api.example.com/data"
+    method: GET
+    fallback:
+      - type: http
+        endpoint: "https://backup-api.example.com/data"
+        method: GET
+      - type: native
+        handler: handlers::CacheFallback
+      - type: native
+        handler: handlers::DefaultDataFallback
+</code></pre>
+<h2 id="timeouts"><a class="header" href="#timeouts">Timeouts</a></h2>
+<p>Prevent indefinite blocking with configurable timeouts.</p>
+<h3 id="per-tool-timeouts"><a class="header" href="#per-tool-timeouts">Per-Tool Timeouts</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: native
+    name: slow_operation
+    handler:
+      path: handlers::SlowOperation
+    timeout_ms: 5000  # 5 second timeout
+
+  - type: cli
+    name: run_tests
+    command: pytest
+    args: ["tests/"]
+    timeout_ms: 300000  # 5 minute timeout
+
+  - type: http
+    name: fetch_api
+    endpoint: "https://api.example.com/data"
+    method: GET
+    timeout_ms: 10000  # 10 second timeout
+</code></pre>
+<h3 id="programmatic-timeouts"><a class="header" href="#programmatic-timeouts">Programmatic Timeouts</a></h3>
+<pre><code class="language-rust">use pforge_runtime::timeout::with_timeout;
+use std::time::Duration;
+
+async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let result = with_timeout(
+        Duration::from_secs(5),
+        async {
+            slow_operation(input).await
+        }
+    ).await?;
+
+    Ok(result)
+}</code></pre>
+<h3 id="cascading-timeouts"><a class="header" href="#cascading-timeouts">Cascading Timeouts</a></h3>
+<p>For pipelines, timeouts cascade:</p>
+<pre><code class="language-yaml">tools:
+  - type: pipeline
+    name: data_pipeline
+    timeout_ms: 30000  # Total pipeline timeout
+    steps:
+      - tool: extract_data
+        timeout_ms: 10000  # Step-specific timeout
+      - tool: transform_data
+        timeout_ms: 10000
+      - tool: load_data
+        timeout_ms: 10000
+</code></pre>
+<h2 id="error-tracking"><a class="header" href="#error-tracking">Error Tracking</a></h2>
+<p>pforge tracks errors for monitoring and debugging.</p>
+<h3 id="configuration-3"><a class="header" href="#configuration-3">Configuration</a></h3>
+<pre><code class="language-yaml">fault_tolerance:
+  error_tracking:
+    enabled: true
+    max_errors: 1000      # Ring buffer size
+    classify_by: type     # Group by error type
+</code></pre>
+<h3 id="error-classification"><a class="header" href="#error-classification">Error Classification</a></h3>
+<pre><code class="language-rust">use pforge_runtime::recovery::ErrorTracker;
+
+let tracker = ErrorTracker::new();
+
+// Track errors automatically
+tracker.track_error(&amp;Error::Timeout).await;
+tracker.track_error(&amp;Error::Handler("Connection reset".into())).await;
+
+// Get statistics
+let total = tracker.total_errors();
+let by_type = tracker.errors_by_type().await;
+
+println!("Total errors: {}", total);
+println!("Timeout errors: {}", by_type.get("timeout").unwrap_or(&amp;0));
+println!("Connection errors: {}", by_type.get("connection").unwrap_or(&amp;0));</code></pre>
+<h3 id="custom-error-classification"><a class="header" href="#custom-error-classification">Custom Error Classification</a></h3>
+<pre><code class="language-rust">impl ErrorTracker {
+    fn classify_error(&amp;self, error: &amp;Error) -&gt; String {
+        match error {
+            Error::Handler(msg) =&gt; {
+                if msg.contains("timeout") {
+                    "timeout".to_string()
+                } else if msg.contains("connection") {
+                    "connection".to_string()
+                } else if msg.contains("429") {
+                    "rate_limit".to_string()
+                } else if msg.contains("503") {
+                    "service_unavailable".to_string()
+                } else {
+                    "handler_error".to_string()
+                }
+            }
+            Error::Timeout =&gt; "timeout".to_string(),
+            Error::Validation(_) =&gt; "validation".to_string(),
+            _ =&gt; "unknown".to_string(),
+        }
+    }
+}</code></pre>
+<h2 id="recovery-middleware"><a class="header" href="#recovery-middleware">Recovery Middleware</a></h2>
+<p>Combine fault tolerance patterns with middleware.</p>
+<h3 id="configuration-4"><a class="header" href="#configuration-4">Configuration</a></h3>
+<pre><code class="language-yaml">middleware:
+  - type: recovery
+    circuit_breaker:
+      enabled: true
+      failure_threshold: 5
+      timeout: 60s
+    retry:
+      max_attempts: 3
+      initial_delay: 100ms
+    error_tracking:
+      enabled: true
+</code></pre>
+<h3 id="implementation-1"><a class="header" href="#implementation-1">Implementation</a></h3>
+<pre><code class="language-rust">use pforge_runtime::{Middleware, Result};
+use pforge_runtime::recovery::{
+    RecoveryMiddleware,
+    CircuitBreakerConfig,
+};
+use std::sync::Arc;
+
+pub fn create_recovery_middleware() -&gt; Arc&lt;RecoveryMiddleware&gt; {
+    let config = CircuitBreakerConfig {
+        failure_threshold: 5,
+        timeout: Duration::from_secs(60),
+        success_threshold: 2,
+    };
+
+    Arc::new(
+        RecoveryMiddleware::new()
+            .with_circuit_breaker(config)
+    )
+}
+
+// Use in middleware chain
+let mut chain = MiddlewareChain::new();
+chain.add(create_recovery_middleware());</code></pre>
+<h3 id="middleware-lifecycle"><a class="header" href="#middleware-lifecycle">Middleware Lifecycle</a></h3>
+<pre><code class="language-rust">#[async_trait::async_trait]
+impl Middleware for RecoveryMiddleware {
+    async fn before(&amp;self, request: Value) -&gt; Result&lt;Value&gt; {
+        // Check circuit breaker state before processing
+        if let Some(cb) = &amp;self.circuit_breaker {
+            let state = cb.get_state().await;
+            if state == CircuitState::Open {
+                return Err(Error::Handler(
+                    "Circuit breaker is OPEN - service unavailable".into()
+                ));
+            }
+        }
+        Ok(request)
+    }
+
+    async fn after(&amp;self, _request: Value, response: Value) -&gt; Result&lt;Value&gt; {
+        // Record success in circuit breaker
+        if let Some(cb) = &amp;self.circuit_breaker {
+            cb.on_success().await;
+        }
+        Ok(response)
+    }
+
+    async fn on_error(&amp;self, _request: Value, error: Error) -&gt; Result&lt;Value&gt; {
+        // Track error
+        self.error_tracker.track_error(&amp;error).await;
+
+        // Record failure in circuit breaker
+        if let Some(cb) = &amp;self.circuit_breaker {
+            cb.on_failure().await;
+        }
+
+        Err(error)
+    }
+}</code></pre>
+<h2 id="bulkhead-pattern"><a class="header" href="#bulkhead-pattern">Bulkhead Pattern</a></h2>
+<p>Isolate failures by limiting concurrent requests per tool.</p>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: external_api
+    endpoint: "https://api.example.com/data"
+    method: GET
+    bulkhead:
+      max_concurrent: 10
+      max_queued: 100
+      timeout: 5s
+</code></pre>
+<p>Implementation:</p>
+<pre><code class="language-rust">use tokio::sync::Semaphore;
+use std::sync::Arc;
+
+pub struct BulkheadHandler {
+    semaphore: Arc&lt;Semaphore&gt;,
+    inner_handler: Box&lt;dyn Handler&gt;,
+}
+
+impl BulkheadHandler {
+    pub fn new(max_concurrent: usize, inner: Box&lt;dyn Handler&gt;) -&gt; Self {
+        Self {
+            semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            inner_handler: inner,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Handler for BulkheadHandler {
+    type Input = Value;
+    type Output = Value;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        // Acquire permit (blocks if at limit)
+        let _permit = self.semaphore.acquire().await
+            .map_err(|_| Error::Handler("Bulkhead full".into()))?;
+
+        // Execute with limited concurrency
+        self.inner_handler.handle(input).await
+    }
+}</code></pre>
+<h2 id="complete-example-resilient-http-tool"><a class="header" href="#complete-example-resilient-http-tool">Complete Example: Resilient HTTP Tool</a></h2>
+<pre><code class="language-yaml"># forge.yaml
+forge:
+  name: resilient-api-server
+  version: 1.0.0
+
+fault_tolerance:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    timeout: 60s
+    success_threshold: 2
+  error_tracking:
+    enabled: true
+
+tools:
+  - type: http
+    name: fetch_user_data
+    description: "Fetch user data with full fault tolerance"
+    endpoint: "https://api.example.com/users/{{user_id}}"
+    method: GET
+    timeout_ms: 10000
+    retry:
+      max_attempts: 3
+      initial_delay: 100ms
+      max_delay: 5s
+      multiplier: 2.0
+      jitter: true
+    fallback:
+      type: native
+      handler: handlers::UserDataFallback
+    bulkhead:
+      max_concurrent: 20
+</code></pre>
+<h2 id="testing-fault-tolerance"><a class="header" href="#testing-fault-tolerance">Testing Fault Tolerance</a></h2>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_circuit_breaker_opens_on_failures() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 3,
+            timeout: Duration::from_secs(60),
+            success_threshold: 2,
+        };
+
+        let cb = CircuitBreaker::new(config);
+
+        // Trigger 3 failures
+        for _ in 0..3 {
+            let _ = cb.call(|| async {
+                Err::&lt;(), _&gt;(Error::Handler("Test error".into()))
+            }).await;
+        }
+
+        // Circuit should be open
+        assert_eq!(cb.get_state().await, CircuitState::Open);
+
+        // Requests should be rejected
+        let result = cb.call(|| async { Ok(42) }).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_circuit_breaker_recovers() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 2,
+            timeout: Duration::from_millis(100),
+            success_threshold: 2,
+        };
+
+        let cb = CircuitBreaker::new(config);
+
+        // Open circuit
+        for _ in 0..2 {
+            let _ = cb.call(|| async {
+                Err::&lt;(), _&gt;(Error::Handler("Test".into()))
+            }).await;
+        }
+
+        assert_eq!(cb.get_state().await, CircuitState::Open);
+
+        // Wait for timeout
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        // Circuit should transition to half-open and allow requests
+        let _ = cb.call(|| async { Ok(1) }).await;
+        assert_eq!(cb.get_state().await, CircuitState::HalfOpen);
+
+        // One more success should close circuit
+        let _ = cb.call(|| async { Ok(2) }).await;
+        assert_eq!(cb.get_state().await, CircuitState::Closed);
+    }
+
+    #[tokio::test]
+    async fn test_retry_with_exponential_backoff() {
+        let mut attempt = 0;
+
+        let result = retry_with_backoff(
+            3,
+            Duration::from_millis(10),
+            || async {
+                attempt += 1;
+                if attempt &lt; 3 {
+                    Err(Error::Timeout)
+                } else {
+                    Ok("success")
+                }
+            }
+        ).await;
+
+        assert_eq!(result.unwrap(), "success");
+        assert_eq!(attempt, 3);
+    }
+}</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Set appropriate thresholds</strong>: Don’t open circuits too aggressively</li>
+<li><strong>Use jitter</strong>: Prevent thundering herd on recovery</li>
+<li><strong>Monitor circuit state</strong>: Alert when circuits open frequently</li>
+<li><strong>Test failure scenarios</strong>: Chaos engineering for resilience</li>
+<li><strong>Combine patterns</strong>: Circuit breaker + retry + fallback</li>
+<li><strong>Log failures</strong>: Track patterns for debugging</li>
+<li><strong>Graceful degradation</strong>: Always provide fallbacks</li>
+</ol>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>pforge’s fault tolerance features provide production-ready resilience:</p>
+<ul>
+<li><strong>Circuit Breakers</strong>: Prevent cascading failures</li>
+<li><strong>Retries</strong>: Handle transient errors automatically</li>
+<li><strong>Exponential Backoff</strong>: Reduce load on failing services</li>
+<li><strong>Fallbacks</strong>: Graceful degradation</li>
+<li><strong>Timeouts</strong>: Prevent indefinite blocking</li>
+<li><strong>Error Tracking</strong>: Monitor and debug failures</li>
+<li><strong>Bulkheads</strong>: Isolate failures</li>
+</ul>
+<p>These patterns combine to create resilient, production-ready MCP servers.</p>
+<hr />
+<p><strong>Next:</strong> <a href="ch12-00-middleware.html">Middleware</a></p>
 
                     </main>
 

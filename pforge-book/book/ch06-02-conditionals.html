@@ -158,8 +158,347 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch06-02-conditionalsmd"><a class="header" href="#ch06-02-conditionalsmd">ch06-02-conditionals.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="conditional-execution"><a class="header" href="#conditional-execution">Conditional Execution</a></h1>
+<p>Pipeline steps can execute conditionally based on variable state. This chapter covers condition syntax, patterns, and advanced branching logic.</p>
+<h2 id="condition-syntax"><a class="header" href="#condition-syntax">Condition Syntax</a></h2>
+<h3 id="variable-existence"><a class="header" href="#variable-existence">Variable Existence</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: fetch_data
+    output_var: data
+
+  - tool: process
+    condition: "data"  # Execute if 'data' variable exists
+</code></pre>
+<h3 id="variable-absence"><a class="header" href="#variable-absence">Variable Absence</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: primary
+    output_var: result
+    error_policy: continue
+
+  - tool: fallback
+    condition: "!result"  # Execute if 'result' doesn't exist
+</code></pre>
+<h3 id="nested-variable-access"><a class="header" href="#nested-variable-access">Nested Variable Access</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: get_user
+    output_var: user
+
+  - tool: send_email
+    condition: "user.email_verified"  # Access nested field
+</code></pre>
+<h2 id="conditional-patterns"><a class="header" href="#conditional-patterns">Conditional Patterns</a></h2>
+<h3 id="pattern-1-primaryfallback"><a class="header" href="#pattern-1-primaryfallback">Pattern 1: Primary/Fallback</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: fast_cache
+    input: { key: "{{key}}" }
+    output_var: data
+    error_policy: continue
+
+  - tool: slow_database
+    input: { key: "{{key}}" }
+    output_var: data
+    condition: "!data"  # Only if cache miss
+</code></pre>
+<h3 id="pattern-2-feature-flags"><a class="header" href="#pattern-2-feature-flags">Pattern 2: Feature Flags</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: check_feature
+    input: { feature: "new_algorithm", user: "{{user_id}}" }
+    output_var: feature_enabled
+
+  - tool: new_algorithm
+    input: { data: "{{data}}" }
+    condition: "feature_enabled"
+    output_var: result
+
+  - tool: old_algorithm
+    input: { data: "{{data}}" }
+    condition: "!feature_enabled"
+    output_var: result
+</code></pre>
+<h3 id="pattern-3-validation-gates"><a class="header" href="#pattern-3-validation-gates">Pattern 3: Validation Gates</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: validate_input
+    input: { data: "{{raw}}" }
+    output_var: validation
+
+  - tool: process_valid
+    input: { data: "{{raw}}" }
+    condition: "validation.is_valid"
+
+  - tool: handle_invalid
+    input: { errors: "{{validation.errors}}" }
+    condition: "!validation.is_valid"
+</code></pre>
+<h2 id="complex-conditions"><a class="header" href="#complex-conditions">Complex Conditions</a></h2>
+<h3 id="multiple-variables"><a class="header" href="#multiple-variables">Multiple Variables</a></h3>
+<p>Current implementation supports simple conditions. For complex logic, use Native handler:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let user = fetch_user(&amp;input.user_id).await?;
+    let permissions = fetch_permissions(&amp;input.user_id).await?;
+
+    // Complex condition
+    if user.is_admin &amp;&amp; permissions.can_write &amp;&amp; !user.is_suspended {
+        return process_admin_request(input).await;
+    }
+
+    if permissions.can_read {
+        return process_read_request(input).await;
+    }
+
+    Err(Error::Unauthorized)
+}</code></pre>
+<h3 id="threshold-checks"><a class="header" href="#threshold-checks">Threshold Checks</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: check_balance
+    input: { account: "{{account_id}}" }
+    output_var: balance
+
+  - tool: high_value_process
+    input: { amount: "{{amount}}" }
+    condition: "balance.value &gt;= 1000"  # Future feature
+
+  - tool: standard_process
+    input: { amount: "{{amount}}" }
+    condition: "balance.value &lt; 1000"   # Future feature
+</code></pre>
+<p><strong>Current workaround</strong>: Use validation tool:</p>
+<pre><code class="language-yaml">steps:
+  - tool: check_balance
+    output_var: balance
+
+  - tool: classify_tier
+    input: { balance: "{{balance}}" }
+    output_var: tier  # Returns { "is_high_value": true/false }
+
+  - tool: high_value_process
+    condition: "tier.is_high_value"
+
+  - tool: standard_process
+    condition: "!tier.is_high_value"
+</code></pre>
+<h2 id="condition-evaluation"><a class="header" href="#condition-evaluation">Condition Evaluation</a></h2>
+<h3 id="implementation"><a class="header" href="#implementation">Implementation</a></h3>
+<pre><code class="language-rust">fn evaluate_condition(
+    &amp;self,
+    condition: &amp;str,
+    variables: &amp;HashMap&lt;String, serde_json::Value&gt;,
+) -&gt; bool {
+    // Simple variable existence check
+    if let Some(var_name) = condition.strip_prefix('!') {
+        !variables.contains_key(var_name)
+    } else {
+        variables.contains_key(condition)
+    }
+}</code></pre>
+<h3 id="nested-field-access-future"><a class="header" href="#nested-field-access-future">Nested Field Access (Future)</a></h3>
+<pre><code class="language-rust">fn evaluate_nested_condition(
+    condition: &amp;str,
+    variables: &amp;HashMap&lt;String, Value&gt;,
+) -&gt; bool {
+    let parts: Vec&lt;&amp;str&gt; = condition.split('.').collect();
+
+    if let Some(value) = variables.get(parts[0]) {
+        // Navigate nested structure
+        let mut current = value;
+        for part in &amp;parts[1..] {
+            match current {
+                Value::Object(map) =&gt; {
+                    if let Some(next) = map.get(*part) {
+                        current = next;
+                    } else {
+                        return false;
+                    }
+                }
+                _ =&gt; return false,
+            }
+        }
+
+        // Check truthiness
+        match current {
+            Value::Bool(b) =&gt; *b,
+            Value::Null =&gt; false,
+            Value::Number(n) =&gt; n.as_f64().unwrap_or(0.0) != 0.0,
+            Value::String(s) =&gt; !s.is_empty(),
+            _ =&gt; true,
+        }
+    } else {
+        false
+    }
+}</code></pre>
+<h2 id="error-handling-with-conditions"><a class="header" href="#error-handling-with-conditions">Error Handling with Conditions</a></h2>
+<h3 id="graceful-degradation"><a class="header" href="#graceful-degradation">Graceful Degradation</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: primary_service
+    output_var: result
+    error_policy: continue
+
+  - tool: secondary_service
+    condition: "!result"
+    output_var: result
+    error_policy: continue
+
+  - tool: cached_fallback
+    condition: "!result"
+    output_var: result
+
+  - tool: process_result
+    input: { data: "{{result}}" }
+    condition: "result"
+</code></pre>
+<h3 id="cleanup-steps"><a class="header" href="#cleanup-steps">Cleanup Steps</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: allocate_resources
+    output_var: resources
+
+  - tool: process_data
+    input: { res: "{{resources}}" }
+    output_var: result
+
+  # Always cleanup, even on error
+  - tool: cleanup_resources
+    input: { res: "{{resources}}" }
+    condition: "resources"
+    error_policy: continue  # Don't fail if cleanup fails
+</code></pre>
+<h2 id="testing-conditionals"><a class="header" href="#testing-conditionals">Testing Conditionals</a></h2>
+<h3 id="test-condition-evaluation"><a class="header" href="#test-condition-evaluation">Test Condition Evaluation</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_condition_evaluation() {
+    let pipeline = PipelineHandler::new(vec![]);
+
+    let mut vars = HashMap::new();
+    vars.insert("exists".to_string(), json!(true));
+
+    assert!(pipeline.evaluate_condition("exists", &amp;vars));
+    assert!(!pipeline.evaluate_condition("!exists", &amp;vars));
+    assert!(!pipeline.evaluate_condition("missing", &amp;vars));
+    assert!(pipeline.evaluate_condition("!missing", &amp;vars));
+}</code></pre>
+<h3 id="test-conditional-execution"><a class="header" href="#test-conditional-execution">Test Conditional Execution</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_conditional_step() {
+    let registry = HandlerRegistry::new();
+    registry.register("tool1", Box::new(MockTool1));
+    registry.register("tool2", Box::new(MockTool2));
+
+    let pipeline = PipelineHandler::new(vec![
+        PipelineStep {
+            tool: "tool1".to_string(),
+            output_var: Some("data".to_string()),
+            ..Default::default()
+        },
+        PipelineStep {
+            tool: "tool2".to_string(),
+            condition: Some("data".to_string()),
+            ..Default::default()
+        },
+    ]);
+
+    let result = pipeline.execute(
+        PipelineInput { variables: HashMap::new() },
+        &amp;registry
+    ).await.unwrap();
+
+    // Both steps should execute
+    assert_eq!(result.results.len(), 2);
+    assert!(result.results[1].success);
+}</code></pre>
+<h3 id="test-skipped-steps"><a class="header" href="#test-skipped-steps">Test Skipped Steps</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_skipped_step() {
+    let pipeline = PipelineHandler::new(vec![
+        PipelineStep {
+            tool: "tool1".to_string(),
+            condition: Some("missing_var".to_string()),
+            ..Default::default()
+        },
+    ]);
+
+    let result = pipeline.execute(
+        PipelineInput { variables: HashMap::new() },
+        &amp;registry
+    ).await.unwrap();
+
+    // Step should be skipped
+    assert_eq!(result.results.len(), 0);
+}</code></pre>
+<h2 id="advanced-patterns"><a class="header" href="#advanced-patterns">Advanced Patterns</a></h2>
+<h3 id="retries-with-condition"><a class="header" href="#retries-with-condition">Retries with Condition</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: attempt_1
+    output_var: result
+    error_policy: continue
+
+  - tool: wait_retry
+    condition: "!result"
+    input: { delay_ms: 1000 }
+
+  - tool: attempt_2
+    condition: "!result"
+    output_var: result
+    error_policy: continue
+
+  - tool: final_attempt
+    condition: "!result"
+    output_var: result
+</code></pre>
+<h3 id="multi-path-workflows"><a class="header" href="#multi-path-workflows">Multi-Path Workflows</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: classify_request
+    input: { type: "{{request_type}}" }
+    output_var: classification
+
+  # Path A: Urgent requests
+  - tool: urgent_handler
+    condition: "classification.is_urgent"
+
+  # Path B: Normal requests
+  - tool: normal_handler
+    condition: "!classification.is_urgent"
+
+  # Path C: Batch requests
+  - tool: batch_handler
+    condition: "classification.is_batch"
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="1-explicit-conditions"><a class="header" href="#1-explicit-conditions">1. Explicit Conditions</a></h3>
+<pre><code class="language-yaml"># BAD - implicit
+- tool: fallback
+
+# GOOD - explicit
+- tool: fallback
+  condition: "!primary_result"
+</code></pre>
+<h3 id="2-document-branching"><a class="header" href="#2-document-branching">2. Document Branching</a></h3>
+<pre><code class="language-yaml">steps:
+  # Try primary source
+  - tool: primary_api
+    output_var: data
+    error_policy: continue
+
+  # Fallback if primary fails
+  - tool: fallback_api
+    output_var: data
+    condition: "!data"
+</code></pre>
+<h3 id="3-test-all-paths"><a class="header" href="#3-test-all-paths">3. Test All Paths</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_all_conditional_paths() {
+    // Test primary path
+    test_with_variables([("feature_enabled", true)]).await;
+
+    // Test fallback path
+    test_with_variables([("feature_enabled", false)]).await;
+
+    // Test error path
+    test_with_variables([]).await;
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 6.3 covers pipeline state management including variable scoping and memory optimization.</p>
+<hr />
+<blockquote>
+<p>“Conditions control flow. Make the flow visible.” - pforge conditional principle</p>
+</blockquote>
 
                     </main>
 

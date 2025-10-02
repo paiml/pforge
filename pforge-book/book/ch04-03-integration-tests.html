@@ -158,8 +158,611 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch04-03-integration-testsmd"><a class="header" href="#ch04-03-integration-testsmd">ch04-03-integration-tests.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="integration-testing-cli-handlers"><a class="header" href="#integration-testing-cli-handlers">Integration Testing CLI Handlers</a></h1>
+<p>CLI handlers bridge pforge to the system shell. This chapter covers comprehensive integration testing strategies to ensure reliability across different environments and edge cases.</p>
+<h2 id="testing-philosophy-for-cli-handlers"><a class="header" href="#testing-philosophy-for-cli-handlers">Testing Philosophy for CLI Handlers</a></h2>
+<p><strong>Unit tests</strong> verify handler construction:</p>
+<pre><code class="language-rust">#[test]
+fn test_cli_handler_creation() {
+    let handler = CliHandler::new(...);
+    assert_eq!(handler.command, "ls");
+}</code></pre>
+<p><strong>Integration tests</strong> verify actual command execution:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_cli_handler_executes() {
+    let result = handler.execute(input).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+}</code></pre>
+<p><strong>This chapter focuses on integration tests.</strong></p>
+<h2 id="basic-integration-test-structure"><a class="header" href="#basic-integration-test-structure">Basic Integration Test Structure</a></h2>
+<pre><code class="language-rust">use pforge_runtime::handlers::cli::{CliHandler, CliInput};
+use std::collections::HashMap;
+
+#[tokio::test]
+async fn test_ls_command() {
+    // Arrange
+    let handler = CliHandler::new(
+        "ls".to_string(),
+        vec!["-lah".to_string()],
+        None,  // cwd
+        HashMap::new(),  // env
+        Some(5000),  // timeout_ms
+        false,  // stream
+    );
+
+    let input = CliInput {
+        args: vec![],
+        env: HashMap::new(),
+    };
+
+    // Act
+    let result = handler.execute(input).await.unwrap();
+
+    // Assert
+    assert_eq!(result.exit_code, 0);
+    assert!(!result.stdout.is_empty());
+    assert_eq!(result.stderr, "");
+}</code></pre>
+<h2 id="testing-success-cases"><a class="header" href="#testing-success-cases">Testing Success Cases</a></h2>
+<h3 id="command-execution-success"><a class="header" href="#command-execution-success">Command Execution Success</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_echo_command() {
+    let handler = CliHandler::new(
+        "echo".to_string(),
+        vec!["hello world".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.trim() == "hello world");
+}</code></pre>
+<h3 id="argument-passing"><a class="header" href="#argument-passing">Argument Passing</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_grep_with_args() {
+    let handler = CliHandler::new(
+        "grep".to_string(),
+        vec!["pattern".to_string()],
+        None,
+        HashMap::new(),
+        Some(2000),
+        false,
+    );
+
+    let input = CliInput {
+        args: vec!["testfile.txt".to_string()],
+        env: HashMap::new(),
+    };
+
+    let result = handler.execute(input).await.unwrap();
+
+    // grep returns 0 if pattern found, 1 if not, &gt;1 on error
+    assert!(result.exit_code &lt;= 1);
+}</code></pre>
+<h3 id="working-directory"><a class="header" href="#working-directory">Working Directory</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_pwd_in_specific_dir() {
+    let test_dir = std::env::temp_dir();
+
+    let handler = CliHandler::new(
+        "pwd".to_string(),
+        vec![],
+        Some(test_dir.to_str().unwrap().to_string()),
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains(test_dir.to_str().unwrap()));
+}</code></pre>
+<h3 id="environment-variables"><a class="header" href="#environment-variables">Environment Variables</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_env_variables() {
+    let mut env = HashMap::new();
+    env.insert("TEST_VAR".to_string(), "test_value".to_string());
+
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec!["-c".to_string(), "echo $TEST_VAR".to_string()],
+        None,
+        env,
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("test_value"));
+}</code></pre>
+<h2 id="testing-failure-cases"><a class="header" href="#testing-failure-cases">Testing Failure Cases</a></h2>
+<h3 id="command-not-found"><a class="header" href="#command-not-found">Command Not Found</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_nonexistent_command() {
+    let handler = CliHandler::new(
+        "nonexistent_command_xyz".to_string(),
+        vec![],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await;
+
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), Error::Handler(_)));
+}</code></pre>
+<h3 id="non-zero-exit-code"><a class="header" href="#non-zero-exit-code">Non-Zero Exit Code</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_command_fails() {
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec!["-c".to_string(), "exit 42".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 42);
+    assert!(result.stdout.is_empty());
+}</code></pre>
+<h3 id="timeout-exceeded"><a class="header" href="#timeout-exceeded">Timeout Exceeded</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_command_timeout() {
+    let handler = CliHandler::new(
+        "sleep".to_string(),
+        vec!["10".to_string()],  // Sleep 10 seconds
+        None,
+        HashMap::new(),
+        Some(100),  // Timeout after 100ms
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await;
+
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), Error::Timeout));
+}</code></pre>
+<h3 id="invalid-arguments"><a class="header" href="#invalid-arguments">Invalid Arguments</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_invalid_arguments() {
+    let handler = CliHandler::new(
+        "ls".to_string(),
+        vec!["--invalid-flag-xyz".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_ne!(result.exit_code, 0);
+    assert!(!result.stderr.is_empty());
+}</code></pre>
+<h2 id="testing-output-handling"><a class="header" href="#testing-output-handling">Testing Output Handling</a></h2>
+<h3 id="stdout-capture"><a class="header" href="#stdout-capture">Stdout Capture</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_stdout_captured() {
+    let handler = CliHandler::new(
+        "echo".to_string(),
+        vec!["line1\nline2\nline3".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert!(result.stdout.contains("line1"));
+    assert!(result.stdout.contains("line2"));
+    assert!(result.stdout.contains("line3"));
+}</code></pre>
+<h3 id="stderr-capture"><a class="header" href="#stderr-capture">Stderr Capture</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_stderr_captured() {
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec!["-c".to_string(), "echo error &gt;&amp;2".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stderr.contains("error"));
+    assert_eq!(result.stdout, "");
+}</code></pre>
+<h3 id="large-output"><a class="header" href="#large-output">Large Output</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_large_output() {
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec![
+            "-c".to_string(),
+            "for i in $(seq 1 10000); do echo line$i; done".to_string(),
+        ],
+        None,
+        HashMap::new(),
+        Some(10000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let line_count = result.stdout.lines().count();
+    assert_eq!(line_count, 10000);
+}</code></pre>
+<h2 id="testing-streaming-handlers"><a class="header" href="#testing-streaming-handlers">Testing Streaming Handlers</a></h2>
+<h3 id="stream-output-capture"><a class="header" href="#stream-output-capture">Stream Output Capture</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_streaming_output() {
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec![
+            "-c".to_string(),
+            "for i in 1 2 3; do echo line$i; sleep 0.1; done".to_string(),
+        ],
+        None,
+        HashMap::new(),
+        Some(5000),
+        true,  // stream: true
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("line1"));
+    assert!(result.stdout.contains("line2"));
+    assert!(result.stdout.contains("line3"));
+}</code></pre>
+<h3 id="stream-timeout"><a class="header" href="#stream-timeout">Stream Timeout</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_stream_timeout() {
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec![
+            "-c".to_string(),
+            "echo start; sleep 10; echo end".to_string(),
+        ],
+        None,
+        HashMap::new(),
+        Some(500),  // Timeout before "end" prints
+        true,
+    );
+
+    let result = handler.execute(CliInput::default()).await;
+
+    assert!(result.is_err());
+}</code></pre>
+<h2 id="testing-edge-cases"><a class="header" href="#testing-edge-cases">Testing Edge Cases</a></h2>
+<h3 id="empty-output"><a class="header" href="#empty-output">Empty Output</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_empty_output() {
+    let handler = CliHandler::new(
+        "true".to_string(),  // Command that succeeds but prints nothing
+        vec![],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, "");
+    assert_eq!(result.stderr, "");
+}</code></pre>
+<h3 id="special-characters-in-arguments"><a class="header" href="#special-characters-in-arguments">Special Characters in Arguments</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_special_characters() {
+    let handler = CliHandler::new(
+        "echo".to_string(),
+        vec!["$TEST".to_string(), "!@#$%".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    // Note: shell won't expand $TEST since we use Command::new, not sh -c
+    assert!(result.stdout.contains("$TEST"));
+}</code></pre>
+<h3 id="unicode-output"><a class="header" href="#unicode-output">Unicode Output</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_unicode_output() {
+    let handler = CliHandler::new(
+        "echo".to_string(),
+        vec!["Hello 世界 🚀".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("世界"));
+    assert!(result.stdout.contains("🚀"));
+}</code></pre>
+<h2 id="platform-specific-tests"><a class="header" href="#platform-specific-tests">Platform-Specific Tests</a></h2>
+<h3 id="unix-only-tests"><a class="header" href="#unix-only-tests">Unix-Only Tests</a></h3>
+<pre><code class="language-rust">#[cfg(unix)]
+#[tokio::test]
+async fn test_unix_specific_command() {
+    let handler = CliHandler::new(
+        "uname".to_string(),
+        vec!["-s".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("Linux") || result.stdout.contains("Darwin"));
+}</code></pre>
+<h3 id="windows-only-tests"><a class="header" href="#windows-only-tests">Windows-Only Tests</a></h3>
+<pre><code class="language-rust">#[cfg(windows)]
+#[tokio::test]
+async fn test_windows_specific_command() {
+    let handler = CliHandler::new(
+        "cmd".to_string(),
+        vec!["/C".to_string(), "echo test".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("test"));
+}</code></pre>
+<h2 id="property-based-testing"><a class="header" href="#property-based-testing">Property-Based Testing</a></h2>
+<h3 id="random-command-arguments"><a class="header" href="#random-command-arguments">Random Command Arguments</a></h3>
+<pre><code class="language-rust">use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn cli_handler_never_panics(
+        args in prop::collection::vec("[a-zA-Z0-9_-]{1,20}", 0..10)
+    ) {
+        tokio_test::block_on(async {
+            let handler = CliHandler::new(
+                "echo".to_string(),
+                args,
+                None,
+                HashMap::new(),
+                Some(1000),
+                false,
+            );
+
+            // Should not panic, even with random args
+            let _ = handler.execute(CliInput::default()).await;
+        });
+    }
+}</code></pre>
+<h3 id="exit-code-range"><a class="header" href="#exit-code-range">Exit Code Range</a></h3>
+<pre><code class="language-rust">proptest! {
+    #[test]
+    fn exit_codes_are_valid(
+        code in 0..=255u8
+    ) {
+        tokio_test::block_on(async {
+            let handler = CliHandler::new(
+                "sh".to_string(),
+                vec!["-c".to_string(), format!("exit {}", code)],
+                None,
+                HashMap::new(),
+                Some(1000),
+                false,
+            );
+
+            let result = handler.execute(CliInput::default()).await.unwrap();
+            prop_assert_eq!(result.exit_code, code as i32);
+            Ok(())
+        })?;
+    }
+}</code></pre>
+<h2 id="mock-command-patterns"><a class="header" href="#mock-command-patterns">Mock Command Patterns</a></h2>
+<h3 id="test-fixture-script"><a class="header" href="#test-fixture-script">Test Fixture Script</a></h3>
+<p>Create <code>tests/fixtures/test_command.sh</code>:</p>
+<pre><code class="language-bash">#!/bin/bash
+# Test fixture for CLI handler integration tests
+
+case "$1" in
+  success)
+    echo "Success output"
+    exit 0
+    ;;
+  failure)
+    echo "Error output" &gt;&amp;2
+    exit 1
+    ;;
+  slow)
+    sleep 5
+    echo "Done"
+    exit 0
+    ;;
+  *)
+    echo "Unknown command" &gt;&amp;2
+    exit 2
+    ;;
+esac
+</code></pre>
+<p><strong>Usage in tests</strong>:</p>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_with_fixture() {
+    let handler = CliHandler::new(
+        "./tests/fixtures/test_command.sh".to_string(),
+        vec!["success".to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+
+    let result = handler.execute(CliInput::default()).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("Success"));
+}</code></pre>
+<h2 id="test-coverage-goals"><a class="header" href="#test-coverage-goals">Test Coverage Goals</a></h2>
+<h3 id="coverage-checklist"><a class="header" href="#coverage-checklist">Coverage Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+Command execution succeeds</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Command execution fails</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Timeout handling</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Stdout capture</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Stderr capture</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Exit code handling</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Argument passing</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Environment variables</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Working directory</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Streaming output</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Large output</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Empty output</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Special characters</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Unicode handling</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Platform-specific behavior</li>
+</ul>
+<h3 id="measuring-coverage"><a class="header" href="#measuring-coverage">Measuring Coverage</a></h3>
+<pre><code class="language-bash"># Run integration tests with coverage
+cargo tarpaulin \
+  --test integration \
+  --out Html \
+  --output-dir target/coverage
+
+# View report
+open target/coverage/index.html
+</code></pre>
+<p><strong>Target</strong>: ≥80% line coverage for CLI handler code.</p>
+<h2 id="continuous-integration"><a class="header" href="#continuous-integration">Continuous Integration</a></h2>
+<h3 id="github-actions-example"><a class="header" href="#github-actions-example">GitHub Actions Example</a></h3>
+<pre><code class="language-yaml">name: CLI Handler Integration Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run integration tests
+        run: cargo test --test cli_integration
+
+      - name: Run with verbose output
+        run: cargo test --test cli_integration -- --nocapture
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="1-isolate-test-dependencies"><a class="header" href="#1-isolate-test-dependencies">1. Isolate Test Dependencies</a></h3>
+<pre><code class="language-rust">// BAD - depends on system state
+#[tokio::test]
+async fn test_list_home_dir() {
+    let handler = CliHandler::new(
+        "ls".to_string(),
+        vec![std::env::var("HOME").unwrap()],  // System-dependent
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+    // ...
+}
+
+// GOOD - create isolated test environment
+#[tokio::test]
+async fn test_list_test_dir() {
+    let temp_dir = tempfile::tempdir().unwrap();
+
+    let handler = CliHandler::new(
+        "ls".to_string(),
+        vec![temp_dir.path().to_str().unwrap().to_string()],
+        None,
+        HashMap::new(),
+        Some(1000),
+        false,
+    );
+    // ...
+}</code></pre>
+<h3 id="2-test-timeouts-appropriately"><a class="header" href="#2-test-timeouts-appropriately">2. Test Timeouts Appropriately</a></h3>
+<pre><code class="language-rust">// Ensure timeout is longer than expected execution
+let handler = CliHandler::new(
+    "sleep".to_string(),
+    vec!["2".to_string()],
+    None,
+    HashMap::new(),
+    Some(3000),  // 3s &gt; 2s command duration
+    false,
+);</code></pre>
+<h3 id="3-assert-on-both-success-and-error-paths"><a class="header" href="#3-assert-on-both-success-and-error-paths">3. Assert on Both Success and Error Paths</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_comprehensive() {
+    let result = handler.execute(input).await.unwrap();
+
+    // Assert success conditions
+    assert_eq!(result.exit_code, 0);
+    assert!(!result.stdout.is_empty());
+
+    // Assert error conditions didn't occur
+    assert_eq!(result.stderr, "");
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 5.0 introduces HTTP handlers for wrapping REST APIs, starting with a GitHub API integration example.</p>
+<hr />
+<blockquote>
+<p>“Test the integration, not just the units. CLI handlers live at the system boundary.” - pforge testing principle</p>
+</blockquote>
 
                     </main>
 

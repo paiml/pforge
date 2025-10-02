@@ -158,8 +158,997 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch13-00-resources-promptsmd"><a class="header" href="#ch13-00-resources-promptsmd">ch13-00-resources-prompts.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-13-resources-and-prompts"><a class="header" href="#chapter-13-resources-and-prompts">Chapter 13: Resources and Prompts</a></h1>
+<p>MCP servers can expose more than just tools. The Model Context Protocol supports <strong>resources</strong> (server-managed data sources) and <strong>prompts</strong> (reusable templated instructions). pforge provides first-class support for both through declarative YAML configuration and runtime managers.</p>
+<h2 id="understanding-mcp-resources"><a class="header" href="#understanding-mcp-resources">Understanding MCP Resources</a></h2>
+<p>Resources in MCP represent server-managed data that clients can read, write, or subscribe to. Think of them as RESTful endpoints but with MCP’s type-safe protocol.</p>
+<p><strong>Common use cases:</strong></p>
+<ul>
+<li>File system access (<code>file:///path/to/file</code>)</li>
+<li>Database queries (<code>db://users/{id}</code>)</li>
+<li>API proxies (<code>api://github/{owner}/{repo}</code>)</li>
+<li>Configuration data (<code>config://app/settings</code>)</li>
+</ul>
+<h3 id="resource-architecture"><a class="header" href="#resource-architecture">Resource Architecture</a></h3>
+<p>pforge’s resource system is built on three core components:</p>
+<ol>
+<li><strong>URI Template Matching</strong> - Regex-based pattern matching with parameter extraction</li>
+<li><strong>ResourceHandler Trait</strong> - Read/write/subscribe operations</li>
+<li><strong>ResourceManager</strong> - O(n) URI matching and dispatch</li>
+</ol>
+<pre><code class="language-rust">// From crates/pforge-runtime/src/resource.rs
+#[async_trait::async_trait]
+pub trait ResourceHandler: Send + Sync {
+    /// Read resource content
+    async fn read(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt;;
+
+    /// Write resource content (if supported)
+    async fn write(
+        &amp;self,
+        uri: &amp;str,
+        params: HashMap&lt;String, String&gt;,
+        content: Vec&lt;u8&gt;,
+    ) -&gt; Result&lt;()&gt; {
+        let _ = (uri, params, content);
+        Err(Error::Handler("Write operation not supported".to_string()))
+    }
+
+    /// Subscribe to resource changes (if supported)
+    async fn subscribe(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;()&gt; {
+        let _ = (uri, params);
+        Err(Error::Handler("Subscribe operation not supported".to_string()))
+    }
+}</code></pre>
+<h2 id="defining-resources-in-yaml"><a class="header" href="#defining-resources-in-yaml">Defining Resources in YAML</a></h2>
+<p>Resources are defined in the <code>forge.yaml</code> configuration:</p>
+<pre><code class="language-yaml">forge:
+  name: file-server
+  version: 0.1.0
+  transport: stdio
+
+resources:
+  - uri_template: "file:///{path}"
+    handler:
+      path: handlers::file_resource
+    supports:
+      - read
+      - write
+
+  - uri_template: "config://{section}/{key}"
+    handler:
+      path: handlers::config_resource
+    supports:
+      - read
+      - subscribe
+</code></pre>
+<h3 id="uri-template-syntax"><a class="header" href="#uri-template-syntax">URI Template Syntax</a></h3>
+<p>URI templates use <code>{param}</code> syntax for parameter extraction:</p>
+<pre><code class="language-yaml"># Simple path parameter
+"file:///{path}"
+# Matches: file:///home/user/test.txt
+# Params: { path: "home/user/test.txt" }
+
+# Multiple parameters
+"api://{service}/{resource}"
+# Matches: api://users/profile
+# Params: { service: "users", resource: "profile" }
+
+# Nested paths
+"db://{database}/tables/{table}"
+# Matches: db://production/tables/users
+# Params: { database: "production", table: "users" }
+</code></pre>
+<p><strong>Pattern Matching Rules:</strong></p>
+<ul>
+<li>Parameters followed by <code>/</code> match non-greedily (single segment)</li>
+<li>Parameters at the end match greedily (entire path)</li>
+<li>Regex special characters are escaped automatically</li>
+</ul>
+<h2 id="implementing-resource-handlers"><a class="header" href="#implementing-resource-handlers">Implementing Resource Handlers</a></h2>
+<h3 id="example-1-file-system-resource"><a class="header" href="#example-1-file-system-resource">Example 1: File System Resource</a></h3>
+<pre><code class="language-rust">// src/handlers.rs
+use pforge_runtime::{Error, ResourceHandler, Result};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use tokio::fs;
+
+pub struct FileResource {
+    base_path: PathBuf,
+}
+
+impl FileResource {
+    pub fn new(base_path: PathBuf) -&gt; Self {
+        Self { base_path }
+    }
+}
+
+#[async_trait::async_trait]
+impl ResourceHandler for FileResource {
+    async fn read(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+        let path = params
+            .get("path")
+            .ok_or_else(|| Error::Handler("Missing path parameter".to_string()))?;
+
+        let full_path = self.base_path.join(path);
+
+        // Security: Ensure path is within base directory
+        let canonical = full_path
+            .canonicalize()
+            .map_err(|e| Error::Handler(format!("Path error: {}", e)))?;
+
+        if !canonical.starts_with(&amp;self.base_path) {
+            return Err(Error::Handler("Path traversal detected".to_string()));
+        }
+
+        fs::read(&amp;canonical)
+            .await
+            .map_err(|e| Error::Handler(format!("Failed to read file: {}", e)))
+    }
+
+    async fn write(
+        &amp;self,
+        uri: &amp;str,
+        params: HashMap&lt;String, String&gt;,
+        content: Vec&lt;u8&gt;,
+    ) -&gt; Result&lt;()&gt; {
+        let path = params
+            .get("path")
+            .ok_or_else(|| Error::Handler("Missing path parameter".to_string()))?;
+
+        let full_path = self.base_path.join(path);
+
+        // Create parent directories if needed
+        if let Some(parent) = full_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| Error::Handler(format!("Failed to create directory: {}", e)))?;
+        }
+
+        fs::write(&amp;full_path, content)
+            .await
+            .map_err(|e| Error::Handler(format!("Failed to write file: {}", e)))
+    }
+}
+
+pub fn file_resource() -&gt; Box&lt;dyn ResourceHandler&gt; {
+    Box::new(FileResource::new(PathBuf::from("/tmp/file-server")))
+}</code></pre>
+<h3 id="example-2-database-resource-with-caching"><a class="header" href="#example-2-database-resource-with-caching">Example 2: Database Resource with Caching</a></h3>
+<pre><code class="language-rust">use sled::Db;
+use std::sync::Arc;
+
+pub struct DatabaseResource {
+    db: Arc&lt;Db&gt;,
+}
+
+impl DatabaseResource {
+    pub fn new(path: &amp;str) -&gt; Result&lt;Self&gt; {
+        let db = sled::open(path)
+            .map_err(|e| Error::Handler(format!("Failed to open database: {}", e)))?;
+        Ok(Self { db: Arc::new(db) })
+    }
+}
+
+#[async_trait::async_trait]
+impl ResourceHandler for DatabaseResource {
+    async fn read(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+        let key = params
+            .get("key")
+            .ok_or_else(|| Error::Handler("Missing key parameter".to_string()))?;
+
+        let db = self.db.clone();
+        let key = key.clone();
+
+        // Run blocking DB operation in thread pool
+        tokio::task::spawn_blocking(move || {
+            db.get(key.as_bytes())
+                .map_err(|e| Error::Handler(format!("Database error: {}", e)))?
+                .map(|v| v.to_vec())
+                .ok_or_else(|| Error::Handler(format!("Key not found: {}", key)))
+        })
+        .await
+        .map_err(|e| Error::Handler(format!("Task error: {}", e)))?
+    }
+
+    async fn write(
+        &amp;self,
+        uri: &amp;str,
+        params: HashMap&lt;String, String&gt;,
+        content: Vec&lt;u8&gt;,
+    ) -&gt; Result&lt;()&gt; {
+        let key = params
+            .get("key")
+            .ok_or_else(|| Error::Handler("Missing key parameter".to_string()))?;
+
+        let db = self.db.clone();
+        let key = key.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db.insert(key.as_bytes(), content)
+                .map_err(|e| Error::Handler(format!("Database error: {}", e)))?;
+            db.flush()
+                .map_err(|e| Error::Handler(format!("Flush error: {}", e)))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::Handler(format!("Task error: {}", e)))?
+    }
+}
+
+pub fn db_resource() -&gt; Box&lt;dyn ResourceHandler&gt; {
+    DatabaseResource::new("/tmp/resource-db")
+        .expect("Failed to initialize database")
+        .into()
+}</code></pre>
+<h2 id="understanding-mcp-prompts"><a class="header" href="#understanding-mcp-prompts">Understanding MCP Prompts</a></h2>
+<p>Prompts are reusable, templated instructions that clients can discover and render. They help standardize common LLM interaction patterns across your MCP ecosystem.</p>
+<p><strong>Common use cases:</strong></p>
+<ul>
+<li>Code review templates</li>
+<li>Bug report formats</li>
+<li>Documentation generation prompts</li>
+<li>Data analysis workflows</li>
+</ul>
+<h3 id="prompt-architecture"><a class="header" href="#prompt-architecture">Prompt Architecture</a></h3>
+<pre><code class="language-rust">// From crates/pforge-runtime/src/prompt.rs
+pub struct PromptManager {
+    prompts: HashMap&lt;String, PromptEntry&gt;,
+}
+
+struct PromptEntry {
+    description: String,
+    template: String,
+    arguments: HashMap&lt;String, ParamType&gt;,
+}</code></pre>
+<p><strong>Key Features:</strong></p>
+<ul>
+<li><strong>Template Interpolation</strong>: <code>{{variable}}</code> syntax</li>
+<li><strong>Argument Validation</strong>: Type checking and required fields</li>
+<li><strong>Metadata Discovery</strong>: List available prompts with schemas</li>
+</ul>
+<h2 id="defining-prompts-in-yaml"><a class="header" href="#defining-prompts-in-yaml">Defining Prompts in YAML</a></h2>
+<pre><code class="language-yaml">forge:
+  name: code-review-server
+  version: 0.1.0
+
+prompts:
+  - name: code_review
+    description: "Perform a thorough code review"
+    template: |
+      Review the following {{language}} code for:
+      - Correctness and logic errors
+      - Performance issues
+      - Security vulnerabilities
+      - Code style and best practices
+
+      File: {{filename}}
+
+      ```{{language}}
+      {{code}}
+      ```
+
+      Focus on: {{focus}}
+    arguments:
+      language:
+        type: string
+        required: true
+        description: "Programming language"
+      filename:
+        type: string
+        required: true
+      code:
+        type: string
+        required: true
+        description: "The code to review"
+      focus:
+        type: string
+        required: false
+        default: "all aspects"
+        description: "Specific focus areas"
+
+  - name: bug_report
+    description: "Generate a bug report from symptoms"
+    template: |
+      # Bug Report: {{title}}
+
+      ## Environment
+      - Version: {{version}}
+      - Platform: {{platform}}
+
+      ## Description
+      {{description}}
+
+      ## Steps to Reproduce
+      {{steps}}
+
+      ## Expected Behavior
+      {{expected}}
+
+      ## Actual Behavior
+      {{actual}}
+    arguments:
+      title:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      platform:
+        type: string
+        required: true
+      description:
+        type: string
+        required: true
+      steps:
+        type: string
+        required: true
+      expected:
+        type: string
+        required: true
+      actual:
+        type: string
+        required: true
+</code></pre>
+<h2 id="prompt-rendering"><a class="header" href="#prompt-rendering">Prompt Rendering</a></h2>
+<p>The <code>PromptManager</code> handles template interpolation at runtime:</p>
+<pre><code class="language-rust">// From crates/pforge-runtime/src/prompt.rs
+impl PromptManager {
+    pub fn render(&amp;self, name: &amp;str, args: HashMap&lt;String, Value&gt;) -&gt; Result&lt;String&gt; {
+        let entry = self
+            .prompts
+            .get(name)
+            .ok_or_else(|| Error::Handler(format!("Prompt '{}' not found", name)))?;
+
+        // Validate required arguments
+        self.validate_arguments(entry, &amp;args)?;
+
+        // Perform template interpolation
+        self.interpolate(&amp;entry.template, &amp;args)
+    }
+
+    fn interpolate(&amp;self, template: &amp;str, args: &amp;HashMap&lt;String, Value&gt;) -&gt; Result&lt;String&gt; {
+        let mut result = template.to_string();
+
+        for (key, value) in args {
+            let placeholder = format!("{{{{{}}}}}", key);
+            let replacement = match value {
+                Value::String(s) =&gt; s.clone(),
+                Value::Number(n) =&gt; n.to_string(),
+                Value::Bool(b) =&gt; b.to_string(),
+                Value::Null =&gt; String::new(),
+                _ =&gt; serde_json::to_string(value)
+                    .map_err(|e| Error::Handler(format!("Serialization error: {}", e)))?,
+            };
+
+            result = result.replace(&amp;placeholder, &amp;replacement);
+        }
+
+        // Check for unresolved placeholders
+        if result.contains("{{") &amp;&amp; result.contains("}}") {
+            let unresolved: Vec&lt;&amp;str&gt; = result
+                .split("{{")
+                .skip(1)
+                .filter_map(|s| s.split("}}").next())
+                .collect();
+
+            if !unresolved.is_empty() {
+                return Err(Error::Handler(format!(
+                    "Unresolved template variables: {}",
+                    unresolved.join(", ")
+                )));
+            }
+        }
+
+        Ok(result)
+    }
+}</code></pre>
+<p><strong>Error Handling:</strong></p>
+<ul>
+<li>Missing required arguments → validation error</li>
+<li>Unresolved placeholders → rendering error</li>
+<li>Type mismatches → serialization error</li>
+</ul>
+<h2 id="complete-example-documentation-generator"><a class="header" href="#complete-example-documentation-generator">Complete Example: Documentation Generator</a></h2>
+<p>Let’s build a complete MCP server that generates documentation from code.</p>
+<h3 id="forgeyaml"><a class="header" href="#forgeyaml">forge.yaml</a></h3>
+<pre><code class="language-yaml">forge:
+  name: doc-generator
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: cli
+    name: extract_symbols
+    description: "Extract symbols from source code"
+    command: "ctags"
+    args: ["-x", "-u", "--language={{language}}", "{{file}}"]
+    stream: false
+
+resources:
+  - uri_template: "file:///{path}"
+    handler:
+      path: handlers::file_resource
+    supports:
+      - read
+
+prompts:
+  - name: document_function
+    description: "Generate function documentation"
+    template: |
+      Generate comprehensive documentation for this {{language}} function:
+
+      ```{{language}}
+      {{code}}
+      ```
+
+      Include:
+      1. Brief description
+      2. Parameters with types and descriptions
+      3. Return value
+      4. Exceptions/errors
+      5. Usage example
+      6. Complexity analysis (if applicable)
+
+      Style: {{style}}
+    arguments:
+      language:
+        type: string
+        required: true
+      code:
+        type: string
+        required: true
+      style:
+        type: string
+        required: false
+        default: "Google"
+        description: "Documentation style (Google, NumPy, reStructuredText)"
+
+  - name: document_class
+    description: "Generate class documentation"
+    template: |
+      Generate comprehensive documentation for this {{language}} class:
+
+      ```{{language}}
+      {{code}}
+      ```
+
+      Include:
+      1. Class purpose and responsibility
+      2. Constructor parameters
+      3. Public methods overview
+      4. Usage examples
+      5. Related classes
+      6. Thread safety (if applicable)
+
+      Style: {{style}}
+    arguments:
+      language:
+        type: string
+        required: true
+      code:
+        type: string
+        required: true
+      style:
+        type: string
+        required: false
+        default: "Google"
+</code></pre>
+<h3 id="handlers-implementation"><a class="header" href="#handlers-implementation">Handlers Implementation</a></h3>
+<pre><code class="language-rust">// src/handlers.rs
+use pforge_runtime::{Error, ResourceHandler, Result};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use tokio::fs;
+
+pub struct FileResource {
+    allowed_extensions: Vec&lt;String&gt;,
+}
+
+impl FileResource {
+    pub fn new() -&gt; Self {
+        Self {
+            allowed_extensions: vec![
+                "rs".to_string(),
+                "py".to_string(),
+                "js".to_string(),
+                "ts".to_string(),
+                "go".to_string(),
+            ],
+        }
+    }
+
+    fn is_allowed(&amp;self, path: &amp;Path) -&gt; bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| self.allowed_extensions.contains(&amp;ext.to_lowercase()))
+            .unwrap_or(false)
+    }
+}
+
+#[async_trait::async_trait]
+impl ResourceHandler for FileResource {
+    async fn read(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+        let path = params
+            .get("path")
+            .ok_or_else(|| Error::Handler("Missing path parameter".to_string()))?;
+
+        let file_path = PathBuf::from(path);
+
+        // Security checks
+        if !file_path.exists() {
+            return Err(Error::Handler(format!("File not found: {}", path)));
+        }
+
+        if !self.is_allowed(&amp;file_path) {
+            return Err(Error::Handler(format!(
+                "File type not allowed: {:?}",
+                file_path.extension()
+            )));
+        }
+
+        // Read file with size limit (1MB)
+        let metadata = fs::metadata(&amp;file_path)
+            .await
+            .map_err(|e| Error::Handler(format!("Metadata error: {}", e)))?;
+
+        if metadata.len() &gt; 1_048_576 {
+            return Err(Error::Handler("File too large (max 1MB)".to_string()));
+        }
+
+        fs::read(&amp;file_path)
+            .await
+            .map_err(|e| Error::Handler(format!("Read error: {}", e)))
+    }
+}
+
+pub fn file_resource() -&gt; Box&lt;dyn ResourceHandler&gt; {
+    Box::new(FileResource::new())
+}</code></pre>
+<h2 id="testing-resources-and-prompts"><a class="header" href="#testing-resources-and-prompts">Testing Resources and Prompts</a></h2>
+<h3 id="resource-tests"><a class="header" href="#resource-tests">Resource Tests</a></h3>
+<pre><code class="language-rust">#[cfg(test)]
+mod resource_tests {
+    use super::*;
+    use pforge_runtime::ResourceManager;
+    use pforge_config::{ResourceDef, ResourceOperation, HandlerRef};
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_file_resource_read() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("test.txt");
+        fs::write(&amp;test_file, b"Hello, World!").await.unwrap();
+
+        let mut manager = ResourceManager::new();
+        let def = ResourceDef {
+            uri_template: "file:///{path}".to_string(),
+            handler: HandlerRef {
+                path: "handlers::file_resource".to_string(),
+                inline: None,
+            },
+            supports: vec![ResourceOperation::Read],
+        };
+
+        manager
+            .register(def, Arc::new(FileResource::new(temp_dir.path().to_path_buf())))
+            .unwrap();
+
+        let uri = format!("file:///{}", test_file.display());
+        let content = manager.read(&amp;uri).await.unwrap();
+        assert_eq!(content, b"Hello, World!");
+    }
+
+    #[tokio::test]
+    async fn test_file_resource_write() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_file = temp_dir.path().join("output.txt");
+
+        let mut manager = ResourceManager::new();
+        let def = ResourceDef {
+            uri_template: "file:///{path}".to_string(),
+            handler: HandlerRef {
+                path: "handlers::file_resource".to_string(),
+                inline: None,
+            },
+            supports: vec![ResourceOperation::Read, ResourceOperation::Write],
+        };
+
+        manager
+            .register(def, Arc::new(FileResource::new(temp_dir.path().to_path_buf())))
+            .unwrap();
+
+        let uri = format!("file:///{}", test_file.display());
+        manager.write(&amp;uri, b"Test content".to_vec()).await.unwrap();
+
+        let content = fs::read(&amp;test_file).await.unwrap();
+        assert_eq!(content, b"Test content");
+    }
+
+    #[tokio::test]
+    async fn test_resource_unsupported_operation() {
+        let mut manager = ResourceManager::new();
+        let def = ResourceDef {
+            uri_template: "readonly:///{path}".to_string(),
+            handler: HandlerRef {
+                path: "handlers::readonly_resource".to_string(),
+                inline: None,
+            },
+            supports: vec![ResourceOperation::Read],
+        };
+
+        struct ReadOnlyResource;
+
+        #[async_trait::async_trait]
+        impl ResourceHandler for ReadOnlyResource {
+            async fn read(&amp;self, _uri: &amp;str, _params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+                Ok(b"readonly".to_vec())
+            }
+        }
+
+        manager.register(def, Arc::new(ReadOnlyResource)).unwrap();
+
+        let result = manager.write("readonly:///test", b"data".to_vec()).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("does not support write"));
+    }
+}</code></pre>
+<h3 id="prompt-tests"><a class="header" href="#prompt-tests">Prompt Tests</a></h3>
+<pre><code class="language-rust">#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use pforge_runtime::PromptManager;
+    use pforge_config::{PromptDef, ParamType, SimpleType};
+    use serde_json::json;
+
+    #[test]
+    fn test_prompt_render_basic() {
+        let mut manager = PromptManager::new();
+
+        let def = PromptDef {
+            name: "greeting".to_string(),
+            description: "Simple greeting".to_string(),
+            template: "Hello, {{name}}! You are {{age}} years old.".to_string(),
+            arguments: HashMap::new(),
+        };
+
+        manager.register(def).unwrap();
+
+        let mut args = HashMap::new();
+        args.insert("name".to_string(), json!("Alice"));
+        args.insert("age".to_string(), json!(30));
+
+        let result = manager.render("greeting", args).unwrap();
+        assert_eq!(result, "Hello, Alice! You are 30 years old.");
+    }
+
+    #[test]
+    fn test_prompt_required_validation() {
+        let mut manager = PromptManager::new();
+
+        let mut arguments = HashMap::new();
+        arguments.insert(
+            "name".to_string(),
+            ParamType::Complex {
+                ty: SimpleType::String,
+                required: true,
+                default: None,
+                description: None,
+                validation: None,
+            },
+        );
+
+        let def = PromptDef {
+            name: "greeting".to_string(),
+            description: "Greeting".to_string(),
+            template: "Hello, {{name}}!".to_string(),
+            arguments,
+        };
+
+        manager.register(def).unwrap();
+
+        let args = HashMap::new();
+        let result = manager.render("greeting", args);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Required argument"));
+    }
+
+    #[test]
+    fn test_prompt_unresolved_placeholder() {
+        let mut manager = PromptManager::new();
+
+        let def = PromptDef {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            template: "Hello, {{name}}! Welcome to {{location}}.".to_string(),
+            arguments: HashMap::new(),
+        };
+
+        manager.register(def).unwrap();
+
+        let mut args = HashMap::new();
+        args.insert("name".to_string(), json!("Alice"));
+        // Missing 'location'
+
+        let result = manager.render("test", args);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unresolved template variables: location"));
+    }
+}</code></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<h3 id="resource-performance"><a class="header" href="#resource-performance">Resource Performance</a></h3>
+<p><strong>URI Matching</strong>: O(n) linear search through registered resources</p>
+<ul>
+<li>For &lt;10 resources: ~1μs overhead</li>
+<li>For 100 resources: ~10μs overhead</li>
+<li>Optimization: Pre-sort by specificity, try most specific first</li>
+</ul>
+<pre><code class="language-rust">// Potential optimization: Pattern specificity scoring
+impl ResourceManager {
+    fn specificity_score(pattern: &amp;str) -&gt; usize {
+        // Fewer parameters = more specific
+        pattern.matches('{').count()
+    }
+
+    pub fn register_with_priority(&amp;mut self, def: ResourceDef, handler: Arc&lt;dyn ResourceHandler&gt;) {
+        // Sort by specificity on insert
+        self.resources.sort_by_key(|entry| entry.specificity);
+    }
+}</code></pre>
+<p><strong>Caching Strategy</strong>: For read-heavy resources, implement caching:</p>
+<pre><code class="language-rust">use std::sync::RwLock;
+use lru::LruCache;
+
+pub struct CachedResource&lt;R: ResourceHandler&gt; {
+    inner: R,
+    cache: RwLock&lt;LruCache&lt;String, Vec&lt;u8&gt;&gt;&gt;,
+}
+
+#[async_trait::async_trait]
+impl&lt;R: ResourceHandler&gt; ResourceHandler for CachedResource&lt;R&gt; {
+    async fn read(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+        // Check cache
+        if let Some(cached) = self.cache.read().unwrap().peek(uri).cloned() {
+            return Ok(cached);
+        }
+
+        // Fetch and cache
+        let content = self.inner.read(uri, params).await?;
+        self.cache.write().unwrap().put(uri.to_string(), content.clone());
+        Ok(content)
+    }
+}</code></pre>
+<h3 id="prompt-performance"><a class="header" href="#prompt-performance">Prompt Performance</a></h3>
+<p><strong>Template Compilation</strong>: Consider pre-compiling templates with a templating engine:</p>
+<pre><code class="language-rust">use handlebars::Handlebars;
+use std::sync::Arc;
+
+pub struct CompiledPromptManager {
+    handlebars: Arc&lt;Handlebars&lt;'static&gt;&gt;,
+    prompts: HashMap&lt;String, PromptEntry&gt;,
+}
+
+impl CompiledPromptManager {
+    pub fn register(&amp;mut self, def: PromptDef) -&gt; Result&lt;()&gt; {
+        // Pre-compile template
+        self.handlebars
+            .register_template_string(&amp;def.name, &amp;def.template)
+            .map_err(|e| Error::Handler(format!("Template compilation failed: {}", e)))?;
+
+        self.prompts.insert(def.name.clone(), PromptEntry::from(def));
+        Ok(())
+    }
+
+    pub fn render(&amp;self, name: &amp;str, args: HashMap&lt;String, Value&gt;) -&gt; Result&lt;String&gt; {
+        self.handlebars
+            .render(name, &amp;args)
+            .map_err(|e| Error::Handler(format!("Rendering failed: {}", e)))
+    }
+}</code></pre>
+<p><strong>Benchmarks</strong> (using Criterion):</p>
+<pre><code class="language-rust">// benches/prompt_benchmark.rs
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn bench_prompt_render(c: &amp;mut Criterion) {
+    let mut manager = PromptManager::new();
+
+    // Register complex template
+    let def = PromptDef {
+        name: "complex".to_string(),
+        description: "Complex template".to_string(),
+        template: include_str!("../fixtures/complex_template.txt").to_string(),
+        arguments: HashMap::new(),
+    };
+
+    manager.register(def).unwrap();
+
+    let args = serde_json::json!({
+        "var1": "value1",
+        "var2": 42,
+        "var3": true,
+        // ... 20 more variables
+    });
+
+    c.bench_function("prompt_render_complex", |b| {
+        b.iter(|| {
+            manager.render(black_box("complex"), black_box(args.clone()))
+        })
+    });
+}
+
+criterion_group!(benches, bench_prompt_render);
+criterion_main!(benches);</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="resource-security"><a class="header" href="#resource-security">Resource Security</a></h3>
+<ol>
+<li><strong>Path Traversal Protection</strong>: Always validate paths</li>
+<li><strong>Size Limits</strong>: Enforce maximum resource sizes</li>
+<li><strong>Rate Limiting</strong>: Prevent resource exhaustion</li>
+<li><strong>Allowlists</strong>: Only expose specific URI patterns</li>
+</ol>
+<pre><code class="language-rust">pub struct SecureFileResource {
+    base_path: PathBuf,
+    max_size: u64,
+    allowed_extensions: HashSet&lt;String&gt;,
+}
+
+impl SecureFileResource {
+    async fn read(&amp;self, uri: &amp;str, params: HashMap&lt;String, String&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+        let path = self.validate_path(&amp;params)?;
+        self.validate_extension(&amp;path)?;
+        self.validate_size(&amp;path).await?;
+
+        fs::read(&amp;path).await
+            .map_err(|e| Error::Handler(format!("Read error: {}", e)))
+    }
+
+    fn validate_path(&amp;self, params: &amp;HashMap&lt;String, String&gt;) -&gt; Result&lt;PathBuf&gt; {
+        let path = params
+            .get("path")
+            .ok_or_else(|| Error::Handler("Missing path".to_string()))?;
+
+        let full_path = self.base_path.join(path);
+        let canonical = full_path
+            .canonicalize()
+            .map_err(|_| Error::Handler("Invalid path".to_string()))?;
+
+        if !canonical.starts_with(&amp;self.base_path) {
+            return Err(Error::Handler("Path traversal detected".to_string()));
+        }
+
+        Ok(canonical)
+    }
+}</code></pre>
+<h3 id="prompt-design"><a class="header" href="#prompt-design">Prompt Design</a></h3>
+<ol>
+<li><strong>Clear Instructions</strong>: Be explicit about format and requirements</li>
+<li><strong>Default Values</strong>: Provide sensible defaults for optional parameters</li>
+<li><strong>Examples</strong>: Include example outputs in descriptions</li>
+<li><strong>Versioning</strong>: Version prompts as they evolve</li>
+</ol>
+<pre><code class="language-yaml">prompts:
+  - name: code_review_v2
+    description: "Code review with enhanced security focus (v2)"
+    template: |
+      # Code Review Request
+
+      ## Metadata
+      - Language: {{language}}
+      - File: {{filename}}
+      - Reviewer Focus: {{focus}}
+      - Security Level: {{security_level}}
+
+      ## Code
+      ```{{language}}
+      {{code}}
+      ```
+
+      ## Review Checklist
+      {{#if include_security}}
+      ### Security
+      - [ ] Input validation
+      - [ ] SQL injection vectors
+      - [ ] XSS vulnerabilities
+      {{/if}}
+
+      {{#if include_performance}}
+      ### Performance
+      - [ ] Algorithmic complexity
+      - [ ] Memory usage
+      - [ ] Database query optimization
+      {{/if}}
+    arguments:
+      language:
+        type: string
+        required: true
+      filename:
+        type: string
+        required: true
+      code:
+        type: string
+        required: true
+      focus:
+        type: string
+        required: false
+        default: "general"
+      security_level:
+        type: string
+        required: false
+        default: "standard"
+      include_security:
+        type: boolean
+        required: false
+        default: true
+      include_performance:
+        type: boolean
+        required: false
+        default: false
+</code></pre>
+<h2 id="integration-example"><a class="header" href="#integration-example">Integration Example</a></h2>
+<p>Complete server combining tools, resources, and prompts:</p>
+<pre><code class="language-yaml">forge:
+  name: full-stack-assistant
+  version: 1.0.0
+  transport: stdio
+
+tools:
+  - type: native
+    name: analyze_code
+    description: "Analyze code quality and complexity"
+    handler:
+      path: handlers::analyze_handler
+    params:
+      code:
+        type: string
+        required: true
+      language:
+        type: string
+        required: true
+
+resources:
+  - uri_template: "workspace:///{path}"
+    handler:
+      path: handlers::workspace_resource
+    supports:
+      - read
+      - write
+
+  - uri_template: "db://analysis/{id}"
+    handler:
+      path: handlers::analysis_db_resource
+    supports:
+      - read
+      - subscribe
+
+prompts:
+  - name: full_analysis
+    description: "Comprehensive code analysis workflow"
+    template: |
+      1. Read source file: workspace:///{{filepath}}
+      2. Analyze code quality using analyze_code tool
+      3. Generate report combining:
+         - Complexity metrics
+         - Security findings
+         - Performance recommendations
+      4. Store results: db://analysis/{{analysis_id}}
+    arguments:
+      filepath:
+        type: string
+        required: true
+      analysis_id:
+        type: string
+        required: true
+</code></pre>
+<p>This chapter provided comprehensive coverage of pforge’s resource and prompt capabilities, from basic concepts to production-ready implementations with security, testing, and performance considerations.</p>
 
                     </main>
 

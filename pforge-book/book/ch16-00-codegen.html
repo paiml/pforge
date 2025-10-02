@@ -158,8 +158,702 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch16-00-codegenmd"><a class="header" href="#ch16-00-codegenmd">ch16-00-codegen.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-16-code-generation-internals"><a class="header" href="#chapter-16-code-generation-internals">Chapter 16: Code Generation Internals</a></h1>
+<p>pforge’s code generation transforms declarative YAML configuration into optimized Rust code. This chapter explores the internals of <code>pforge-codegen</code>, the Abstract Syntax Tree (AST) transformations, and how type-safe handlers are generated at compile time.</p>
+<h2 id="code-generation-philosophy"><a class="header" href="#code-generation-philosophy">Code Generation Philosophy</a></h2>
+<p><strong>Key Principles</strong>:</p>
+<ol>
+<li><strong>Type Safety</strong>: Generate compile-time checked code</li>
+<li><strong>Zero Runtime Cost</strong>: No dynamic dispatch where avoidable</li>
+<li><strong>Readable Output</strong>: Generated code should be maintainable</li>
+<li><strong>Error Preservation</strong>: Clear error messages pointing to YAML source</li>
+</ol>
+<h2 id="code-generation-pipeline"><a class="header" href="#code-generation-pipeline">Code Generation Pipeline</a></h2>
+<pre><code>┌─────────────┐      ┌──────────────┐      ┌─────────────┐      ┌──────────┐
+│ forge.yaml  │─────&gt;│ Parse &amp; Val  │─────&gt;│ AST Trans   │─────&gt;│ Rust Gen │
+│             │      │ idate Config │      │ formation   │      │          │
+└─────────────┘      └──────────────┘      └─────────────┘      └──────────┘
+                            │                       │                   │
+                            v                       v                   v
+                     Error Location         Type Inference      main.rs
+                     Line/Column            Schema Gen          handlers.rs
+</code></pre>
+<p><strong>Stages</strong>:</p>
+<ol>
+<li><strong>Parse</strong>: YAML → <code>ForgeConfig</code> struct</li>
+<li><strong>Validate</strong>: Check semantics (tool name uniqueness, etc.)</li>
+<li><strong>Transform</strong>: Config → Rust AST</li>
+<li><strong>Generate</strong>: AST → formatted Rust code</li>
+</ol>
+<h2 id="yaml-parsing-and-validation"><a class="header" href="#yaml-parsing-and-validation">YAML Parsing and Validation</a></h2>
+<h3 id="configuration-structures"><a class="header" href="#configuration-structures">Configuration Structures</a></h3>
+<p>From <code>crates/pforge-config/src/types.rs</code>:</p>
+<pre><code class="language-rust">#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]  // Catch typos early
+pub struct ForgeConfig {
+    pub forge: ForgeMetadata,
+    #[serde(default)]
+    pub tools: Vec&lt;ToolDef&gt;,
+    #[serde(default)]
+    pub resources: Vec&lt;ResourceDef&gt;,
+    #[serde(default)]
+    pub prompts: Vec&lt;PromptDef&gt;,
+    #[serde(default)]
+    pub state: Option&lt;StateDef&gt;,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ToolDef {
+    Native {
+        name: String,
+        description: String,
+        handler: HandlerRef,
+        params: ParamSchema,
+        #[serde(default)]
+        timeout_ms: Option&lt;u64&gt;,
+    },
+    Cli {
+        name: String,
+        description: String,
+        command: String,
+        args: Vec&lt;String&gt;,
+        // ...
+    },
+    Http { /* ... */ },
+    Pipeline { /* ... */ },
+}</code></pre>
+<p><strong>Key Design Decisions</strong>:</p>
+<ul>
+<li><strong><code>#[serde(deny_unknown_fields)]</code></strong>: Catch configuration errors at parse time</li>
+<li><strong><code>#[serde(tag = "type")]</code></strong>: Discriminated union for tool types</li>
+<li><strong><code>#[serde(default)]</code></strong>: Optional fields with sensible defaults</li>
+</ul>
+<h3 id="validation-pass"><a class="header" href="#validation-pass">Validation Pass</a></h3>
+<pre><code class="language-rust">// crates/pforge-config/src/validator.rs
+pub fn validate_config(config: &amp;ForgeConfig) -&gt; Result&lt;(), ValidationError&gt; {
+    // Check for duplicate tool names
+    let mut names = HashSet::new();
+    for tool in &amp;config.tools {
+        if !names.insert(tool.name()) {
+            return Err(ValidationError::DuplicateTool(tool.name().to_string()));
+        }
+    }
+
+    // Validate handler references
+    for tool in &amp;config.tools {
+        if let ToolDef::Native { handler, .. } = tool {
+            validate_handler_path(&amp;handler.path)?;
+        }
+    }
+
+    // Validate parameter schemas
+    for tool in &amp;config.tools {
+        if let ToolDef::Native { params, .. } = tool {
+            validate_param_schema(params)?;
+        }
+    }
+
+    // Validate pipeline references
+    for tool in &amp;config.tools {
+        if let ToolDef::Pipeline { steps, .. } = tool {
+            for step in steps {
+                if !names.contains(&amp;step.tool) {
+                    return Err(ValidationError::UnknownTool(step.tool.clone()));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_handler_path(path: &amp;str) -&gt; Result&lt;(), ValidationError&gt; {
+    // Check format: module::submodule::function_name
+    if !path.contains("::") {
+        return Err(ValidationError::InvalidHandlerPath(path.to_string()));
+    }
+
+    // Ensure valid Rust identifier
+    for segment in path.split("::") {
+        if !is_valid_identifier(segment) {
+            return Err(ValidationError::InvalidIdentifier(segment.to_string()));
+        }
+    }
+
+    Ok(())
+}</code></pre>
+<h2 id="ast-generation"><a class="header" href="#ast-generation">AST Generation</a></h2>
+<h3 id="generating-parameter-structs"><a class="header" href="#generating-parameter-structs">Generating Parameter Structs</a></h3>
+<p>From <code>crates/pforge-codegen/src/generator.rs</code>:</p>
+<pre><code class="language-rust">pub fn generate_param_struct(tool_name: &amp;str, params: &amp;ParamSchema) -&gt; Result&lt;String&gt; {
+    let struct_name = to_pascal_case(tool_name) + "Params";
+    let mut output = String::new();
+
+    // Derive traits
+    output.push_str("#[derive(Debug, Deserialize, JsonSchema)]\n");
+    output.push_str(&amp;format!("pub struct {} {{\n", struct_name));
+
+    // Generate fields
+    for (field_name, param_type) in &amp;params.fields {
+        generate_field(&amp;mut output, field_name, param_type)?;
+    }
+
+    output.push_str("}\n");
+
+    Ok(output)
+}
+
+fn generate_field(
+    output: &amp;mut String,
+    field_name: &amp;str,
+    param_type: &amp;ParamType,
+) -&gt; Result&lt;()&gt; {
+    let (ty, required, description) = match param_type {
+        ParamType::Simple(simple_ty) =&gt; (rust_type_from_simple(simple_ty), true, None),
+        ParamType::Complex {
+            ty,
+            required,
+            description,
+            ..
+        } =&gt; (rust_type_from_simple(ty), *required, description.clone()),
+    };
+
+    // Add doc comment
+    if let Some(desc) = description {
+        output.push_str(&amp;format!("    /// {}\n", desc));
+    }
+
+    // Add field
+    if required {
+        output.push_str(&amp;format!("    pub {}: {},\n", field_name, ty));
+    } else {
+        output.push_str(&amp;format!("    pub {}: Option&lt;{}&gt;,\n", field_name, ty));
+    }
+
+    Ok(())
+}
+
+fn rust_type_from_simple(ty: &amp;SimpleType) -&gt; &amp;'static str {
+    match ty {
+        SimpleType::String =&gt; "String",
+        SimpleType::Integer =&gt; "i64",
+        SimpleType::Float =&gt; "f64",
+        SimpleType::Boolean =&gt; "bool",
+        SimpleType::Array =&gt; "Vec&lt;serde_json::Value&gt;",
+        SimpleType::Object =&gt; "serde_json::Value",
+    }
+}</code></pre>
+<p><strong>Example Output</strong>:</p>
+<pre><code class="language-yaml"># Input (forge.yaml)
+tools:
+  - type: native
+    name: calculate
+    params:
+      operation:
+        type: string
+        required: true
+        description: "Operation: add, subtract, multiply, divide"
+      a:
+        type: float
+        required: true
+      b:
+        type: float
+        required: true
+</code></pre>
+<pre><code class="language-rust">// Generated output
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalculateParams {
+    /// Operation: add, subtract, multiply, divide
+    pub operation: String,
+    pub a: f64,
+    pub b: f64,
+}</code></pre>
+<h3 id="generating-handler-registration"><a class="header" href="#generating-handler-registration">Generating Handler Registration</a></h3>
+<pre><code class="language-rust">pub fn generate_handler_registration(config: &amp;ForgeConfig) -&gt; Result&lt;String&gt; {
+    let mut output = String::new();
+
+    output.push_str("pub fn register_handlers(registry: &amp;mut HandlerRegistry) {\n");
+
+    for tool in &amp;config.tools {
+        match tool {
+            ToolDef::Native { name, handler, .. } =&gt; {
+                generate_native_registration(&amp;mut output, name, handler)?;
+            }
+            ToolDef::Cli {
+                name,
+                command,
+                args,
+                cwd,
+                env,
+                stream,
+                ..
+            } =&gt; {
+                generate_cli_registration(&amp;mut output, name, command, args, cwd, env, *stream)?;
+            }
+            ToolDef::Http {
+                name,
+                endpoint,
+                method,
+                headers,
+                auth,
+                ..
+            } =&gt; {
+                generate_http_registration(&amp;mut output, name, endpoint, method, headers, auth)?;
+            }
+            ToolDef::Pipeline { name, steps, .. } =&gt; {
+                generate_pipeline_registration(&amp;mut output, name, steps)?;
+            }
+        }
+    }
+
+    output.push_str("}\n");
+
+    Ok(output)
+}
+
+fn generate_native_registration(
+    output: &amp;mut String,
+    name: &amp;str,
+    handler: &amp;HandlerRef,
+) -&gt; Result&lt;()&gt; {
+    output.push_str(&amp;format!(
+        "    registry.register(\"{}\", {});\n",
+        name, handler.path
+    ));
+    Ok(())
+}
+
+fn generate_cli_registration(
+    output: &amp;mut String,
+    name: &amp;str,
+    command: &amp;str,
+    args: &amp;[String],
+    cwd: &amp;Option&lt;String&gt;,
+    env: &amp;HashMap&lt;String, String&gt;,
+    stream: bool,
+) -&gt; Result&lt;()&gt; {
+    output.push_str(&amp;format!("    registry.register(\"{}\", CliHandler::new(\n", name));
+    output.push_str(&amp;format!("        \"{}\".to_string(),\n", command));
+    output.push_str(&amp;format!("        vec![{}],\n", format_string_vec(args)));
+
+    if let Some(cwd_val) = cwd {
+        output.push_str(&amp;format!("        Some(\"{}\".to_string()),\n", cwd_val));
+    } else {
+        output.push_str("        None,\n");
+    }
+
+    output.push_str(&amp;format!("        {{\n"));
+    for (key, value) in env {
+        output.push_str(&amp;format!("            (\"{}\".to_string(), \"{}\".to_string()),\n", key, value));
+    }
+    output.push_str(&amp;format!("        }}.into_iter().collect(),\n"));
+
+    output.push_str("        None,\n"); // timeout
+    output.push_str(&amp;format!("        {},\n", stream));
+    output.push_str("    ));\n");
+
+    Ok(())
+}</code></pre>
+<h3 id="generating-main-function"><a class="header" href="#generating-main-function">Generating Main Function</a></h3>
+<pre><code class="language-rust">pub fn generate_main(config: &amp;ForgeConfig) -&gt; Result&lt;String&gt; {
+    let mut output = String::new();
+
+    output.push_str("use pforge_runtime::HandlerRegistry;\n");
+    output.push_str("use tokio;\n\n");
+
+    output.push_str("#[tokio::main]\n");
+
+    // Select runtime flavor based on transport
+    match config.forge.transport {
+        TransportType::Stdio =&gt; {
+            output.push_str("#[tokio::main(flavor = \"current_thread\")]\n");
+        }
+        TransportType::Sse | TransportType::WebSocket =&gt; {
+            output.push_str("#[tokio::main(flavor = \"multi_thread\")]\n");
+        }
+    }
+
+    output.push_str("async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {\n");
+    output.push_str("    let mut registry = HandlerRegistry::new();\n");
+    output.push_str("    register_handlers(&amp;mut registry);\n\n");
+
+    // Generate transport-specific server start
+    match config.forge.transport {
+        TransportType::Stdio =&gt; {
+            output.push_str("    pforge_runtime::serve_stdio(registry).await?;\n");
+        }
+        TransportType::Sse =&gt; {
+            output.push_str("    pforge_runtime::serve_sse(registry, 3000).await?;\n");
+        }
+        TransportType::WebSocket =&gt; {
+            output.push_str("    pforge_runtime::serve_websocket(registry, 3000).await?;\n");
+        }
+    }
+
+    output.push_str("    Ok(())\n");
+    output.push_str("}\n");
+
+    Ok(output)
+}</code></pre>
+<h2 id="schema-generation"><a class="header" href="#schema-generation">Schema Generation</a></h2>
+<h3 id="json-schema-from-types"><a class="header" href="#json-schema-from-types">JSON Schema from Types</a></h3>
+<p>pforge uses <code>schemars</code> to generate JSON schemas at compile time:</p>
+<pre><code class="language-rust">use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CalculateParams {
+    pub operation: String,
+    pub a: f64,
+    pub b: f64,
+}
+
+// At runtime, schema is available via:
+let schema = schemars::schema_for!(CalculateParams);</code></pre>
+<p><strong>Generated JSON Schema</strong>:</p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CalculateParams",
+  "type": "object",
+  "required": ["operation", "a", "b"],
+  "properties": {
+    "operation": {
+      "type": "string",
+      "description": "Operation: add, subtract, multiply, divide"
+    },
+    "a": {
+      "type": "number"
+    },
+    "b": {
+      "type": "number"
+    }
+  }
+}
+</code></pre>
+<h3 id="custom-schema-attributes"><a class="header" href="#custom-schema-attributes">Custom Schema Attributes</a></h3>
+<pre><code class="language-rust">use schemars::JsonSchema;
+
+#[derive(JsonSchema)]
+pub struct AdvancedParams {
+    #[schemars(regex(pattern = r"^\w+$"))]
+    pub username: String,
+
+    #[schemars(range(min = 0, max = 100))]
+    pub age: u8,
+
+    #[schemars(length(min = 8, max = 64))]
+    pub password: String,
+
+    #[schemars(default)]
+    pub optional_field: Option&lt;String&gt;,
+}</code></pre>
+<h2 id="build-integration"><a class="header" href="#build-integration">Build Integration</a></h2>
+<h3 id="buildrs-script"><a class="header" href="#buildrs-script">build.rs Script</a></h3>
+<pre><code class="language-rust">// build.rs
+use pforge_codegen::{generate_main, generate_handler_registration, generate_param_struct};
+use pforge_config::ForgeConfig;
+use std::fs;
+use std::path::Path;
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    println!("cargo:rerun-if-changed=forge.yaml");
+
+    // Load configuration
+    let config_str = fs::read_to_string("forge.yaml")?;
+    let config: ForgeConfig = serde_yaml::from_str(&amp;config_str)?;
+
+    // Validate
+    pforge_config::validate_config(&amp;config)?;
+
+    // Generate code
+    let out_dir = std::env::var("OUT_DIR")?;
+    let dest_path = Path::new(&amp;out_dir).join("generated.rs");
+
+    let mut output = String::new();
+
+    // Generate parameter structs
+    for tool in &amp;config.tools {
+        if let pforge_config::ToolDef::Native { name, params, .. } = tool {
+            output.push_str(&amp;generate_param_struct(name, params)?);
+            output.push_str("\n\n");
+        }
+    }
+
+    // Generate handler registration
+    output.push_str(&amp;generate_handler_registration(&amp;config)?);
+    output.push_str("\n\n");
+
+    // Generate main function
+    output.push_str(&amp;generate_main(&amp;config)?);
+
+    // Write to file
+    fs::write(&amp;dest_path, output)?;
+
+    // Format with rustfmt
+    std::process::Command::new("rustfmt")
+        .arg(&amp;dest_path)
+        .status()?;
+
+    Ok(())
+}</code></pre>
+<h3 id="including-generated-code"><a class="header" href="#including-generated-code">Including Generated Code</a></h3>
+<pre><code class="language-rust">// src/main.rs or src/lib.rs
+include!(concat!(env!("OUT_DIR"), "/generated.rs"));</code></pre>
+<h2 id="error-handling-and-diagnostics"><a class="header" href="#error-handling-and-diagnostics">Error Handling and Diagnostics</a></h2>
+<h3 id="source-location-tracking"><a class="header" href="#source-location-tracking">Source Location Tracking</a></h3>
+<pre><code class="language-rust">use serde_yaml::{Mapping, Value};
+
+#[derive(Debug)]
+pub struct Spanned&lt;T&gt; {
+    pub node: T,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Span {
+    pub start: Position,
+    pub end: Position,
+}
+
+#[derive(Debug, Clone)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl Spanned&lt;ForgeConfig&gt; {
+    pub fn parse(yaml_str: &amp;str) -&gt; Result&lt;Self, ParseError&gt; {
+        let value: serde_yaml::Value = serde_yaml::from_str(yaml_str)?;
+
+        // Track spans during deserialization
+        let config = Self::from_value(value)?;
+
+        Ok(config)
+    }
+}</code></pre>
+<h3 id="pretty-error-messages"><a class="header" href="#pretty-error-messages">Pretty Error Messages</a></h3>
+<pre><code class="language-rust">pub fn format_error(error: &amp;CodegenError, yaml_source: &amp;str) -&gt; String {
+    match error {
+        CodegenError::DuplicateTool { name, first_location, second_location } =&gt; {
+            format!(
+                "Error: Duplicate tool name '{}'\n\n\
+                 First defined at:  {}:{}:{}\n\
+                 Also defined at:   {}:{}:{}\n",
+                name,
+                "forge.yaml", first_location.line, first_location.column,
+                "forge.yaml", second_location.line, second_location.column
+            )
+        }
+        CodegenError::InvalidHandlerPath { path, location } =&gt; {
+            let line = yaml_source.lines().nth(location.line - 1).unwrap_or("");
+
+            format!(
+                "Error: Invalid handler path '{}'\n\n\
+                 {}:{}:{}\n\
+                 {}\n\
+                 {}^\n\
+                 Expected format: module::submodule::function_name\n",
+                path,
+                "forge.yaml", location.line, location.column,
+                line,
+                " ".repeat(location.column - 1)
+            )
+        }
+        _ =&gt; format!("{:?}", error),
+    }
+}</code></pre>
+<h2 id="advanced-code-generation"><a class="header" href="#advanced-code-generation">Advanced Code Generation</a></h2>
+<h3 id="macro-generation"><a class="header" href="#macro-generation">Macro Generation</a></h3>
+<p>For repetitive patterns, pforge can generate proc macros:</p>
+<pre><code class="language-rust">// Generated macro for tool invocation
+#[macro_export]
+macro_rules! call_tool {
+    ($registry:expr, calculate, $operation:expr, $a:expr, $b:expr) =&gt; {{
+        let input = CalculateParams {
+            operation: $operation.to_string(),
+            a: $a,
+            b: $b,
+        };
+        $registry.dispatch("calculate", &amp;serde_json::to_vec(&amp;input)?)
+    }};
+}
+
+// Usage in tests
+#[test]
+fn test_calculate() {
+    let mut registry = HandlerRegistry::new();
+    register_handlers(&amp;mut registry);
+
+    let result = call_tool!(registry, calculate, "add", 5.0, 3.0)?;
+    assert_eq!(result, 8.0);
+}</code></pre>
+<h3 id="optimization-static-dispatch"><a class="header" href="#optimization-static-dispatch">Optimization: Static Dispatch</a></h3>
+<p>For known tool sets, pforge can generate compile-time dispatch tables:</p>
+<pre><code class="language-rust">// Generated code with static dispatch
+pub mod generated {
+    use once_cell::sync::Lazy;
+    use phf::phf_map;
+
+    // Perfect hash map for O(1) worst-case lookup
+    static HANDLER_MAP: phf::Map&lt;&amp;'static str, usize&gt; = phf_map! {
+        "calculate" =&gt; 0,
+        "search" =&gt; 1,
+        "transform" =&gt; 2,
+    };
+
+    static HANDLERS: Lazy&lt;Vec&lt;Box&lt;dyn Handler&gt;&gt;&gt; = Lazy::new(|| {
+        vec![
+            Box::new(CalculateHandler),
+            Box::new(SearchHandler),
+            Box::new(TransformHandler),
+        ]
+    });
+
+    #[inline(always)]
+    pub fn dispatch_static(tool: &amp;str) -&gt; Option&lt;&amp;dyn Handler&gt; {
+        HANDLER_MAP.get(tool)
+            .and_then(|&amp;idx| HANDLERS.get(idx))
+            .map(|h| h.as_ref())
+    }
+}</code></pre>
+<h2 id="testing-generated-code"><a class="header" href="#testing-generated-code">Testing Generated Code</a></h2>
+<h3 id="snapshot-testing"><a class="header" href="#snapshot-testing">Snapshot Testing</a></h3>
+<pre><code class="language-rust">// tests/codegen_test.rs
+use insta::assert_snapshot;
+
+#[test]
+fn test_generate_param_struct() {
+    let mut params = ParamSchema::new();
+    params.add_field("name", ParamType::Simple(SimpleType::String));
+    params.add_field("age", ParamType::Simple(SimpleType::Integer));
+
+    let output = generate_param_struct("test_tool", &amp;params).unwrap();
+
+    assert_snapshot!(output);
+}</code></pre>
+<pre><code class="language-rust">// Snapshot stored in tests/snapshots/codegen_test__test_generate_param_struct.snap
+---
+source: tests/codegen_test.rs
+expression: output
+---
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TestToolParams {
+    pub name: String,
+    pub age: i64,
+}</code></pre>
+<h3 id="round-trip-testing"><a class="header" href="#round-trip-testing">Round-Trip Testing</a></h3>
+<pre><code class="language-rust">#[test]
+fn test_config_roundtrip() {
+    let yaml = include_str!("fixtures/calculator.yaml");
+
+    // Parse YAML
+    let config: ForgeConfig = serde_yaml::from_str(yaml).unwrap();
+
+    // Generate code
+    let generated = generate_all(&amp;config).unwrap();
+
+    // Compile generated code
+    let temp_dir = TempDir::new().unwrap();
+    let src_path = temp_dir.path().join("lib.rs");
+    fs::write(&amp;src_path, generated).unwrap();
+
+    // Verify compilation
+    let output = Command::new("rustc")
+        .arg("--crate-type=lib")
+        .arg(&amp;src_path)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+}</code></pre>
+<h2 id="cli-integration"><a class="header" href="#cli-integration">CLI Integration</a></h2>
+<h3 id="pforge-build-command"><a class="header" href="#pforge-build-command">pforge build Command</a></h3>
+<pre><code class="language-rust">// crates/pforge-cli/src/commands/build.rs
+use pforge_codegen::Generator;
+use pforge_config::ForgeConfig;
+
+pub fn cmd_build(args: &amp;BuildArgs) -&gt; Result&lt;()&gt; {
+    // Load config
+    let config = ForgeConfig::load("forge.yaml")?;
+
+    // Validate
+    config.validate()?;
+
+    // Generate code
+    let generator = Generator::new(&amp;config);
+    let output = generator.generate_all()?;
+
+    // Write to src/generated/
+    let dest_dir = Path::new("src/generated");
+    fs::create_dir_all(dest_dir)?;
+
+    fs::write(dest_dir.join("mod.rs"), output)?;
+
+    // Format
+    Command::new("cargo")
+        .args(&amp;["fmt", "--", "src/generated/mod.rs"])
+        .status()?;
+
+    // Build project
+    let profile = if args.release { "release" } else { "debug" };
+    Command::new("cargo")
+        .args(&amp;["build", "--profile", profile])
+        .status()?;
+
+    println!("Build successful!");
+
+    Ok(())
+}</code></pre>
+<h2 id="debugging-generated-code"><a class="header" href="#debugging-generated-code">Debugging Generated Code</a></h2>
+<h3 id="preserving-generated-code"><a class="header" href="#preserving-generated-code">Preserving Generated Code</a></h3>
+<pre><code class="language-toml"># .cargo/config.toml
+[build]
+# Keep generated code for inspection
+target-dir = "target"
+
+[env]
+CARGO_BUILD_KEEP_GENERATED = "1"
+</code></pre>
+<pre><code class="language-bash"># View generated code
+cat target/debug/build/pforge-*/out/generated.rs | bat -l rust
+
+# Or with syntax highlighting
+rustfmt target/debug/build/pforge-*/out/generated.rs
+</code></pre>
+<h3 id="debug-logging"><a class="header" href="#debug-logging">Debug Logging</a></h3>
+<pre><code class="language-rust">// In build.rs
+fn main() {
+    if std::env::var("DEBUG_CODEGEN").is_ok() {
+        eprintln!("=== Generated Code ===");
+        eprintln!("{}", output);
+        eprintln!("=== End Generated Code ===");
+    }
+
+    // ... rest of build script
+}</code></pre>
+<pre><code class="language-bash"># Enable debug logging
+DEBUG_CODEGEN=1 cargo build
+</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>pforge’s code generation:</p>
+<ol>
+<li><strong>Parses YAML</strong> with full span tracking for error messages</li>
+<li><strong>Validates</strong> configuration for semantic correctness</li>
+<li><strong>Transforms</strong> config into Rust AST</li>
+<li><strong>Generates</strong> type-safe parameter structs, handler registration, and main function</li>
+<li><strong>Optimizes</strong> with static dispatch and compile-time perfect hashing</li>
+<li><strong>Formats</strong> with rustfmt for readable output</li>
+<li><strong>Integrates</strong> seamlessly with Cargo build system</li>
+</ol>
+<p><strong>Key Benefits</strong>:</p>
+<ul>
+<li>Type safety at compile time</li>
+<li>Zero runtime overhead</li>
+<li>Clear error messages</li>
+<li>Maintainable generated code</li>
+</ul>
+<p><strong>Next chapter</strong>: CI/CD with GitHub Actions - automating quality gates and deployment.</p>
 
                     </main>
 

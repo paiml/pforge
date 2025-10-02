@@ -158,8 +158,315 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch06-01-compositionmd"><a class="header" href="#ch06-01-compositionmd">ch06-01-composition.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="tool-composition"><a class="header" href="#tool-composition">Tool Composition</a></h1>
+<p>Pipeline handlers chain tools together, passing outputs as inputs. This chapter covers composition patterns, data flow, and error propagation.</p>
+<h2 id="basic-chaining"><a class="header" href="#basic-chaining">Basic Chaining</a></h2>
+<h3 id="sequential-execution"><a class="header" href="#sequential-execution">Sequential Execution</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: step1
+    input: { id: "{{request_id}}" }
+    output_var: result1
+
+  - tool: step2
+    input: { data: "{{result1}}" }
+    output_var: result2
+
+  - tool: step3
+    input: { processed: "{{result2}}" }
+</code></pre>
+<p>Execution order: step1 → step2 → step3</p>
+<h3 id="output-variable-scoping"><a class="header" href="#output-variable-scoping">Output Variable Scoping</a></h3>
+<p>Variables persist throughout pipeline:</p>
+<pre><code class="language-yaml">steps:
+  - tool: fetch
+    output_var: data
+
+  - tool: validate
+    output_var: validated
+
+  - tool: final
+    input:
+      original: "{{data}}"      # From step 1
+      validated: "{{validated}}" # From step 2
+</code></pre>
+<h2 id="data-transformation-patterns"><a class="header" href="#data-transformation-patterns">Data Transformation Patterns</a></h2>
+<h3 id="pattern-1-extract-transform-load-etl"><a class="header" href="#pattern-1-extract-transform-load-etl">Pattern 1: Extract-Transform-Load (ETL)</a></h3>
+<pre><code class="language-yaml">steps:
+  # Extract
+  - tool: http_get
+    input: { url: "{{source}}" }
+    output_var: raw
+
+  # Transform
+  - tool: parse_json
+    input: { json: "{{raw.body}}" }
+    output_var: parsed
+
+  - tool: filter_records
+    input: { records: "{{parsed}}", criteria: "{{filter}}" }
+    output_var: filtered
+
+  # Load
+  - tool: bulk_insert
+    input: { data: "{{filtered}}", table: "{{target}}" }
+</code></pre>
+<h3 id="pattern-2-fan-out-aggregation"><a class="header" href="#pattern-2-fan-out-aggregation">Pattern 2: Fan-Out Aggregation</a></h3>
+<p>Use Native handler for parallel execution:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let futures = input.ids.iter().map(|id| {
+        self.registry.dispatch("fetch_item", json!({ "id": id }))
+    });
+
+    let results = futures::future::join_all(futures).await;
+    let aggregated = aggregate_results(results)?;
+
+    Ok(Output { data: aggregated })
+}</code></pre>
+<h3 id="pattern-3-map-reduce"><a class="header" href="#pattern-3-map-reduce">Pattern 3: Map-Reduce</a></h3>
+<pre><code class="language-yaml"># Map phase (Native handler)
+- tool: map_items
+  input: { items: "{{data}}" }
+  output_var: mapped
+
+# Reduce phase
+- tool: reduce_results
+  input: { mapped: "{{mapped}}" }
+  output_var: final
+</code></pre>
+<h2 id="error-propagation"><a class="header" href="#error-propagation">Error Propagation</a></h2>
+<h3 id="explicit-error-handling"><a class="header" href="#explicit-error-handling">Explicit Error Handling</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: risky_operation
+    input: { data: "{{input}}" }
+    output_var: result
+    error_policy: fail_fast  # Stop immediately on error
+
+  - tool: cleanup
+    input: { id: "{{request_id}}" }
+    # Never executes if risky_operation fails
+</code></pre>
+<h3 id="graceful-degradation"><a class="header" href="#graceful-degradation">Graceful Degradation</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: primary_source
+    input: { id: "{{id}}" }
+    output_var: data
+    error_policy: continue  # Don't fail pipeline
+
+  - tool: fallback_source
+    input: { id: "{{id}}" }
+    output_var: data
+    condition: "!data"  # Only if primary failed
+</code></pre>
+<h3 id="error-recovery"><a class="header" href="#error-recovery">Error Recovery</a></h3>
+<pre><code class="language-rust">// In PipelineHandler
+async fn execute(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let mut variables = input.variables;
+    let mut results = Vec::new();
+
+    for step in &amp;self.steps {
+        match self.execute_step(step, &amp;variables).await {
+            Ok(output) =&gt; {
+                if let Some(var) = &amp;step.output_var {
+                    variables.insert(var.clone(), output.clone());
+                }
+                results.push(StepResult {
+                    tool: step.tool.clone(),
+                    success: true,
+                    output: Some(output),
+                    error: None,
+                });
+            }
+            Err(e) if step.error_policy == ErrorPolicy::Continue =&gt; {
+                results.push(StepResult {
+                    tool: step.tool.clone(),
+                    success: false,
+                    output: None,
+                    error: Some(e.to_string()),
+                });
+                continue;
+            }
+            Err(e) =&gt; return Err(e),
+        }
+    }
+
+    Ok(Output { results, variables })
+}</code></pre>
+<h2 id="complex-composition-patterns"><a class="header" href="#complex-composition-patterns">Complex Composition Patterns</a></h2>
+<h3 id="pattern-1-conditional-branching"><a class="header" href="#pattern-1-conditional-branching">Pattern 1: Conditional Branching</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: check_eligibility
+    input: { user_id: "{{user_id}}" }
+    output_var: eligible
+
+  - tool: premium_process
+    input: { user: "{{user_id}}" }
+    condition: "eligible.is_premium"
+
+  - tool: standard_process
+    input: { user: "{{user_id}}" }
+    condition: "!eligible.is_premium"
+</code></pre>
+<h3 id="pattern-2-retry-with-backoff"><a class="header" href="#pattern-2-retry-with-backoff">Pattern 2: Retry with Backoff</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: attempt_operation
+    input: { data: "{{data}}" }
+    output_var: result
+    error_policy: continue
+
+  - tool: retry_operation
+    input: { data: "{{data}}", attempt: 2 }
+    condition: "!result"
+    error_policy: continue
+
+  - tool: final_retry
+    input: { data: "{{data}}", attempt: 3 }
+    condition: "!result"
+</code></pre>
+<h3 id="pattern-3-data-enrichment"><a class="header" href="#pattern-3-data-enrichment">Pattern 3: Data Enrichment</a></h3>
+<pre><code class="language-yaml">steps:
+  - tool: get_user
+    input: { id: "{{user_id}}" }
+    output_var: user
+
+  - tool: get_preferences
+    input: { user_id: "{{user_id}}" }
+    output_var: prefs
+
+  - tool: get_activity
+    input: { user_id: "{{user_id}}" }
+    output_var: activity
+
+  - tool: merge_profile
+    input:
+      user: "{{user}}"
+      preferences: "{{prefs}}"
+      activity: "{{activity}}"
+</code></pre>
+<h2 id="testing-composition"><a class="header" href="#testing-composition">Testing Composition</a></h2>
+<h3 id="unit-test-step-execution"><a class="header" href="#unit-test-step-execution">Unit Test: Step Execution</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_step_execution() {
+    let registry = HandlerRegistry::new();
+    registry.register("tool1", Box::new(Tool1Handler));
+    registry.register("tool2", Box::new(Tool2Handler));
+
+    let pipeline = PipelineHandler::new(vec![
+        PipelineStep {
+            tool: "tool1".to_string(),
+            input: Some(json!({"id": "123"})),
+            output_var: Some("result".to_string()),
+            condition: None,
+            error_policy: ErrorPolicy::FailFast,
+        },
+        PipelineStep {
+            tool: "tool2".to_string(),
+            input: Some(json!({"data": "{{result}}"})),
+            output_var: None,
+            condition: None,
+            error_policy: ErrorPolicy::FailFast,
+        },
+    ]);
+
+    let result = pipeline.execute(
+        PipelineInput { variables: HashMap::new() },
+        &amp;registry
+    ).await.unwrap();
+
+    assert_eq!(result.results.len(), 2);
+    assert!(result.results[0].success);
+    assert!(result.results[1].success);
+}</code></pre>
+<h3 id="integration-test-full-pipeline"><a class="header" href="#integration-test-full-pipeline">Integration Test: Full Pipeline</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_etl_pipeline() {
+    let pipeline = build_etl_pipeline();
+    let input = PipelineInput {
+        variables: [
+            ("source_url", json!("https://api.example.com/data")),
+            ("target_table", json!("processed_data")),
+        ].into(),
+    };
+
+    let result = pipeline.execute(input, &amp;registry).await.unwrap();
+
+    // Verify all steps executed
+    assert_eq!(result.results.len(), 6);
+
+    // Verify data flow
+    assert!(result.variables.contains_key("raw_data"));
+    assert!(result.variables.contains_key("cleaned"));
+    assert!(result.variables.contains_key("validated"));
+
+    // Verify final result
+    let final_step = &amp;result.results.last().unwrap();
+    assert!(final_step.success);
+}</code></pre>
+<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
+<h3 id="parallel-step-execution-future-enhancement"><a class="header" href="#parallel-step-execution-future-enhancement">Parallel Step Execution (Future Enhancement)</a></h3>
+<pre><code class="language-yaml"># Current: Sequential
+steps:
+  - tool: fetch_user
+  - tool: fetch_prefs
+  - tool: fetch_activity
+
+# Future: Parallel
+parallel_steps:
+  - [fetch_user, fetch_prefs, fetch_activity]  # Execute in parallel
+  - [merge_data]                                # Wait for all, then execute
+</code></pre>
+<h3 id="variable-cleanup"><a class="header" href="#variable-cleanup">Variable Cleanup</a></h3>
+<pre><code class="language-rust">// Clean up unused variables to save memory
+fn cleanup_variables(&amp;mut self, current_step: usize) {
+    self.variables.retain(|var_name, _| {
+        self.is_variable_used_after(var_name, current_step)
+    });
+}</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="1-minimize-state"><a class="header" href="#1-minimize-state">1. Minimize State</a></h3>
+<pre><code class="language-yaml"># BAD - accumulating state
+steps:
+  - tool: step1
+    output_var: data1
+  - tool: step2
+    output_var: data2
+  - tool: step3
+    output_var: data3
+  # All variables kept in memory
+
+# GOOD - only keep what's needed
+steps:
+  - tool: step1
+    output_var: temp
+  - tool: step2
+    input: { data: "{{temp}}" }
+    output_var: result
+  # temp can be dropped
+</code></pre>
+<h3 id="2-clear-error-policies"><a class="header" href="#2-clear-error-policies">2. Clear Error Policies</a></h3>
+<pre><code class="language-yaml"># Explicit error handling
+steps:
+  - tool: critical
+    error_policy: fail_fast  # Must succeed
+
+  - tool: optional
+    error_policy: continue   # Can fail
+
+  - tool: cleanup
+    error_policy: fail_fast  # Must run if reached
+</code></pre>
+<h3 id="3-meaningful-variable-names"><a class="header" href="#3-meaningful-variable-names">3. Meaningful Variable Names</a></h3>
+<pre><code class="language-yaml"># BAD
+output_var: data1
+
+# GOOD
+output_var: validated_user_profile
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 6.2 covers conditional execution patterns and complex branching logic.</p>
+<hr />
+<blockquote>
+<p>“Composition is about data flow. Make it explicit.” - pforge design principle</p>
+</blockquote>
 
                     </main>
 

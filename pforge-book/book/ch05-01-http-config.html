@@ -158,8 +158,308 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch05-01-http-configmd"><a class="header" href="#ch05-01-http-configmd">ch05-01-http-config.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="http-configuration"><a class="header" href="#http-configuration">HTTP Configuration</a></h1>
+<p>HTTP handlers require careful configuration for reliability, security, and performance. This chapter covers advanced HTTP configuration patterns.</p>
+<h2 id="complete-configuration-example"><a class="header" href="#complete-configuration-example">Complete Configuration Example</a></h2>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: api_call
+    description: "Configured API call with all options"
+    endpoint: "https://api.example.com/{{resource}}"
+    method: POST
+    headers:
+      User-Agent: "pforge/1.0"
+      Authorization: "Bearer {{token}}"
+      Content-Type: "application/json"
+      X-Request-ID: "{{request_id}}"
+    query:
+      version: "v2"
+      format: "json"
+    body:
+      data: "{{payload}}"
+    timeout_ms: 30000
+    retry:
+      max_attempts: 3
+      backoff_ms: 1000
+    params:
+      resource: { type: string, required: true }
+      token: { type: string, required: true }
+      request_id: { type: string, required: false }
+      payload: { type: object, required: true }
+</code></pre>
+<h2 id="header-management"><a class="header" href="#header-management">Header Management</a></h2>
+<h3 id="static-headers"><a class="header" href="#static-headers">Static Headers</a></h3>
+<pre><code class="language-yaml">headers:
+  User-Agent: "pforge-client/1.0"
+  Accept: "application/json"
+  Accept-Language: "en-US"
+</code></pre>
+<h3 id="dynamic-headers-templated"><a class="header" href="#dynamic-headers-templated">Dynamic Headers (Templated)</a></h3>
+<pre><code class="language-yaml">headers:
+  Authorization: "Bearer {{access_token}}"
+  X-Tenant-ID: "{{tenant_id}}"
+  X-Correlation-ID: "{{correlation_id}}"
+</code></pre>
+<h3 id="conditional-headers"><a class="header" href="#conditional-headers">Conditional Headers</a></h3>
+<p>For conditional headers, use a Native handler:</p>
+<pre><code class="language-rust">async fn handle(&amp;self, input: Input) -&gt; Result&lt;Output&gt; {
+    let mut headers = HashMap::new();
+    headers.insert("User-Agent", "pforge");
+
+    if let Some(token) = input.auth_token {
+        headers.insert("Authorization", format!("Bearer {}", token));
+    }
+
+    if input.use_compression {
+        headers.insert("Accept-Encoding", "gzip, deflate");
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&amp;input.url)
+        .headers(headers)
+        .send()
+        .await?;
+
+    // ...
+}</code></pre>
+<h2 id="query-parameter-patterns"><a class="header" href="#query-parameter-patterns">Query Parameter Patterns</a></h2>
+<h3 id="simple-query-params"><a class="header" href="#simple-query-params">Simple Query Params</a></h3>
+<pre><code class="language-yaml">query:
+  page: "{{page}}"
+  limit: "{{limit}}"
+  sort: "name"  # Static value
+</code></pre>
+<h3 id="array-query-params"><a class="header" href="#array-query-params">Array Query Params</a></h3>
+<pre><code class="language-yaml"># Input: { "tags": ["rust", "mcp", "api"] }
+# URL: ?tags=rust&amp;tags=mcp&amp;tags=api
+
+query:
+  tags: "{{tags}}"  # Automatically handles arrays
+</code></pre>
+<h3 id="complex-filtering"><a class="header" href="#complex-filtering">Complex Filtering</a></h3>
+<pre><code class="language-yaml">query:
+  filter: "created_at&gt;{{start_date}},status={{status}}"
+  fields: "id,name,created_at"
+</code></pre>
+<h2 id="request-body-configuration"><a class="header" href="#request-body-configuration">Request Body Configuration</a></h2>
+<h3 id="json-body"><a class="header" href="#json-body">JSON Body</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: create_resource
+    method: POST
+    body:
+      name: "{{name}}"
+      description: "{{description}}"
+      metadata:
+        source: "pforge"
+        timestamp: "{{timestamp}}"
+</code></pre>
+<h3 id="nested-objects"><a class="header" href="#nested-objects">Nested Objects</a></h3>
+<pre><code class="language-yaml">body:
+  user:
+    name: "{{user_name}}"
+    email: "{{user_email}}"
+    preferences:
+      theme: "{{theme}}"
+      notifications: "{{notifications}}"
+</code></pre>
+<h3 id="array-payloads"><a class="header" href="#array-payloads">Array Payloads</a></h3>
+<pre><code class="language-yaml">body:
+  items: "{{items}}"  # Array of objects
+
+# Input:
+# {
+#   "items": [
+#     { "id": 1, "name": "foo" },
+#     { "id": 2, "name": "bar" }
+#   ]
+# }
+</code></pre>
+<h2 id="timeout-configuration"><a class="header" href="#timeout-configuration">Timeout Configuration</a></h2>
+<h3 id="global-timeout"><a class="header" href="#global-timeout">Global Timeout</a></h3>
+<pre><code class="language-yaml">timeout_ms: 30000  # 30 seconds for entire request
+</code></pre>
+<h3 id="per-endpoint-timeouts"><a class="header" href="#per-endpoint-timeouts">Per-Endpoint Timeouts</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: quick_lookup
+    endpoint: "https://api.example.com/lookup"
+    timeout_ms: 1000  # 1 second
+
+  - type: http
+    name: heavy_computation
+    endpoint: "https://api.example.com/compute"
+    timeout_ms: 120000  # 2 minutes
+</code></pre>
+<h3 id="native-handler-timeout-control"><a class="header" href="#native-handler-timeout-control">Native Handler Timeout Control</a></h3>
+<pre><code class="language-rust">use tokio::time::{timeout, Duration};
+
+let response = timeout(
+    Duration::from_millis(input.timeout_ms),
+    client.get(&amp;url).send()
+).await
+.map_err(|_| Error::Timeout)?;</code></pre>
+<h2 id="retry-configuration"><a class="header" href="#retry-configuration">Retry Configuration</a></h2>
+<h3 id="basic-retry"><a class="header" href="#basic-retry">Basic Retry</a></h3>
+<pre><code class="language-yaml">retry:
+  max_attempts: 3
+  backoff_ms: 1000  # Wait 1s between retries
+</code></pre>
+<h3 id="exponential-backoff-native-handler"><a class="header" href="#exponential-backoff-native-handler">Exponential Backoff (Native Handler)</a></h3>
+<pre><code class="language-rust">use backoff::{ExponentialBackoff, Error as BackoffError};
+
+let backoff = ExponentialBackoff {
+    initial_interval: Duration::from_millis(100),
+    max_interval: Duration::from_secs(10),
+    max_elapsed_time: Some(Duration::from_secs(60)),
+    ..Default::default()
+};
+
+let result = backoff::retry(backoff, || async {
+    match client.get(&amp;url).send().await {
+        Ok(response) if response.status().is_success() =&gt; Ok(response),
+        Ok(response) =&gt; Err(BackoffError::transient(Error::Http(...))),
+        Err(e) =&gt; Err(BackoffError::permanent(Error::from(e))),
+    }
+}).await?;</code></pre>
+<h2 id="response-handling"><a class="header" href="#response-handling">Response Handling</a></h2>
+<h3 id="status-code-mapping"><a class="header" href="#status-code-mapping">Status Code Mapping</a></h3>
+<p>HTTP handlers return all responses (2xx, 4xx, 5xx):</p>
+<pre><code class="language-yaml"># Handler returns:
+{
+  "status": 404,
+  "body": { "error": "Not found" },
+  "headers": {...}
+}
+</code></pre>
+<p><strong>Client decides</strong>:</p>
+<pre><code class="language-javascript">const result = await client.callTool("get_user", { id: "123" });
+
+if (result.status === 404) {
+  console.log("User not found");
+} else if (result.status &gt;= 400) {
+  throw new Error(`API error: ${result.status}`);
+}
+</code></pre>
+<h3 id="header-extraction"><a class="header" href="#header-extraction">Header Extraction</a></h3>
+<pre><code class="language-javascript">const result = await client.callTool("api_call", params);
+
+// Rate limiting
+const rateLimit = parseInt(result.headers["x-ratelimit-remaining"]);
+if (rateLimit &lt; 10) {
+  console.warn("Approaching rate limit");
+}
+
+// Pagination
+const nextPage = result.headers["link"]?.match(/page=(\d+)/)?.[1];
+</code></pre>
+<h2 id="ssltls-configuration"><a class="header" href="#ssltls-configuration">SSL/TLS Configuration</a></h2>
+<h3 id="accept-self-signed-certificates-development"><a class="header" href="#accept-self-signed-certificates-development">Accept Self-Signed Certificates (Development)</a></h3>
+<p>Use Native handler with custom client:</p>
+<pre><code class="language-rust">let client = reqwest::Client::builder()
+    .danger_accept_invalid_certs(true)  // DEVELOPMENT ONLY
+    .build()?;</code></pre>
+<h3 id="custom-ca-certificates"><a class="header" href="#custom-ca-certificates">Custom CA Certificates</a></h3>
+<pre><code class="language-rust">use reqwest::Certificate;
+
+let cert = std::fs::read("ca-cert.pem")?;
+let cert = Certificate::from_pem(&amp;cert)?;
+
+let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .build()?;</code></pre>
+<h2 id="connection-pooling"><a class="header" href="#connection-pooling">Connection Pooling</a></h2>
+<p>HTTP handlers automatically use connection pooling via reqwest.</p>
+<h3 id="pool-configuration-native-handler"><a class="header" href="#pool-configuration-native-handler">Pool Configuration (Native Handler)</a></h3>
+<pre><code class="language-rust">let client = reqwest::Client::builder()
+    .pool_max_idle_per_host(10)
+    .pool_idle_timeout(Duration::from_secs(30))
+    .build()?;</code></pre>
+<h2 id="common-configuration-patterns"><a class="header" href="#common-configuration-patterns">Common Configuration Patterns</a></h2>
+<h3 id="pattern-1-paginated-api"><a class="header" href="#pattern-1-paginated-api">Pattern 1: Paginated API</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: list_items
+    endpoint: "https://api.example.com/items"
+    method: GET
+    query:
+      page: "{{page}}"
+      per_page: "{{per_page}}"
+    params:
+      page: { type: integer, required: false, default: 1 }
+      per_page: { type: integer, required: false, default: 100 }
+</code></pre>
+<h3 id="pattern-2-webhook-receiver"><a class="header" href="#pattern-2-webhook-receiver">Pattern 2: Webhook Receiver</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: http
+    name: trigger_webhook
+    endpoint: "https://webhook.example.com/events"
+    method: POST
+    headers:
+      X-Webhook-Secret: "{{secret}}"
+    body:
+      event: "{{event_type}}"
+      payload: "{{data}}"
+</code></pre>
+<h3 id="pattern-3-file-upload-use-native-handler"><a class="header" href="#pattern-3-file-upload-use-native-handler">Pattern 3: File Upload (Use Native Handler)</a></h3>
+<pre><code class="language-rust">use reqwest::multipart;
+
+async fn handle(&amp;self, input: UploadInput) -&gt; Result&lt;UploadOutput&gt; {
+    let file_content = std::fs::read(&amp;input.file_path)?;
+
+    let form = multipart::Form::new()
+        .text("description", input.description)
+        .part("file", multipart::Part::bytes(file_content)
+            .file_name(input.file_name));
+
+    let response = self.client
+        .post(&amp;input.upload_url)
+        .multipart(form)
+        .send()
+        .await?;
+
+    // ...
+}</code></pre>
+<h2 id="testing-http-configuration"><a class="header" href="#testing-http-configuration">Testing HTTP Configuration</a></h2>
+<h3 id="mock-server"><a class="header" href="#mock-server">Mock Server</a></h3>
+<pre><code class="language-rust">use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[tokio::test]
+async fn test_http_handler() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/users/123"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "id": "123",
+                "name": "Alice"
+            })))
+        .mount(&amp;mock_server)
+        .await;
+
+    let handler = HttpHandler::new(
+        format!("{}/users/{{id}}", mock_server.uri()),
+        HttpMethod::Get,
+        HashMap::new(),
+        None,
+    );
+
+    let result = handler.execute(HttpInput {
+        body: None,
+        query: [("id", "123")].into(),
+    }).await.unwrap();
+
+    assert_eq!(result.status, 200);
+    assert_eq!(result.body["name"], "Alice");
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 5.2 covers authentication patterns including Bearer tokens, API keys, Basic Auth, and OAuth integration.</p>
+<hr />
+<blockquote>
+<p>“Configuration is declarative. Complexity is in the runtime.” - pforge HTTP design</p>
+</blockquote>
 
                     </main>
 

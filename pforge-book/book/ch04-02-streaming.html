@@ -158,8 +158,518 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch04-02-streamingmd"><a class="header" href="#ch04-02-streamingmd">ch04-02-streaming.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="streaming-command-output"><a class="header" href="#streaming-command-output">Streaming Command Output</a></h1>
+<p>Long-running commands like builds, deploys, and log tails need real-time output streaming. This chapter covers CLI handler streaming capabilities and patterns for progressive output delivery.</p>
+<h2 id="why-streaming-matters"><a class="header" href="#why-streaming-matters">Why Streaming Matters</a></h2>
+<p><strong>Without streaming</strong>:</p>
+<pre><code class="language-yaml">- type: cli
+  command: npm
+  args: ["install"]
+  timeout_ms: 300000  # Wait 5 minutes for all output
+</code></pre>
+<p>Result: Client sees nothing for 5 minutes, then gets 50KB of logs at once.</p>
+<p><strong>With streaming</strong>:</p>
+<pre><code class="language-yaml">- type: cli
+  command: npm
+  args: ["install"]
+  timeout_ms: 300000
+  stream: true  # Enable real-time output
+</code></pre>
+<p>Result: Client sees progress updates as they happen.</p>
+<h2 id="enabling-streaming"><a class="header" href="#enabling-streaming">Enabling Streaming</a></h2>
+<h3 id="yaml-configuration"><a class="header" href="#yaml-configuration">YAML Configuration</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: build_project
+    description: "Build project with real-time logs"
+    command: cargo
+    args: ["build", "--release"]
+    stream: true  # Key setting
+    timeout_ms: 600000  # 10 minutes
+</code></pre>
+<h3 id="how-streaming-works"><a class="header" href="#how-streaming-works">How Streaming Works</a></h3>
+<ol>
+<li><strong>Command spawns</strong> with <code>stdout</code> and <code>stderr</code> piped</li>
+<li><strong>Output buffers</strong> as it’s produced</li>
+<li><strong>Server sends</strong> chunks via MCP protocol</li>
+<li><strong>Client receives</strong> progressive updates</li>
+<li><strong>Complete output</strong> returned at end</li>
+</ol>
+<p><strong>Protocol flow</strong>:</p>
+<pre><code>Server                          Client
+------                          ------
+spawn("cargo build")
+  ↓
+[stdout] "Compiling..."    →    Display "Compiling..."
+[stdout] "Building..."     →    Display "Building..."
+[stderr] "warning: ..."    →    Display "warning: ..."
+[exit] code: 0             →    Display "Complete"
+</code></pre>
+<h2 id="streaming-patterns"><a class="header" href="#streaming-patterns">Streaming Patterns</a></h2>
+<h3 id="pattern-1-build-progress"><a class="header" href="#pattern-1-build-progress">Pattern 1: Build Progress</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: docker_build
+    description: "Build Docker image with progress"
+    command: docker
+    args:
+      - "build"
+      - "-t"
+      - "{{image_name}}"
+      - "{{context_dir}}"
+    stream: true
+    timeout_ms: 1800000  # 30 minutes
+    params:
+      image_name:
+        type: string
+        required: true
+      context_dir:
+        type: string
+        required: false
+        default: "."
+</code></pre>
+<p><strong>Output stream</strong>:</p>
+<pre><code>Step 1/8 : FROM node:18
+ ---&gt; a1b2c3d4e5f6
+Step 2/8 : WORKDIR /app
+ ---&gt; Running in abc123...
+ ---&gt; def456
+...
+Successfully built xyz789
+Successfully tagged my-app:latest
+</code></pre>
+<h3 id="pattern-2-log-tailing"><a class="header" href="#pattern-2-log-tailing">Pattern 2: Log Tailing</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: tail_logs
+    description: "Tail application logs"
+    command: tail
+    args: ["-f", "{{log_file}}"]
+    stream: true
+    timeout_ms: 3600000  # 1 hour
+    params:
+      log_file:
+        type: string
+        required: true
+</code></pre>
+<p><strong>Continuous stream</strong> until timeout or client disconnects.</p>
+<h3 id="pattern-3-test-runner"><a class="header" href="#pattern-3-test-runner">Pattern 3: Test Runner</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: run_tests
+    description: "Run tests with real-time results"
+    command: cargo
+    args: ["test", "--", "--nocapture"]
+    stream: true
+    timeout_ms: 300000
+</code></pre>
+<p><strong>Output stream</strong>:</p>
+<pre><code>running 45 tests
+test auth::test_login ... ok
+test auth::test_logout ... ok
+test db::test_connection ... ok
+...
+test result: ok. 45 passed; 0 failed
+</code></pre>
+<h3 id="pattern-4-interactive-command"><a class="header" href="#pattern-4-interactive-command">Pattern 4: Interactive Command</a></h3>
+<pre><code class="language-yaml">tools:
+  - type: cli
+    name: shell_session
+    description: "Execute shell command interactively"
+    command: sh
+    args: ["-c", "{{script}}"]
+    stream: true
+    params:
+      script:
+        type: string
+        required: true
+</code></pre>
+<h2 id="native-handler-streaming"><a class="header" href="#native-handler-streaming">Native Handler Streaming</a></h2>
+<p>For more control, implement streaming in a Native handler:</p>
+<pre><code class="language-rust">use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::{Command, Stdio};
+
+#[derive(Deserialize, JsonSchema)]
+struct BuildInput {
+    project_path: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct BuildOutput {
+    success: bool,
+    lines: Vec&lt;String&gt;,
+    duration_ms: u64,
+}
+
+pub struct BuildHandler;
+
+#[async_trait::async_trait]
+impl Handler for BuildHandler {
+    type Input = BuildInput;
+    type Output = BuildOutput;
+    type Error = Error;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        let start = std::time::Instant::now();
+
+        let mut child = Command::new("cargo")
+            .arg("build")
+            .arg("--release")
+            .current_dir(&amp;input.project_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| Error::Handler(format!("Spawn failed: {}", e)))?;
+
+        let stdout = child.stdout.take()
+            .ok_or_else(|| Error::Handler("No stdout".into()))?;
+
+        let mut reader = BufReader::new(stdout).lines();
+        let mut lines = Vec::new();
+
+        while let Some(line) = reader.next_line().await
+            .map_err(|e| Error::Handler(format!("Read failed: {}", e)))? {
+
+            // Stream line to client (via logging/events)
+            tracing::info!("BUILD: {}", line);
+            lines.push(line);
+        }
+
+        let status = child.wait().await
+            .map_err(|e| Error::Handler(format!("Wait failed: {}", e)))?;
+
+        Ok(BuildOutput {
+            success: status.success(),
+            lines,
+            duration_ms: start.elapsed().as_millis() as u64,
+        })
+    }
+}</code></pre>
+<h2 id="buffering-and-backpressure"><a class="header" href="#buffering-and-backpressure">Buffering and Backpressure</a></h2>
+<h3 id="line-buffering-default"><a class="header" href="#line-buffering-default">Line Buffering (Default)</a></h3>
+<p>CLI handlers buffer by line:</p>
+<pre><code class="language-rust">// Internal implementation
+let reader = BufReader::new(stdout);
+let mut lines = reader.lines();
+
+while let Some(line) = lines.next_line().await? {
+    send_to_client(line).await?;
+}</code></pre>
+<p><strong>Characteristics</strong>:</p>
+<ul>
+<li>Low latency for line-oriented output</li>
+<li>Natural chunking at newlines</li>
+<li>Works well for logs, test output</li>
+</ul>
+<h3 id="chunk-buffering"><a class="header" href="#chunk-buffering">Chunk Buffering</a></h3>
+<p>For binary or non-line output:</p>
+<pre><code class="language-rust">use tokio::io::AsyncReadExt;
+
+let mut stdout = child.stdout.take().unwrap();
+let mut buffer = [0u8; 8192];
+
+loop {
+    let n = stdout.read(&amp;mut buffer).await?;
+    if n == 0 { break; }
+
+    send_chunk_to_client(&amp;buffer[..n]).await?;
+}</code></pre>
+<p><strong>Characteristics</strong>:</p>
+<ul>
+<li>Fixed-size chunks (8KB)</li>
+<li>Better for binary data</li>
+<li>Higher throughput</li>
+</ul>
+<h3 id="backpressure-handling"><a class="header" href="#backpressure-handling">Backpressure Handling</a></h3>
+<p>If client can’t keep up:</p>
+<pre><code class="language-rust">use tokio::sync::mpsc;
+
+let (tx, mut rx) = mpsc::channel(100);  // Bounded channel
+
+// Producer (command output)
+tokio::spawn(async move {
+    while let Some(line) = reader.next_line().await? {
+        // Blocks if channel full (backpressure)
+        tx.send(line).await?;
+    }
+});
+
+// Consumer (client)
+while let Some(line) = rx.recv().await {
+    send_to_client(line).await?;
+}</code></pre>
+<p><strong>Benefits</strong>:</p>
+<ul>
+<li>Prevents memory bloat</li>
+<li>Smooth delivery rate</li>
+<li>Graceful degradation</li>
+</ul>
+<h2 id="timeout-management"><a class="header" href="#timeout-management">Timeout Management</a></h2>
+<h3 id="global-timeout"><a class="header" href="#global-timeout">Global Timeout</a></h3>
+<pre><code class="language-yaml">- type: cli
+  command: npm
+  args: ["install"]
+  timeout_ms: 300000  # Entire command must complete in 5 minutes
+  stream: true
+</code></pre>
+<p><strong>Behavior</strong>: Command killed if it runs longer than 5 minutes, even if streaming.</p>
+<h3 id="per-line-timeout"><a class="header" href="#per-line-timeout">Per-Line Timeout</a></h3>
+<p>For commands that might stall:</p>
+<pre><code class="language-rust">use tokio::time::{timeout, Duration};
+
+while let Ok(Some(line)) = timeout(
+    Duration::from_secs(30),  // 30s per line
+    reader.next_line()
+).await {
+    match line {
+        Ok(line) =&gt; send_to_client(line).await?,
+        Err(e) =&gt; return Err(Error::Handler(format!("Read error: {}", e))),
+    }
+}</code></pre>
+<p><strong>Use case</strong>: Detect hung processes that produce no output.</p>
+<h2 id="progress-parsing"><a class="header" href="#progress-parsing">Progress Parsing</a></h2>
+<h3 id="json-progress-docker-npm-etc"><a class="header" href="#json-progress-docker-npm-etc">JSON Progress (Docker, npm, etc.)</a></h3>
+<pre><code class="language-rust">#[derive(Deserialize)]
+struct ProgressLine {
+    status: String,
+    id: Option&lt;String&gt;,
+    progress: Option&lt;String&gt;,
+}
+
+while let Some(line) = reader.next_line().await? {
+    if let Ok(progress) = serde_json::from_str::&lt;ProgressLine&gt;(&amp;line) {
+        // Structured progress update
+        send_progress(Progress {
+            status: progress.status,
+            current: parse_progress(&amp;progress.progress),
+        }).await?;
+    } else {
+        // Plain text fallback
+        send_text(line).await?;
+    }
+}</code></pre>
+<h3 id="percentage-progress-builds-downloads"><a class="header" href="#percentage-progress-builds-downloads">Percentage Progress (builds, downloads)</a></h3>
+<pre><code class="language-rust">fn parse_progress(line: &amp;str) -&gt; Option&lt;f64&gt; {
+    // "[===&gt;      ] 45%"
+    if let Some(start) = line.find('[') {
+        if let Some(end) = line.find('%') {
+            let percent_str = &amp;line[start+1..end]
+                .trim()
+                .split_whitespace()
+                .last()?;
+            return percent_str.parse().ok();
+        }
+    }
+    None
+}</code></pre>
+<h3 id="custom-progress-format"><a class="header" href="#custom-progress-format">Custom Progress Format</a></h3>
+<pre><code class="language-rust">// Parse: "Compiling foo v1.0.0 (3/45)"
+fn parse_cargo_progress(line: &amp;str) -&gt; Option&lt;(u32, u32)&gt; {
+    if line.contains("Compiling") {
+        if let Some(paren) = line.find('(') {
+            let rest = &amp;line[paren+1..];
+            let parts: Vec&lt;&amp;str&gt; = rest
+                .trim_end_matches(')')
+                .split('/')
+                .collect();
+
+            if parts.len() == 2 {
+                let current = parts[0].parse().ok()?;
+                let total = parts[1].parse().ok()?;
+                return Some((current, total));
+            }
+        }
+    }
+    None
+}</code></pre>
+<h2 id="error-stream-handling"><a class="header" href="#error-stream-handling">Error Stream Handling</a></h2>
+<h3 id="separate-stdoutstderr"><a class="header" href="#separate-stdoutstderr">Separate stdout/stderr</a></h3>
+<pre><code class="language-rust">let mut stdout_reader = BufReader::new(
+    child.stdout.take().unwrap()
+).lines();
+
+let mut stderr_reader = BufReader::new(
+    child.stderr.take().unwrap()
+).lines();
+
+let stdout_task = tokio::spawn(async move {
+    while let Some(line) = stdout_reader.next_line().await? {
+        send_stdout(line).await?;
+    }
+    Ok::&lt;_, Error&gt;(())
+});
+
+let stderr_task = tokio::spawn(async move {
+    while let Some(line) = stderr_reader.next_line().await? {
+        send_stderr(line).await?;
+    }
+    Ok::&lt;_, Error&gt;(())
+});
+
+// Wait for both
+tokio::try_join!(stdout_task, stderr_task)?;</code></pre>
+<h3 id="merged-stream"><a class="header" href="#merged-stream">Merged Stream</a></h3>
+<pre><code class="language-rust">// Redirect stderr to stdout
+let child = Command::new("cargo")
+    .arg("build")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())  // Can also use Stdio::inherit()
+    .spawn()?;
+
+// Or merge in shell
+command: sh
+args: ["-c", "npm install 2&gt;&amp;1"]  # stderr → stdout</code></pre>
+<h2 id="real-world-example-cicd-pipeline"><a class="header" href="#real-world-example-cicd-pipeline">Real-World Example: CI/CD Pipeline</a></h2>
+<pre><code class="language-yaml">forge:
+  name: ci-pipeline
+  version: 0.1.0
+  transport: stdio
+
+tools:
+  - type: cli
+    name: run_tests
+    description: "Run test suite with coverage"
+    command: cargo
+    args: ["tarpaulin", "--out", "Stdout"]
+    stream: true
+    timeout_ms: 600000
+
+  - type: cli
+    name: build_release
+    description: "Build optimized release binary"
+    command: cargo
+    args: ["build", "--release"]
+    stream: true
+    timeout_ms: 1800000
+
+  - type: cli
+    name: deploy
+    description: "Deploy to production"
+    command: ./scripts/deploy.sh
+    args: ["{{environment}}"]
+    stream: true
+    timeout_ms: 900000
+    env:
+      CI: "true"
+    params:
+      environment:
+        type: string
+        required: true
+        enum: ["staging", "production"]
+</code></pre>
+<p><strong>Client usage</strong>:</p>
+<pre><code class="language-javascript">const client = new MCPClient("ci-pipeline");
+
+// Real-time test output
+await client.callTool("run_tests", {}, {
+  onProgress: (line) =&gt; {
+    console.log(`TEST: ${line}`);
+  }
+});
+
+// Real-time build output
+await client.callTool("build_release", {}, {
+  onProgress: (line) =&gt; {
+    if (line.includes("Compiling")) {
+      updateProgressBar(line);
+    }
+  }
+});
+
+// Real-time deploy output
+await client.callTool("deploy", {
+  environment: "production"
+}, {
+  onProgress: (line) =&gt; {
+    if (line.includes("ERROR")) {
+      alert(`Deploy issue: ${line}`);
+    }
+  }
+});
+</code></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<h3 id="memory-usage"><a class="header" href="#memory-usage">Memory Usage</a></h3>
+<p><strong>Problem</strong>: Storing all output in memory:</p>
+<pre><code class="language-rust">// BAD - unbounded growth
+let mut all_output = String::new();
+while let Some(line) = reader.next_line().await? {
+    all_output.push_str(&amp;line);
+    all_output.push('\n');
+}</code></pre>
+<p><strong>Solution</strong>: Stream without buffering:</p>
+<pre><code class="language-rust">// GOOD - constant memory
+while let Some(line) = reader.next_line().await? {
+    send_to_client(line).await?;
+    // `line` dropped after send
+}</code></pre>
+<h3 id="throughput"><a class="header" href="#throughput">Throughput</a></h3>
+<p><strong>Line-by-line</strong> (high latency, low throughput):</p>
+<pre><code class="language-rust">// ~1000 lines/sec
+while let Some(line) = reader.next_line().await? {
+    send(line).await?;
+}</code></pre>
+<p><strong>Batch sending</strong> (low latency, high throughput):</p>
+<pre><code class="language-rust">// ~10000 lines/sec
+let mut batch = Vec::new();
+while let Some(line) = reader.next_line().await? {
+    batch.push(line);
+    if batch.len() &gt;= 100 {
+        send_batch(&amp;batch).await?;
+        batch.clear();
+    }
+}
+if !batch.is_empty() {
+    send_batch(&amp;batch).await?;
+}</code></pre>
+<h2 id="testing-streaming-handlers"><a class="header" href="#testing-streaming-handlers">Testing Streaming Handlers</a></h2>
+<h3 id="mock-command-output"><a class="header" href="#mock-command-output">Mock Command Output</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_streaming_handler() {
+    let handler = CliHandler::new(
+        "sh".to_string(),
+        vec![
+            "-c".to_string(),
+            "for i in 1 2 3; do echo line$i; sleep 0.1; done".to_string(),
+        ],
+        None,
+        HashMap::new(),
+        Some(5000),
+        true,  // stream: true
+    );
+
+    let input = CliInput::default();
+    let result = handler.execute(input).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert!(result.stdout.contains("line1"));
+    assert!(result.stdout.contains("line2"));
+    assert!(result.stdout.contains("line3"));
+}</code></pre>
+<h3 id="verify-streaming-behavior"><a class="header" href="#verify-streaming-behavior">Verify Streaming Behavior</a></h3>
+<pre><code class="language-rust">#[tokio::test]
+async fn test_stream_delivers_progressively() {
+    use tokio::time::{sleep, Duration};
+
+    let (tx, mut rx) = mpsc::channel(10);
+
+    tokio::spawn(async move {
+        let handler = CliHandler::new(...);
+        // Handler sends to tx as it streams
+    });
+
+    // Verify we get updates before completion
+    let first = rx.recv().await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+    let second = rx.recv().await.unwrap();
+
+    assert_ne!(first, second);  // Different lines
+}</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>Chapter 4.3 covers comprehensive integration testing strategies for CLI handlers, including mocking commands and testing error conditions.</p>
+<hr />
+<blockquote>
+<p>“Stream, don’t batch. Users want feedback, not wait times.” - pforge streaming philosophy</p>
+</blockquote>
 
                     </main>
 

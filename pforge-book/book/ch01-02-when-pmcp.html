@@ -158,8 +158,539 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch01-02-when-pmcpmd"><a class="header" href="#ch01-02-when-pmcpmd">ch01-02-when-pmcp.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-12-when-to-use-pmcp-directly"><a class="header" href="#chapter-12-when-to-use-pmcp-directly">Chapter 1.2: When to Use pmcp Directly</a></h1>
+<p>This chapter explores scenarios where using <strong>pmcp</strong> (rust-mcp-sdk) directly is the better choice than pforge.</p>
+<h2 id="the-pmcp-sweet-spot"><a class="header" href="#the-pmcp-sweet-spot">The pmcp Sweet Spot</a></h2>
+<p>pmcp is a <strong>low-level SDK</strong> that gives you complete control over your MCP server. Use it when pforge’s abstraction layer gets in the way of what you’re trying to achieve.</p>
+<h2 id="use-pmcp-when"><a class="header" href="#use-pmcp-when">Use pmcp When…</a></h2>
+<h3 id="1-you-need-custom-mcp-protocol-extensions"><a class="header" href="#1-you-need-custom-mcp-protocol-extensions">1. <strong>You Need Custom MCP Protocol Extensions</strong></a></h3>
+<p>pmcp lets you implement custom protocol features not in the standard MCP spec:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let server = ServerBuilder::new()
+        .name("custom-server")
+        .version("1.0.0")
+
+        // Custom JSON-RPC method
+        .custom_method("custom/analyze", |params| {
+            Box::pin(async move {
+                // Your custom protocol logic
+                let result = custom_analysis(params).await?;
+                Ok(serde_json::to_value(result)?)
+            })
+        })
+
+        // Custom notification handler
+        .on_notification("custom/event", |params| {
+            Box::pin(async move {
+                handle_custom_event(params).await
+            })
+        })
+
+        .build()?;
+
+    server.run_stdio().await
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Full control over JSON-RPC messages</li>
+<li>Custom method registration</li>
+<li>Direct access to transport layer</li>
+<li>No framework constraints</li>
+</ul>
+<h3 id="2-you-need-complex-stateful-logic"><a class="header" href="#2-you-need-complex-stateful-logic">2. <strong>You Need Complex Stateful Logic</strong></a></h3>
+<p>pmcp gives you full control over server state and lifecycle:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+// Complex application state
+struct AppState {
+    db_pool: sqlx::PgPool,
+    cache: Arc&lt;RwLock&lt;HashMap&lt;String, CachedValue&gt;&gt;&gt;,
+    query_planner: QueryPlanner,
+    transaction_log: Arc&lt;Mutex&lt;Vec&lt;Transaction&gt;&gt;&gt;,
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let state = Arc::new(AppState {
+        db_pool: create_pool().await?,
+        cache: Arc::new(RwLock::new(HashMap::new())),
+        query_planner: QueryPlanner::new(),
+        transaction_log: Arc::new(Mutex::new(Vec::new())),
+    });
+
+    let server = ServerBuilder::new()
+        .name("database-server")
+        .tool_typed("execute_query", {
+            let state = state.clone();
+            move |args: QueryArgs, _extra| {
+                let state = state.clone();
+                Box::pin(async move {
+                    // Complex transactional logic
+                    let mut tx = state.db_pool.begin().await?;
+
+                    // Log transaction
+                    state.transaction_log.lock().await.push(Transaction {
+                        query: args.sql.clone(),
+                        timestamp: Utc::now(),
+                    });
+
+                    // Execute with query planner
+                    let plan = state.query_planner.plan(&amp;args.sql)?;
+                    let result = execute_plan(&amp;mut tx, plan).await?;
+
+                    // Update cache
+                    state.cache.write().await.insert(
+                        cache_key(&amp;args),
+                        CachedValue { result: result.clone(), ttl: Instant::now() }
+                    );
+
+                    tx.commit().await?;
+                    Ok(serde_json::to_value(result)?)
+                })
+            }
+        })
+        .build()?;
+
+    server.run_stdio().await
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Full lifecycle control</li>
+<li>Complex state management</li>
+<li>Custom transaction handling</li>
+<li>Direct database integration</li>
+</ul>
+<h3 id="3-you-need-custom-transport-implementations"><a class="header" href="#3-you-need-custom-transport-implementations">3. <strong>You Need Custom Transport Implementations</strong></a></h3>
+<p>pmcp supports custom transports beyond stdio/SSE/WebSocket:</p>
+<pre><code class="language-rust">use pmcp::{Server, Transport};
+
+// Custom Unix domain socket transport
+struct UnixSocketTransport {
+    socket_path: PathBuf,
+}
+
+#[async_trait::async_trait]
+impl Transport for UnixSocketTransport {
+    async fn run(&amp;self, server: Server) -&gt; Result&lt;()&gt; {
+        let listener = UnixListener::bind(&amp;self.socket_path)?;
+
+        loop {
+            let (stream, _) = listener.accept().await?;
+            let server = server.clone();
+
+            tokio::spawn(async move {
+                handle_connection(server, stream).await
+            });
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let server = ServerBuilder::new()
+        .name("unix-socket-server")
+        .tool_typed("process", |args, _| { /* ... */ })
+        .build()?;
+
+    let transport = UnixSocketTransport {
+        socket_path: "/tmp/mcp.sock".into(),
+    };
+
+    transport.run(server).await
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Custom transport protocols</li>
+<li>Direct socket/network access</li>
+<li>Custom message framing</li>
+<li>Protocol optimization</li>
+</ul>
+<h3 id="4-youre-building-a-librarysdk"><a class="header" href="#4-youre-building-a-librarysdk">4. <strong>You’re Building a Library/SDK</strong></a></h3>
+<p>pmcp is designed for building reusable components:</p>
+<pre><code class="language-rust">// Your reusable MCP server library
+pub struct CodeAnalysisServer {
+    analyzers: Vec&lt;Box&lt;dyn Analyzer&gt;&gt;,
+}
+
+impl CodeAnalysisServer {
+    pub fn new() -&gt; Self {
+        Self {
+            analyzers: vec![
+                Box::new(ComplexityAnalyzer::new()),
+                Box::new(SecurityAnalyzer::new()),
+                Box::new(PerformanceAnalyzer::new()),
+            ],
+        }
+    }
+
+    pub fn add_analyzer(&amp;mut self, analyzer: Box&lt;dyn Analyzer&gt;) {
+        self.analyzers.push(analyzer);
+    }
+
+    pub fn build(self) -&gt; Result&lt;pmcp::Server&gt; {
+        let mut builder = ServerBuilder::new()
+            .name("code-analysis")
+            .version("1.0.0");
+
+        // Register tools from analyzers
+        for analyzer in self.analyzers {
+            for tool in analyzer.tools() {
+                builder = builder.tool_typed(&amp;tool.name, tool.handler);
+            }
+        }
+
+        builder.build()
+    }
+}
+
+// Users can extend your library
+fn main() -&gt; Result&lt;()&gt; {
+    let mut server = CodeAnalysisServer::new();
+
+    // Add custom analyzer
+    server.add_analyzer(Box::new(MyCustomAnalyzer::new()));
+
+    let server = server.build()?;
+    server.run_stdio().await
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Composable API</li>
+<li>Extensibility hooks</li>
+<li>Library-friendly design</li>
+<li>No framework lock-in</li>
+</ul>
+<h3 id="5-you-need-webassembly-compilation"><a class="header" href="#5-you-need-webassembly-compilation">5. <strong>You Need WebAssembly Compilation</strong></a></h3>
+<p>pmcp can compile to WASM for browser-based servers:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+pub struct WasmMcpServer {
+    server: pmcp::Server,
+}
+
+#[wasm_bindgen]
+impl WasmMcpServer {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -&gt; Result&lt;WasmMcpServer, JsValue&gt; {
+        let server = ServerBuilder::new()
+            .name("wasm-server")
+            .tool_typed("process", |args: ProcessArgs, _| {
+                Box::pin(async move {
+                    // Pure Rust logic, runs in browser
+                    Ok(serde_json::json!({ "result": process(args) }))
+                })
+            })
+            .build()
+            .map_err(|e| JsValue::from_str(&amp;e.to_string()))?;
+
+        Ok(WasmMcpServer { server })
+    }
+
+    #[wasm_bindgen]
+    pub async fn handle_request(&amp;self, request: JsValue) -&gt; Result&lt;JsValue, JsValue&gt; {
+        // Handle MCP requests from JavaScript
+        let result = self.server.handle(request).await?;
+        Ok(result)
+    }
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>WASM target support</li>
+<li>Browser compatibility</li>
+<li>Pure Rust execution</li>
+<li>JavaScript interop</li>
+</ul>
+<h3 id="6-you-need-dynamic-server-configuration"><a class="header" href="#6-you-need-dynamic-server-configuration">6. <strong>You Need Dynamic Server Configuration</strong></a></h3>
+<p>pmcp allows runtime configuration changes:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+use std::sync::Arc;
+
+struct DynamicServer {
+    builder: Arc&lt;RwLock&lt;ServerBuilder&gt;&gt;,
+}
+
+impl DynamicServer {
+    pub async fn register_tool_at_runtime(&amp;self, name: String, handler: impl Fn() -&gt; Future) {
+        let mut builder = self.builder.write().await;
+        *builder = builder.clone().tool_typed(name, handler);
+        // Rebuild and hot-swap server
+    }
+
+    pub async fn unregister_tool(&amp;self, name: &amp;str) {
+        // Remove tool at runtime
+    }
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Runtime tool registration</li>
+<li>Hot-swapping capabilities</li>
+<li>Dynamic configuration</li>
+<li>Plugin architecture</li>
+</ul>
+<h3 id="7-you-need-fine-grained-performance-control"><a class="header" href="#7-you-need-fine-grained-performance-control">7. <strong>You Need Fine-Grained Performance Control</strong></a></h3>
+<p>pmcp lets you optimize every aspect:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let server = ServerBuilder::new()
+        .name("optimized-server")
+
+        // Custom executor
+        .with_runtime(tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(16)
+            .thread_name("mcp-worker")
+            .thread_stack_size(4 * 1024 * 1024)
+            .build()?)
+
+        // Custom buffer sizes
+        .with_buffer_size(65536)
+
+        // Custom timeout strategy
+        .with_timeout_strategy(CustomTimeoutStrategy::new())
+
+        // Zero-copy tool handlers
+        .tool_raw("process_bytes", |bytes: &amp;[u8], _| {
+            Box::pin(async move {
+                // Process without allocations
+                process_bytes_in_place(bytes)
+            })
+        })
+
+        .build()?;
+
+    server.run_stdio().await
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Custom runtime configuration</li>
+<li>Memory allocation control</li>
+<li>Zero-copy operations</li>
+<li>Performance tuning hooks</li>
+</ul>
+<h3 id="8-you-need-multi-server-orchestration"><a class="header" href="#8-you-need-multi-server-orchestration">8. <strong>You Need Multi-Server Orchestration</strong></a></h3>
+<p>pmcp allows running multiple servers in one process:</p>
+<pre><code class="language-rust">use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    // Server 1: Code analysis
+    let analysis_server = ServerBuilder::new()
+        .name("code-analysis")
+        .tool_typed("analyze", |args, _| { /* ... */ })
+        .build()?;
+
+    // Server 2: File operations
+    let file_server = ServerBuilder::new()
+        .name("file-ops")
+        .tool_typed("read_file", |args, _| { /* ... */ })
+        .build()?;
+
+    // Run both on different transports
+    tokio::try_join!(
+        analysis_server.run_stdio(),
+        file_server.run_sse("0.0.0.0:8080"),
+    )?;
+
+    Ok(())
+}</code></pre>
+<p><strong>Why pmcp wins:</strong></p>
+<ul>
+<li>Multi-server orchestration</li>
+<li>Different transports per server</li>
+<li>Process-level control</li>
+<li>Resource sharing</li>
+</ul>
+<h2 id="real-world-use-cases"><a class="header" href="#real-world-use-cases">Real-World Use Cases</a></h2>
+<h3 id="case-study-1-database-query-server"><a class="header" href="#case-study-1-database-query-server">Case Study 1: Database Query Server</a></h3>
+<p><strong>Challenge:</strong> Build a stateful database query server with transaction support</p>
+<p><strong>Why pmcp:</strong></p>
+<pre><code class="language-rust">struct QueryServer {
+    pool: PgPool,
+    active_transactions: Arc&lt;RwLock&lt;HashMap&lt;Uuid, Transaction&gt;&gt;&gt;,
+}
+
+impl QueryServer {
+    pub async fn build(self) -&gt; Result&lt;pmcp::Server&gt; {
+        ServerBuilder::new()
+            .name("db-server")
+            .tool_typed("begin_transaction", /* complex state logic */)
+            .tool_typed("execute_query", /* transaction-aware */)
+            .tool_typed("commit", /* finalize transaction */)
+            .tool_typed("rollback", /* abort transaction */)
+            .build()
+    }
+}</code></pre>
+<p><strong>Results:</strong></p>
+<ul>
+<li>Full control over connection pooling</li>
+<li>Custom transaction management</li>
+<li>Complex state coordination</li>
+<li>Optimized query execution</li>
+</ul>
+<h3 id="case-study-2-real-time-collaborative-server"><a class="header" href="#case-study-2-real-time-collaborative-server">Case Study 2: Real-Time Collaborative Server</a></h3>
+<p><strong>Challenge:</strong> Build a server for real-time collaboration with WebSocket transport</p>
+<p><strong>Why pmcp:</strong></p>
+<pre><code class="language-rust">struct CollaborationServer {
+    rooms: Arc&lt;RwLock&lt;HashMap&lt;String, Room&gt;&gt;&gt;,
+    connections: Arc&lt;RwLock&lt;HashMap&lt;Uuid, WebSocket&gt;&gt;&gt;,
+}
+
+impl CollaborationServer {
+    pub async fn run(self) -&gt; Result&lt;()&gt; {
+        let server = ServerBuilder::new()
+            .name("collab-server")
+            .tool_typed("join_room", /* manage connections */)
+            .tool_typed("send_message", /* broadcast to room */)
+            .on_notification("user_typing", /* real-time events */)
+            .build()?;
+
+        // Custom WebSocket transport with broadcasting
+        server.run_websocket("0.0.0.0:8080").await
+    }
+}</code></pre>
+<p><strong>Results:</strong></p>
+<ul>
+<li>WebSocket broadcast support</li>
+<li>Real-time event handling</li>
+<li>Custom connection management</li>
+<li>Room-based message routing</li>
+</ul>
+<h3 id="case-study-3-browser-based-repl"><a class="header" href="#case-study-3-browser-based-repl">Case Study 3: Browser-Based REPL</a></h3>
+<p><strong>Challenge:</strong> Build an MCP server that runs entirely in the browser</p>
+<p><strong>Why pmcp:</strong></p>
+<pre><code class="language-rust">#[wasm_bindgen]
+pub struct BrowserRepl {
+    server: pmcp::Server,
+    history: Vec&lt;String&gt;,
+}
+
+#[wasm_bindgen]
+impl BrowserRepl {
+    pub fn new() -&gt; Self {
+        let server = ServerBuilder::new()
+            .name("browser-repl")
+            .tool_typed("eval", /* safe evaluation */)
+            .tool_typed("history", /* return history */)
+            .build()
+            .unwrap();
+
+        Self { server, history: vec![] }
+    }
+
+    pub async fn execute(&amp;mut self, code: String) -&gt; JsValue {
+        self.history.push(code.clone());
+        self.server.handle_tool("eval", serde_json::json!({ "code": code })).await
+    }
+}</code></pre>
+<p><strong>Results:</strong></p>
+<ul>
+<li>Runs entirely in browser</li>
+<li>No backend required</li>
+<li>JavaScript interoperability</li>
+<li>Secure sandboxed execution</li>
+</ul>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>pmcp</th><th>Notes</th></tr></thead><tbody>
+<tr><td><strong>Tool Dispatch</strong></td><td>&lt;10μs</td><td>HashMap lookup, very fast</td></tr>
+<tr><td><strong>Cold Start</strong></td><td>&lt;50ms</td><td>Minimal startup overhead</td></tr>
+<tr><td><strong>Memory/Tool</strong></td><td>&lt;512B</td><td>Flexible structure</td></tr>
+<tr><td><strong>Throughput</strong></td><td>&gt;50K req/s</td><td>Highly optimized</td></tr>
+<tr><td><strong>Binary Size</strong></td><td>~2MB</td><td>Minimal dependencies</td></tr>
+</tbody></table>
+</div>
+<h2 id="when-pmcp-might-not-be-the-best-choice"><a class="header" href="#when-pmcp-might-not-be-the-best-choice">When pmcp Might NOT Be the Best Choice</a></h2>
+<p>pmcp is <strong>not</strong> ideal when:</p>
+<ol>
+<li>
+<p><strong>You want zero boilerplate</strong></p>
+<ul>
+<li>pmcp requires more code than pforge</li>
+<li>Use pforge for standard patterns</li>
+</ul>
+</li>
+<li>
+<p><strong>You want declarative configuration</strong></p>
+<ul>
+<li>pmcp is programmatic, not declarative</li>
+<li>Use pforge for YAML-based config</li>
+</ul>
+</li>
+<li>
+<p><strong>You want built-in quality gates</strong></p>
+<ul>
+<li>pmcp doesn’t enforce quality standards</li>
+<li>Use pforge for automatic PMAT integration</li>
+</ul>
+</li>
+<li>
+<p><strong>You want CLI/HTTP handler types out of the box</strong></p>
+<ul>
+<li>pmcp requires you to write these yourself</li>
+<li>Use pforge for pre-built handler types</li>
+</ul>
+</li>
+</ol>
+<p>See <a href="ch01-01-when-pforge.html">Chapter 1.1: When to Use pforge</a> for these cases.</p>
+<h2 id="combining-pforge-and-pmcp"><a class="header" href="#combining-pforge-and-pmcp">Combining pforge and pmcp</a></h2>
+<p>You can use both in the same project:</p>
+<pre><code class="language-rust">// Use pforge for simple tools
+mod pforge_tools {
+    include!(concat!(env!("OUT_DIR"), "/pforge_generated.rs"));
+}
+
+// Use pmcp for complex tools
+use pmcp::ServerBuilder;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;()&gt; {
+    let mut builder = ServerBuilder::new()
+        .name("hybrid-server")
+        .version("1.0.0");
+
+    // Add pforge-generated tools
+    for (name, handler) in pforge_tools::handlers() {
+        builder = builder.tool_typed(name, handler);
+    }
+
+    // Add custom pmcp tool with complex logic
+    builder = builder.tool_typed("complex_analysis", |args: AnalysisArgs, _| {
+        Box::pin(async move {
+            // Complex custom logic here
+            let result = perform_complex_analysis(args).await?;
+            Ok(serde_json::to_value(result)?)
+        })
+    });
+
+    let server = builder.build()?;
+    server.run_stdio().await
+}</code></pre>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>Use <strong>pmcp</strong> when you need:</p>
+<p>✅ Custom MCP protocol extensions
+✅ Complex stateful logic
+✅ Custom transport implementations
+✅ Library/SDK development
+✅ WebAssembly compilation
+✅ Runtime configuration
+✅ Fine-grained performance control
+✅ Multi-server orchestration</p>
+<p>Use <strong>pforge</strong> when you want:</p>
+<p>❌ Minimal boilerplate
+❌ Declarative YAML configuration
+❌ Built-in quality gates
+❌ Pre-built handler types
+❌ Fast iteration without recompilation</p>
+<p><strong>Not sure?</strong> Start with pforge. You can always integrate pmcp for complex features later.</p>
+<hr />
+<p><strong>Next:</strong> <a href="ch01-03-comparison.html">Side-by-Side Comparison</a></p>
 
                     </main>
 

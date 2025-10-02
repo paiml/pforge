@@ -158,8 +158,401 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="ch10-00-state-managementmd"><a class="header" href="#ch10-00-state-managementmd">ch10-00-state-management.md</a></h1>
-<p>TODO: This chapter is under development.</p>
+                        <h1 id="chapter-10-state-management-deep-dive"><a class="header" href="#chapter-10-state-management-deep-dive">Chapter 10: State Management Deep Dive</a></h1>
+<p>State management in pforge provides persistent and in-memory storage for your MCP tools. This chapter explores the state management system architecture, backends, and best practices.</p>
+<h2 id="state-management-architecture"><a class="header" href="#state-management-architecture">State Management Architecture</a></h2>
+<p>pforge provides a <code>StateManager</code> trait that abstracts different storage backends:</p>
+<pre><code class="language-rust">#[async_trait]
+pub trait StateManager: Send + Sync {
+    async fn get(&amp;self, key: &amp;str) -&gt; Result&lt;Option&lt;Vec&lt;u8&gt;&gt;&gt;;
+    async fn set(&amp;self, key: &amp;str, value: Vec&lt;u8&gt;, ttl: Option&lt;Duration&gt;) -&gt; Result&lt;()&gt;;
+    async fn delete(&amp;self, key: &amp;str) -&gt; Result&lt;()&gt;;
+    async fn exists(&amp;self, key: &amp;str) -&gt; Result&lt;bool&gt;;
+}</code></pre>
+<h2 id="state-backends"><a class="header" href="#state-backends">State Backends</a></h2>
+<h3 id="1-sled-persistent-storage"><a class="header" href="#1-sled-persistent-storage">1. Sled (Persistent Storage)</a></h3>
+<p><strong>Use case:</strong> Production servers requiring persistence across restarts</p>
+<pre><code class="language-yaml">state:
+  backend: sled
+  path: /var/lib/my-server/state
+  cache_size: 10000  # Number of keys to cache in memory
+</code></pre>
+<p><strong>Implementation:</strong></p>
+<pre><code class="language-rust">pub struct SledStateManager {
+    db: sled::Db,
+}
+
+impl SledStateManager {
+    pub fn new(path: &amp;str) -&gt; Result&lt;Self&gt; {
+        let db = sled::open(path)?;
+        Ok(Self { db })
+    }
+}</code></pre>
+<p><strong>Characteristics:</strong></p>
+<ul>
+<li><strong>Persistence:</strong> All data survives process restarts</li>
+<li><strong>Performance:</strong> O(log n) read/write (B-tree)</li>
+<li><strong>Durability:</strong> ACID guarantees with fsync</li>
+<li><strong>Size:</strong> Can handle billions of keys</li>
+<li><strong>Concurrency:</strong> Thread-safe with internal locking</li>
+</ul>
+<p><strong>Best practices:</strong></p>
+<pre><code class="language-rust">// Efficient batch operations
+async fn batch_update(&amp;self, updates: Vec&lt;(String, Vec&lt;u8&gt;)&gt;) -&gt; Result&lt;()&gt; {
+    let mut batch = Batch::default();
+    for (key, value) in updates {
+        batch.insert(key.as_bytes(), value);
+    }
+    self.db.apply_batch(batch)?;
+    Ok(())
+}</code></pre>
+<h3 id="2-memory-in-memory-storage"><a class="header" href="#2-memory-in-memory-storage">2. Memory (In-Memory Storage)</a></h3>
+<p><strong>Use case:</strong> Testing, caching, ephemeral data</p>
+<pre><code class="language-yaml">state:
+  backend: memory
+</code></pre>
+<p><strong>Implementation:</strong></p>
+<pre><code class="language-rust">pub struct MemoryStateManager {
+    store: dashmap::DashMap&lt;String, Vec&lt;u8&gt;&gt;,
+}</code></pre>
+<p><strong>Characteristics:</strong></p>
+<ul>
+<li><strong>Performance:</strong> O(1) read/write (hash map)</li>
+<li><strong>Concurrency:</strong> Lock-free with DashMap</li>
+<li><strong>Durability:</strong> None - data lost on restart</li>
+<li><strong>Size:</strong> Limited by RAM</li>
+</ul>
+<p><strong>Best practices:</strong></p>
+<pre><code class="language-rust">// Use for caching expensive computations
+async fn get_or_compute(&amp;self, key: &amp;str, compute: impl Fn() -&gt; Vec&lt;u8&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+    if let Some(cached) = self.get(key).await? {
+        return Ok(cached);
+    }
+
+    let value = compute();
+    self.set(key, value.clone(), Some(Duration::from_secs(300))).await?;
+    Ok(value)
+}</code></pre>
+<h2 id="using-state-in-handlers"><a class="header" href="#using-state-in-handlers">Using State in Handlers</a></h2>
+<h3 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h3>
+<pre><code class="language-rust">use pforge_runtime::{Handler, Result, StateManager};
+use serde::{Deserialize, Serialize};
+
+pub struct CounterHandler {
+    state: Arc&lt;dyn StateManager&gt;,
+}
+
+#[derive(Deserialize)]
+pub struct CounterInput {
+    operation: String,  // "increment" or "get"
+}
+
+#[derive(Serialize)]
+pub struct CounterOutput {
+    value: u64,
+}
+
+#[async_trait::async_trait]
+impl Handler for CounterHandler {
+    type Input = CounterInput;
+    type Output = CounterOutput;
+
+    async fn handle(&amp;self, input: Self::Input) -&gt; Result&lt;Self::Output&gt; {
+        match input.operation.as_str() {
+            "increment" =&gt; {
+                let current = self.get_counter().await?;
+                let new_value = current + 1;
+                self.set_counter(new_value).await?;
+                Ok(CounterOutput { value: new_value })
+            }
+            "get" =&gt; {
+                let value = self.get_counter().await?;
+                Ok(CounterOutput { value })
+            }
+            _ =&gt; Err(Error::Handler("Unknown operation".into()))
+        }
+    }
+}
+
+impl CounterHandler {
+    async fn get_counter(&amp;self) -&gt; Result&lt;u64&gt; {
+        let bytes = self.state.get("counter").await?;
+        match bytes {
+            Some(b) =&gt; Ok(u64::from_le_bytes(b.try_into().unwrap())),
+            None =&gt; Ok(0),
+        }
+    }
+
+    async fn set_counter(&amp;self, value: u64) -&gt; Result&lt;()&gt; {
+        self.state.set("counter", value.to_le_bytes().to_vec(), None).await
+    }
+}</code></pre>
+<h3 id="advanced-serialization-helpers"><a class="header" href="#advanced-serialization-helpers">Advanced: Serialization Helpers</a></h3>
+<pre><code class="language-rust">use serde::{Deserialize, Serialize};
+
+pub trait StateExt {
+    async fn get_json&lt;T: for&lt;'de&gt; Deserialize&lt;'de&gt;&gt;(&amp;self, key: &amp;str) -&gt; Result&lt;Option&lt;T&gt;&gt;;
+    async fn set_json&lt;T: Serialize&gt;(&amp;self, key: &amp;str, value: &amp;T, ttl: Option&lt;Duration&gt;) -&gt; Result&lt;()&gt;;
+}
+
+impl&lt;S: StateManager&gt; StateExt for S {
+    async fn get_json&lt;T: for&lt;'de&gt; Deserialize&lt;'de&gt;&gt;(&amp;self, key: &amp;str) -&gt; Result&lt;Option&lt;T&gt;&gt; {
+        match self.get(key).await? {
+            Some(bytes) =&gt; {
+                let value = serde_json::from_slice(&amp;bytes)
+                    .map_err(|e| Error::Handler(format!("JSON deserialize error: {}", e)))?;
+                Ok(Some(value))
+            }
+            None =&gt; Ok(None),
+        }
+    }
+
+    async fn set_json&lt;T: Serialize&gt;(&amp;self, key: &amp;str, value: &amp;T, ttl: Option&lt;Duration&gt;) -&gt; Result&lt;()&gt; {
+        let bytes = serde_json::to_vec(value)
+            .map_err(|e| Error::Handler(format!("JSON serialize error: {}", e)))?;
+        self.set(key, bytes, ttl).await
+    }
+}
+
+// Usage
+#[derive(Serialize, Deserialize)]
+struct UserProfile {
+    name: String,
+    email: String,
+}
+
+async fn store_user(&amp;self, user: &amp;UserProfile) -&gt; Result&lt;()&gt; {
+    self.state.set_json(&amp;format!("user:{}", user.email), user, None).await
+}</code></pre>
+<h2 id="state-patterns"><a class="header" href="#state-patterns">State Patterns</a></h2>
+<h3 id="1-counter-pattern"><a class="header" href="#1-counter-pattern">1. Counter Pattern</a></h3>
+<pre><code class="language-rust">async fn atomic_increment(&amp;self, key: &amp;str) -&gt; Result&lt;u64&gt; {
+    loop {
+        let current = self.get_json::&lt;u64&gt;(key).await?.unwrap_or(0);
+        let new_value = current + 1;
+
+        // In production, use compare-and-swap
+        self.set_json(key, &amp;new_value, None).await?;
+
+        // Verify (simplified - use CAS in production)
+        if self.get_json::&lt;u64&gt;(key).await? == Some(new_value) {
+            return Ok(new_value);
+        }
+        // Retry on conflict
+    }
+}</code></pre>
+<h3 id="2-cache-pattern"><a class="header" href="#2-cache-pattern">2. Cache Pattern</a></h3>
+<pre><code class="language-rust">async fn cached_api_call(&amp;self, endpoint: &amp;str) -&gt; Result&lt;Value&gt; {
+    let cache_key = format!("api_cache:{}", endpoint);
+
+    // Check cache
+    if let Some(cached) = self.state.get_json(&amp;cache_key).await? {
+        return Ok(cached);
+    }
+
+    // Call API
+    let response = reqwest::get(endpoint).await?.json().await?;
+
+    // Cache for 5 minutes
+    self.state.set_json(&amp;cache_key, &amp;response, Some(Duration::from_secs(300))).await?;
+
+    Ok(response)
+}</code></pre>
+<h3 id="3-session-pattern"><a class="header" href="#3-session-pattern">3. Session Pattern</a></h3>
+<pre><code class="language-rust">#[derive(Serialize, Deserialize)]
+struct Session {
+    user_id: String,
+    created_at: DateTime&lt;Utc&gt;,
+    data: HashMap&lt;String, Value&gt;,
+}
+
+async fn create_session(&amp;self, user_id: String) -&gt; Result&lt;String&gt; {
+    let session_id = Uuid::new_v4().to_string();
+    let session = Session {
+        user_id,
+        created_at: Utc::now(),
+        data: HashMap::new(),
+    };
+
+    // Store with 1 hour TTL
+    self.state.set_json(
+        &amp;format!("session:{}", session_id),
+        &amp;session,
+        Some(Duration::from_secs(3600))
+    ).await?;
+
+    Ok(session_id)
+}</code></pre>
+<h3 id="4-rate-limiting-pattern"><a class="header" href="#4-rate-limiting-pattern">4. Rate Limiting Pattern</a></h3>
+<pre><code class="language-rust">async fn check_rate_limit(&amp;self, user_id: &amp;str, max_requests: u64, window: Duration) -&gt; Result&lt;bool&gt; {
+    let key = format!("rate_limit:{}:{}", user_id, Utc::now().timestamp() / window.as_secs() as i64);
+
+    let count = self.state.get_json::&lt;u64&gt;(&amp;key).await?.unwrap_or(0);
+
+    if count &gt;= max_requests {
+        return Ok(false);  // Rate limit exceeded
+    }
+
+    self.state.set_json(&amp;key, &amp;(count + 1), Some(window)).await?;
+    Ok(true)
+}</code></pre>
+<h2 id="performance-optimization"><a class="header" href="#performance-optimization">Performance Optimization</a></h2>
+<h3 id="1-batch-operations"><a class="header" href="#1-batch-operations">1. Batch Operations</a></h3>
+<pre><code class="language-rust">async fn batch_get(&amp;self, keys: Vec&lt;String&gt;) -&gt; Result&lt;HashMap&lt;String, Vec&lt;u8&gt;&gt;&gt; {
+    let mut results = HashMap::new();
+
+    // Execute in parallel
+    let futures: Vec&lt;_&gt; = keys.iter()
+        .map(|key| self.state.get(key))
+        .collect();
+
+    let values = futures::future::join_all(futures).await;
+
+    for (key, value) in keys.into_iter().zip(values) {
+        if let Some(v) = value? {
+            results.insert(key, v);
+        }
+    }
+
+    Ok(results)
+}</code></pre>
+<h3 id="2-connection-pooling"><a class="header" href="#2-connection-pooling">2. Connection Pooling</a></h3>
+<p>For Sled, use a shared instance:</p>
+<pre><code class="language-rust">lazy_static! {
+    static ref STATE: Arc&lt;SledStateManager&gt; = Arc::new(
+        SledStateManager::new("/var/lib/state").unwrap()
+    );
+}</code></pre>
+<h3 id="3-caching-layer"><a class="header" href="#3-caching-layer">3. Caching Layer</a></h3>
+<pre><code class="language-rust">pub struct CachedStateManager {
+    backend: Arc&lt;dyn StateManager&gt;,
+    cache: Arc&lt;DashMap&lt;String, (Vec&lt;u8&gt;, Instant)&gt;&gt;,
+    ttl: Duration,
+}
+
+impl CachedStateManager {
+    async fn get(&amp;self, key: &amp;str) -&gt; Result&lt;Option&lt;Vec&lt;u8&gt;&gt;&gt; {
+        // Check cache first
+        if let Some((value, timestamp)) = self.cache.get(key) {
+            if timestamp.elapsed() &lt; self.ttl {
+                return Ok(Some(value.clone()));
+            }
+        }
+
+        // Fetch from backend
+        let value = self.backend.get(key).await?;
+
+        // Update cache
+        if let Some(v) = &amp;value {
+            self.cache.insert(key.to_string(), (v.clone(), Instant::now()));
+        }
+
+        Ok(value)
+    }
+}</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<pre><code class="language-rust">async fn safe_state_operation(&amp;self, key: &amp;str) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
+    match self.state.get(key).await {
+        Ok(Some(value)) =&gt; Ok(value),
+        Ok(None) =&gt; Err(Error::Handler(format!("Key not found: {}", key))),
+        Err(e) =&gt; {
+            // Log error
+            eprintln!("State error: {}", e);
+
+            // Return default value or propagate error
+            Err(Error::Handler(format!("State backend error: {}", e)))
+        }
+    }
+}</code></pre>
+<h2 id="testing-state"><a class="header" href="#testing-state">Testing State</a></h2>
+<pre><code class="language-rust">#[cfg(test)]
+mod tests {
+    use super::*;
+    use pforge_runtime::MemoryStateManager;
+
+    #[tokio::test]
+    async fn test_counter_handler() {
+        let state = Arc::new(MemoryStateManager::new());
+        let handler = CounterHandler { state };
+
+        // Increment
+        let result = handler.handle(CounterInput {
+            operation: "increment".into()
+        }).await.unwrap();
+        assert_eq!(result.value, 1);
+
+        // Increment again
+        let result = handler.handle(CounterInput {
+            operation: "increment".into()
+        }).await.unwrap();
+        assert_eq!(result.value, 2);
+
+        // Get
+        let result = handler.handle(CounterInput {
+            operation: "get".into()
+        }).await.unwrap();
+        assert_eq!(result.value, 2);
+    }
+}</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li>
+<p><strong>Use appropriate backend</strong></p>
+<ul>
+<li>Sled for persistence</li>
+<li>Memory for caching and testing</li>
+</ul>
+</li>
+<li>
+<p><strong>Serialize consistently</strong></p>
+<ul>
+<li>Use JSON for complex types</li>
+<li>Use binary for performance-critical data</li>
+</ul>
+</li>
+<li>
+<p><strong>Handle missing keys gracefully</strong></p>
+<ul>
+<li>Always check for None</li>
+<li>Provide sensible defaults</li>
+</ul>
+</li>
+<li>
+<p><strong>Use TTL for ephemeral data</strong></p>
+<ul>
+<li>Sessions, caches, rate limits</li>
+</ul>
+</li>
+<li>
+<p><strong>Batch when possible</strong></p>
+<ul>
+<li>Reduce roundtrips</li>
+<li>Use parallel execution</li>
+</ul>
+</li>
+<li>
+<p><strong>Monitor state size</strong></p>
+<ul>
+<li>Implement cleanup routines</li>
+<li>Use TTL to prevent unbounded growth</li>
+</ul>
+</li>
+<li>
+<p><strong>Test with real backends</strong></p>
+<ul>
+<li>Use temporary directories for Sled in tests</li>
+</ul>
+</li>
+</ol>
+<h2 id="future-redis-backend"><a class="header" href="#future-redis-backend">Future: Redis Backend</a></h2>
+<p>Future versions will support distributed state:</p>
+<pre><code class="language-yaml">state:
+  backend: redis
+  url: redis://localhost:6379
+  pool_size: 10
+</code></pre>
+<hr />
+<p><strong>Next:</strong> <a href="ch11-00-fault-tolerance.html">Fault Tolerance</a></p>
 
                     </main>
 
