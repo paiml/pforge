@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  pforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pforge-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./examples:/examples:ro
+      - pforge-data:/data
+    environment:
+      - RUST_LOG=info
+      - PFORGE_CONFIG=/examples/production-server/pforge.yaml
+    command: serve
+
+  pforge-alpine:
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    container_name: pforge-alpine
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./examples:/examples:ro
+    environment:
+      - RUST_LOG=info
+
+volumes:
+  pforge-data:
+    driver: local
