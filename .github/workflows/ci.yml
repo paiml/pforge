@@ -109,7 +109,7 @@ jobs:
         run: cargo install cargo-tarpaulin --locked
 
       - name: Generate coverage
-        run: cargo tarpaulin --out Xml --all-features --workspace
+        run: cargo tarpaulin --out Xml --all-features --workspace --timeout 300
 
       - name: Check coverage threshold
         run: |

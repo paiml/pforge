@@ -1602,7 +1602,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "pforge-bridge"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pforge-runtime",
  "serde",
@@ -1612,7 +1612,7 @@ dependencies = [
 
 [[package]]
 name = "pforge-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1625,7 +1625,7 @@ dependencies = [
 
 [[package]]
 name = "pforge-codegen"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pforge-config",
  "proc-macro2",
@@ -1639,7 +1639,7 @@ dependencies = [
 
 [[package]]
 name = "pforge-config"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "proptest",
  "serde",
@@ -1664,7 +1664,7 @@ dependencies = [
 
 [[package]]
 name = "pforge-integration-tests"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pforge-config",
  "pforge-runtime",
@@ -1678,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "pforge-macro"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1687,7 +1687,7 @@ dependencies = [
 
 [[package]]
 name = "pforge-runtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "criterion",

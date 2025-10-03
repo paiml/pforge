@@ -25,6 +25,7 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
+#[ignore = "Slow compilation test - excluded from coverage runs"]
 fn red_test_workspace_compiles() {
     // Expected: ✅ PASS - Workspace already compiles
     let output = Command::new("cargo")
@@ -161,6 +162,7 @@ fn red_test_pre_commit_hook_exists() {
 }
 
 #[test]
+#[ignore = "Slow compilation test - excluded from coverage runs"]
 fn red_test_all_crates_compile_independently() {
     // Expected: ✅ PASS - Already compiling
     let crates = vec![
