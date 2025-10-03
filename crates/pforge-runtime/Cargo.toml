@@ -32,3 +32,12 @@ rand = "0.8"
 [dev-dependencies]
 tempfile = "3.8"
 proptest = "1.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "dispatch_benchmark"
+harness = false
+
+[[bench]]
+name = "throughput_benchmark"
+harness = false
