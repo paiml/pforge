@@ -4,30 +4,180 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  create-release:
-    name: Create Release
+  # Quality gates must pass before release
+  pre-release-checks:
+    name: Pre-Release Quality Gates
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run full test suite
+        run: cargo test --all --release
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Security audit
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+      - name: Verify benchmarks build
+        run: cargo bench --package pforge-runtime --no-run
+
+  # Create GitHub release with changelog
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: pre-release-checks
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog
+
+      - name: Extract version
+        id: get_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          # Get commits since last tag
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges | head -50)
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Count changes by type
+          FEAT_COUNT=$(echo "$COMMITS" | grep -c "^- feat:" || echo "0")
+          FIX_COUNT=$(echo "$COMMITS" | grep -c "^- fix:" || echo "0")
+          DOCS_COUNT=$(echo "$COMMITS" | grep -c "^- docs:" || echo "0")
+
+          # Generate release notes
+          cat > release_notes.md <<EOF
+          ## pforge v${{ steps.get_version.outputs.version }}
+
+          ### 📦 Release Summary
+
+          - ✨ Features: ${FEAT_COUNT}
+          - 🐛 Bug Fixes: ${FIX_COUNT}
+          - 📚 Documentation: ${DOCS_COUNT}
+
+          ### 📝 Changelog
+
+          ${COMMITS}
+
+          ### 📥 Installation
+
+          #### From binaries (fastest)
+          Download the appropriate binary for your platform from the assets below.
+
+          **Linux**:
+          \`\`\`bash
+          curl -LO https://github.com/paiml/pforge/releases/download/v${{ steps.get_version.outputs.version }}/pforge-linux-amd64.tar.gz
+          tar xzf pforge-linux-amd64.tar.gz
+          sudo mv pforge /usr/local/bin/
+          \`\`\`
+
+          **macOS**:
+          \`\`\`bash
+          curl -LO https://github.com/paiml/pforge/releases/download/v${{ steps.get_version.outputs.version }}/pforge-macos-amd64.tar.gz
+          tar xzf pforge-macos-amd64.tar.gz
+          sudo mv pforge /usr/local/bin/
+          \`\`\`
+
+          **Windows** (PowerShell):
+          \`\`\`powershell
+          Invoke-WebRequest -Uri "https://github.com/paiml/pforge/releases/download/v${{ steps.get_version.outputs.version }}/pforge-windows-amd64.exe" -OutFile pforge.exe
+          \`\`\`
+
+          #### From crates.io
+          \`\`\`bash
+          cargo install pforge-cli
+          \`\`\`
+
+          #### From source
+          \`\`\`bash
+          git clone https://github.com/paiml/pforge.git
+          cd pforge
+          git checkout v${{ steps.get_version.outputs.version }}
+          cargo install --path crates/pforge-cli
+          \`\`\`
+
+          ### 📖 Documentation
+
+          - [User Guide](https://github.com/paiml/pforge/blob/v${{ steps.get_version.outputs.version }}/USER_GUIDE.md)
+          - [Architecture](https://github.com/paiml/pforge/blob/v${{ steps.get_version.outputs.version }}/ARCHITECTURE.md)
+          - [API Documentation](https://docs.rs/pforge-runtime/${{ steps.get_version.outputs.version }})
+          - [Examples](https://github.com/paiml/pforge/tree/v${{ steps.get_version.outputs.version }}/examples)
+
+          ### 🔐 Checksums
+
+          SHA256 checksums are provided for all binaries (`.sha256` files).
+
+          Verify downloads:
+          \`\`\`bash
+          sha256sum -c pforge-linux-amd64.tar.gz.sha256
+          \`\`\`
+
+          ---
+
+          **Full Changelog**: https://github.com/paiml/pforge/compare/${LAST_TAG}...v${{ steps.get_version.outputs.version }}
+          EOF
+
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: pforge v${{ steps.get_version.outputs.version }}
+          body_path: release_notes.md
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Build release binaries for all platforms
   build-release:
-    name: Build Release
+    name: Build ${{ matrix.os }} (${{ matrix.target }})
     needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -35,18 +185,23 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            artifact_name: pforge
             asset_name: pforge-linux-amd64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+            artifact_name: pforge
             asset_name: pforge-linux-amd64-musl
           - os: macos-latest
             target: x86_64-apple-darwin
+            artifact_name: pforge
             asset_name: pforge-macos-amd64
           - os: macos-latest
             target: aarch64-apple-darwin
+            artifact_name: pforge
             asset_name: pforge-macos-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            artifact_name: pforge.exe
             asset_name: pforge-windows-amd64.exe
 
     steps:
@@ -57,30 +212,89 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install musl tools (Linux musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Prepare artifact
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} --bin pforge
+
+      - name: Strip binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+      - name: Create tarball (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
+          sha256sum ${{ matrix.asset_name }}.tar.gz > ${{ matrix.asset_name }}.tar.gz.sha256
+          mv ${{ matrix.asset_name }}.tar.gz ${{ matrix.asset_name }}.tar.gz.sha256 ../../..
+
+      - name: Create zip (Windows)
+        if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/pforge.exe ${{ matrix.asset_name }}
-          else
-            cp target/${{ matrix.target }}/release/pforge ${{ matrix.asset_name }}
-            chmod +x ${{ matrix.asset_name }}
-          fi
+          cd target/${{ matrix.target }}/release
+          7z a ${{ matrix.asset_name }}.zip ${{ matrix.artifact_name }}
+          certutil -hashfile ${{ matrix.asset_name }}.zip SHA256 > ${{ matrix.asset_name }}.zip.sha256
+          mv ${{ matrix.asset_name }}.zip ${{ matrix.asset_name }}.zip.sha256 ../../..
 
-      - name: Upload Release Asset
+      - name: Upload tarball (Unix)
+        if: matrix.os != 'windows-latest'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./${{ matrix.asset_name }}
-          asset_name: ${{ matrix.asset_name }}
-          asset_content_type: application/octet-stream
+          asset_path: ./${{ matrix.asset_name }}.tar.gz
+          asset_name: ${{ matrix.asset_name }}.tar.gz
+          asset_content_type: application/gzip
 
-  publish-crate:
+      - name: Upload tarball checksum (Unix)
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.asset_name }}.tar.gz.sha256
+          asset_name: ${{ matrix.asset_name }}.tar.gz.sha256
+          asset_content_type: text/plain
+
+      - name: Upload zip (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.asset_name }}.zip
+          asset_name: ${{ matrix.asset_name }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload zip checksum (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./${{ matrix.asset_name }}.zip.sha256
+          asset_name: ${{ matrix.asset_name }}.zip.sha256
+          asset_content_type: text/plain
+
+  # Publish to crates.io
+  publish-crates:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: build-release
@@ -88,25 +302,48 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Publish pforge-macro
+        run: cd crates/pforge-macro && cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        continue-on-error: true
+
+      - name: Wait for crates.io (macro)
+        run: sleep 30
+
       - name: Publish pforge-config
         run: cd crates/pforge-config && cargo publish --token ${{ secrets.CARGO_TOKEN }}
         continue-on-error: true
 
-      - name: Wait for crates.io
+      - name: Wait for crates.io (config)
         run: sleep 30
 
       - name: Publish pforge-runtime
         run: cd crates/pforge-runtime && cargo publish --token ${{ secrets.CARGO_TOKEN }}
         continue-on-error: true
 
-      - name: Wait for crates.io
+      - name: Wait for crates.io (runtime)
         run: sleep 30
 
       - name: Publish pforge-codegen
         run: cd crates/pforge-codegen && cargo publish --token ${{ secrets.CARGO_TOKEN }}
         continue-on-error: true
 
-      - name: Wait for crates.io
+      - name: Wait for crates.io (codegen)
+        run: sleep 30
+
+      - name: Publish pforge-bridge
+        run: cd crates/pforge-bridge && cargo publish --token ${{ secrets.CARGO_TOKEN }}
+        continue-on-error: true
+
+      - name: Wait for crates.io (bridge)
         run: sleep 30
 
       - name: Publish pforge-cli
