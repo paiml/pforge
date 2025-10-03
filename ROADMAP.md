@@ -1,7 +1,7 @@
 # pforge Implementation Roadmap
 
 **Code Name**: Pragmatic Forge
-**Version**: 0.1.0-alpha
+**Version**: 0.1.1 (Released)
 **Methodology**: Extreme Test-Driven Development (TDD)
 **Quality Standard**: PMAT Zero-Tolerance Enforcement
 
@@ -55,20 +55,23 @@ pforge is a declarative MCP server framework designed for sub-10-line tool defin
   - [x] Documentation generation and validation (100% coverage)
 - [ ] Phase 4: Production Readiness (Tickets 4001-4010) - 🚧 IN PROGRESS
 
-### 📊 Quality Metrics (Updated 2025-10-03)
-- ✅ **Test Coverage**: 80.54% (target: ≥80%)
+### 📊 Quality Metrics (Updated 2025-10-03 - v0.1.1)
+- ✅ **Test Coverage**: 91.06% (+10.52% from v0.1.0) (target: ≥80%)
+- ✅ **Total Tests**: 202 passing (+61 new tests)
 - ✅ **Mutation Score**: 77% (134/198 caught) (target: 90%+)
-- ✅ **TDG Score**: 96/100 (A+) (target: ≥75)
+- ✅ **TDG Score**: 96.04/100 (A+) (target: ≥75)
 - ✅ **Cyclomatic Complexity**: Max 9 (target: ≤20)
+- ✅ **Cognitive Complexity**: Max <15 (Fixed: retry_with_policy refactored)
 - ✅ **Dead Code**: 0.00% (target: ≤15%)
 - ✅ **Security Vulnerabilities**: 0 critical, 2 low-severity warnings (target: 0 critical)
 - ✅ **Unsafe Code**: 6 blocks (FFI only, all documented)
 - ✅ **Code Duplicates**: 0 violations
-- ✅ **Documentation**: 63/63 chapters complete, 174 links validated
-- ✅ **Published to crates.io**: 5 crates (pforge-config, pforge-macro, pforge-runtime, pforge-codegen, pforge-cli)
-- ✅ **Language Bridges**: Python (ctypes), Go (cgo)
+- ✅ **Documentation**: 65/65 chapters complete (added Python/Go EXTREME TDD chapters)
+- ✅ **Published to crates.io**: 5 crates v0.1.1 (pforge-config, pforge-macro, pforge-runtime, pforge-codegen, pforge-cli)
+- ✅ **Language Bridges**: Python (ctypes), Go (cgo) with EXTREME TDD guides
 - ✅ **Transports**: stdio, SSE, WebSocket
-- ⚠️ **SATD Comments**: 4 low-severity (future work markers)
+- ✅ **Runnable Examples**: 2 cargo examples (calculator, middleware_demo)
+- ⚠️ **SATD Comments**: 5 low-severity (future work markers)
 
 ---
 
@@ -358,22 +361,23 @@ cargo mutants
 
 ---
 
-## Metrics Dashboard
+## Metrics Dashboard (v0.1.1)
 
 ```
 Phase Progress:       ████████████████████  Phase 4: 100% COMPLETE (10/10 tickets) ✅
 Tickets Complete:     ████████████████████  40/40 (100%) 🎉
-Test Coverage:        ████████████████░░░░  80.54% ✅ (Target: 80%)
+Test Coverage:        ██████████████████░░  91.06% ✅✅ (+10.52% from v0.1.0)
+Total Tests:          ████████████████████  202 passing (+61 new tests) ✅
 Mutation Score:       ███████████████░░░░░  77% (134/198) (Target: 90%)
 Quality Gates:        🟢🟢🟢🟢🟢🟢🟢🟢 8/8 Passing ✅
 Performance Targets:  ████████████████████  8/8 Met (6-90x faster than targets) ✅
 Security Audit:       ████████████████████  0 critical vulnerabilities ✅
 Memory Safety:        ████████████████████  Valgrind clean, 0 leaks ✅
 CI/CD Pipeline:       ████████████████████  11 jobs, 3 security scans ✅
-Documentation:        ████████████████████  24,000+ words (User Guide + Architecture) ✅
+Documentation:        ████████████████████  65 chapters (added EXTREME TDD guides) ✅
 Integration Tests:    ████████████████████  54 tests (+69% from baseline) ✅
 Fuzzing:              ████████████████████  3 fuzz targets, nightly CI ✅
-Production Readiness: █████████████░░░░░░░  65% (progressing...)
+Production Readiness: ████████████████████  100% RELEASED (v0.1.1 on crates.io) ✅
 ```
 
 ---
@@ -442,11 +446,33 @@ Production Readiness: █████████████░░░░░░�
 ---
 
 **Last Updated**: 2025-10-03
-**Status**: ✅ ALL PHASES COMPLETE | 🎉 v0.1.0 PRODUCTION READY
-**Current Focus**: Final quality verification complete - Ready for release! 🚀
-**Next Milestone**: v0.1.0 Public Release | Community Adoption
+**Status**: ✅ ALL PHASES COMPLETE | 🎉 v0.1.1 RELEASED ON CRATES.IO
+**Current Focus**: Quality deep dive complete - 91% coverage, A+ grade maintained
+**Next Milestone**: v0.2.0 Feature Enhancements | Community Adoption
 
-### Recent Achievements (2025-10-03)
+### Recent Achievements (2025-10-03 - v0.1.1 Release)
+
+**🎉 v0.1.1 QUALITY DEEP DIVE RELEASE ✅**
+- ✅ Coverage improvements: 80.54% → 91.06% (+10.52%)
+- ✅ New tests: 141 → 202 (+61 tests)
+- ✅ Fixed cognitive complexity violation (retry_with_policy: 16 → <15)
+- ✅ New EXTREME TDD chapters:
+  - Chapter 19.1: Python Bridge with EXTREME TDD (TextBlob NLP example)
+  - Chapter 19.2: Go Bridge with EXTREME TDD (JSON processor example)
+- ✅ Runnable cargo examples:
+  - `cargo run --example calculator` - Basic handler demonstration
+  - `cargo run --example middleware_demo` - Middleware chain demo
+- ✅ All 5 crates published to crates.io v0.1.1:
+  - pforge-config v0.1.1
+  - pforge-macro v0.1.1
+  - pforge-runtime v0.1.1
+  - pforge-codegen v0.1.1
+  - pforge-cli v0.1.1
+- ✅ Maintained A+ quality grade (96.04/100)
+- ✅ All 8 quality gates passing
+- ✅ Git tags: v0.1.0, v0.1.1 pushed to GitHub
+
+### Previous Achievements (2025-10-03 - v0.1.0)
 
 **🎉 MILESTONE: v0.1.0 PRODUCTION READY (PFORGE-4010) ✅**
 - ✅ All 40 tickets completed (100%)
