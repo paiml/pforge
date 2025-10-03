@@ -1,0 +1,79 @@
+forge:
+  name: polyglot-server
+  version: 0.1.0
+  transport: stdio
+  description: "Multi-Language MCP Server - Rust, Python, and Go handlers"
+
+tools:
+  # Rust native handler
+  - type: native
+    name: rust_fibonacci
+    description: "Calculate Fibonacci number (Rust implementation)"
+    handler:
+      path: handlers::fibonacci::FibonacciHandler
+    params:
+      n:
+        type: integer
+        required: true
+        description: "Position in Fibonacci sequence (0-indexed)"
+        minimum: 0
+        maximum: 50
+
+  # Python handler via bridge
+  - type: native
+    name: python_sentiment
+    description: "Analyze text sentiment (Python implementation)"
+    handler:
+      path: handlers::python_bridge::PythonSentimentHandler
+    params:
+      text:
+        type: string
+        required: true
+        description: "Text to analyze for sentiment"
+      language:
+        type: string
+        required: false
+        default: "en"
+        description: "Language code (en, es, fr, etc.)"
+
+  # Go handler via bridge
+  - type: native
+    name: go_hash
+    description: "Calculate cryptographic hash (Go implementation)"
+    handler:
+      path: handlers::go_bridge::GoHashHandler
+    params:
+      data:
+        type: string
+        required: true
+        description: "Data to hash"
+      algorithm:
+        type: string
+        required: false
+        default: "sha256"
+        description: "Hash algorithm (md5, sha1, sha256, sha512)"
+
+  # CLI handler for comparison
+  - type: cli
+    name: system_info
+    description: "Get system information (CLI)"
+    command: uname
+    args:
+      - "-a"
+    stream: false
+
+  # Polyglot pipeline - combines all languages
+  - type: pipeline
+    name: polyglot_pipeline
+    description: "Pipeline using all three languages"
+    steps:
+      - tool: rust_fibonacci
+        params:
+          n: 10
+      - tool: python_sentiment
+        params:
+          text: "This is a great example of polyglot programming!"
+      - tool: go_hash
+        params:
+          data: "pforge-polyglot"
+    params: {}
