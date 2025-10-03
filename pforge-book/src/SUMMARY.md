@@ -83,6 +83,8 @@
 
 - [Chapter 18: CI/CD Pipeline](ch18-00-cicd.md)
 - [Chapter 19: Multi-Language Bridges](ch19-00-bridges.md)
+    - [Python Bridge with EXTREME TDD](ch19-01-python-tdd.md)
+    - [Go Bridge with EXTREME TDD](ch19-02-go-tdd.md)
 
 ## Appendices
 

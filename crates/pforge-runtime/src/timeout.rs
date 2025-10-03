@@ -147,6 +147,30 @@ impl Middleware for RetryMiddleware {
     }
 }
 
+/// Handle retry backoff delay
+async fn apply_backoff_delay(policy: &RetryPolicy, attempt: u32, max_attempts: u32) {
+    if attempt < max_attempts {
+        let backoff = policy.backoff_duration(attempt - 1);
+        tokio::time::sleep(backoff).await;
+    }
+}
+
+/// Process retry attempt result
+fn handle_retry_result<T>(
+    error: Error,
+    policy: &RetryPolicy,
+    attempt: &mut u32,
+    last_error: &mut Option<Error>,
+) -> Option<Result<T>> {
+    if !policy.is_retryable(&error) {
+        return Some(Err(error));
+    }
+
+    *last_error = Some(error);
+    *attempt += 1;
+    None
+}
+
 /// Retry executor - wraps a future with retry logic
 pub async fn retry_with_policy<F, Fut, T>(policy: &RetryPolicy, mut operation: F) -> Result<T>
 where
@@ -160,17 +184,12 @@ where
         match operation().await {
             Ok(result) => return Ok(result),
             Err(error) => {
-                if !policy.is_retryable(&error) {
-                    return Err(error);
+                if let Some(result) =
+                    handle_retry_result(error, policy, &mut attempt, &mut last_error)
+                {
+                    return result;
                 }
-
-                last_error = Some(error);
-                attempt += 1;
-
-                if attempt < policy.max_attempts {
-                    let backoff = policy.backoff_duration(attempt - 1);
-                    tokio::time::sleep(backoff).await;
-                }
+                apply_backoff_delay(policy, attempt, policy.max_attempts).await;
             }
         }
     }

@@ -33,6 +33,7 @@ rand = "0.8"
 tempfile = "3.8"
 proptest = "1.4"
 criterion = { version = "0.5", features = ["async_tokio"] }
+mockito = "1.2"
 
 [[bench]]
 name = "dispatch_benchmark"

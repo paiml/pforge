@@ -238,4 +238,50 @@ mod tests {
 
         // Registry is accessible (test passes if no panic)
     }
+
+    #[tokio::test]
+    async fn test_register_handlers_pipeline() {
+        let mut config = create_test_config();
+        config.tools.push(ToolDef::Pipeline {
+            name: "test_pipeline".to_string(),
+            description: "Test pipeline handler".to_string(),
+            steps: vec![],
+        });
+
+        let server = McpServer::new(config);
+        let result = server.register_handlers().await;
+
+        // Should succeed (pipeline handler pending)
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_server_with_multiple_tools() {
+        let mut config = create_test_config();
+
+        config.tools.push(ToolDef::Cli {
+            name: "cli1".to_string(),
+            description: "CLI 1".to_string(),
+            command: "echo".to_string(),
+            args: vec![],
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            stream: false,
+        });
+
+        config.tools.push(ToolDef::Http {
+            name: "http1".to_string(),
+            description: "HTTP 1".to_string(),
+            endpoint: "https://example.com".to_string(),
+            method: pforge_config::HttpMethod::Get,
+            headers: std::collections::HashMap::new(),
+            auth: None,
+        });
+
+        let server = McpServer::new(config);
+        assert_eq!(server.config.tools.len(), 2);
+
+        let result = server.register_handlers().await;
+        assert!(result.is_ok());
+    }
 }

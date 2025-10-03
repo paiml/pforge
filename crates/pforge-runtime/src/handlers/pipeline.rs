@@ -284,4 +284,151 @@ mod tests {
         assert!(json.contains("\"tool\":\"test\""));
         assert!(json.contains("\"success\":true"));
     }
+
+    #[tokio::test]
+    async fn test_pipeline_execute_simple() {
+        use crate::{Handler, HandlerRegistry};
+        use schemars::JsonSchema;
+
+        // Create a simple test handler
+        #[derive(Debug, serde::Deserialize, JsonSchema)]
+        struct TestInput {
+            value: String,
+        }
+
+        #[derive(Debug, serde::Serialize, JsonSchema)]
+        struct TestOutput {
+            result: String,
+        }
+
+        struct TestHandler;
+
+        #[async_trait::async_trait]
+        impl Handler for TestHandler {
+            type Input = TestInput;
+            type Output = TestOutput;
+            type Error = crate::Error;
+
+            async fn handle(&self, input: Self::Input) -> crate::Result<Self::Output> {
+                Ok(TestOutput {
+                    result: format!("processed: {}", input.value),
+                })
+            }
+        }
+
+        // Setup registry
+        let mut registry = HandlerRegistry::new();
+        registry.register("test_tool", TestHandler);
+
+        // Create pipeline with one step
+        let handler = PipelineHandler::new(vec![PipelineStep {
+            tool: "test_tool".to_string(),
+            input: Some(serde_json::json!({"value": "hello"})),
+            output_var: Some("result".to_string()),
+            condition: None,
+            error_policy: ErrorPolicy::FailFast,
+        }]);
+
+        let input = PipelineInput {
+            variables: HashMap::new(),
+        };
+
+        let output = handler.execute(input, &registry).await.unwrap();
+
+        assert_eq!(output.results.len(), 1);
+        assert!(output.results[0].success);
+        assert!(output.variables.contains_key("result"));
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_execute_with_condition_skip() {
+        use crate::HandlerRegistry;
+
+        let registry = HandlerRegistry::new();
+
+        let handler = PipelineHandler::new(vec![PipelineStep {
+            tool: "nonexistent".to_string(),
+            input: None,
+            output_var: None,
+            condition: Some("missing_var".to_string()),
+            error_policy: ErrorPolicy::FailFast,
+        }]);
+
+        let input = PipelineInput {
+            variables: HashMap::new(),
+        };
+
+        let output = handler.execute(input, &registry).await.unwrap();
+
+        // Step should be skipped due to failed condition
+        assert_eq!(output.results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_execute_continue_on_error() {
+        use crate::HandlerRegistry;
+
+        let registry = HandlerRegistry::new();
+
+        let handler = PipelineHandler::new(vec![
+            PipelineStep {
+                tool: "nonexistent1".to_string(),
+                input: None,
+                output_var: None,
+                condition: None,
+                error_policy: ErrorPolicy::Continue,
+            },
+            PipelineStep {
+                tool: "nonexistent2".to_string(),
+                input: None,
+                output_var: None,
+                condition: None,
+                error_policy: ErrorPolicy::Continue,
+            },
+        ]);
+
+        let input = PipelineInput {
+            variables: HashMap::new(),
+        };
+
+        let output = handler.execute(input, &registry).await.unwrap();
+
+        // Both steps should fail but continue
+        assert_eq!(output.results.len(), 2);
+        assert!(!output.results[0].success);
+        assert!(!output.results[1].success);
+    }
+
+    #[tokio::test]
+    async fn test_pipeline_execute_fail_fast() {
+        use crate::HandlerRegistry;
+
+        let registry = HandlerRegistry::new();
+
+        let handler = PipelineHandler::new(vec![
+            PipelineStep {
+                tool: "nonexistent1".to_string(),
+                input: None,
+                output_var: None,
+                condition: None,
+                error_policy: ErrorPolicy::FailFast,
+            },
+            PipelineStep {
+                tool: "nonexistent2".to_string(),
+                input: None,
+                output_var: None,
+                condition: None,
+                error_policy: ErrorPolicy::FailFast,
+            },
+        ]);
+
+        let input = PipelineInput {
+            variables: HashMap::new(),
+        };
+
+        let result = handler.execute(input, &registry).await;
+
+        // Should fail on first error
+        assert!(result.is_err());
+    }
 }
