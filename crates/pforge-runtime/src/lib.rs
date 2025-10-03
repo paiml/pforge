@@ -75,6 +75,7 @@ pub mod registry;
 pub mod resource;
 pub mod server;
 pub mod state;
+pub mod telemetry;
 pub mod timeout;
 pub mod transport;
 
@@ -91,6 +92,9 @@ pub use registry::HandlerRegistry;
 pub use resource::{ResourceHandler, ResourceManager};
 pub use server::McpServer;
 pub use state::{MemoryStateManager, SledStateManager, StateManager};
+pub use telemetry::{
+    ComponentHealth, HealthCheck, HealthStatus, MetricsCollector, TelemetryMiddleware,
+};
 pub use timeout::{
     retry_with_policy, with_timeout, RetryMiddleware, RetryPolicy, TimeoutMiddleware,
 };

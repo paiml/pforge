@@ -1,0 +1,66 @@
+forge:
+  name: telemetry-server
+  version: 0.1.0
+  transport: stdio
+  optimization: release
+
+tools:
+  - type: native
+    name: get_metrics
+    description: "Get Prometheus metrics in text format"
+    handler:
+      path: handlers::metrics::GetMetricsHandler
+    params: {}
+    timeout_ms: 1000
+
+  - type: native
+    name: get_health
+    description: "Get health check status"
+    handler:
+      path: handlers::health::GetHealthHandler
+    params: {}
+    timeout_ms: 1000
+
+  - type: native
+    name: set_component_health
+    description: "Set health status for a component"
+    handler:
+      path: handlers::health::SetComponentHealthHandler
+    params:
+      component:
+        type: string
+        description: "Component name"
+        required: true
+      status:
+        type: string
+        description: "Health status (Healthy, Degraded, Unhealthy)"
+        required: true
+      message:
+        type: string
+        description: "Optional message"
+        required: false
+    timeout_ms: 1000
+
+  - type: native
+    name: echo
+    description: "Echo handler for testing metrics collection"
+    handler:
+      path: handlers::echo::EchoHandler
+    params:
+      message:
+        type: string
+        description: "Message to echo"
+        required: true
+      delay_ms:
+        type: number
+        description: "Optional delay in milliseconds"
+        required: false
+    timeout_ms: 5000
+
+  - type: native
+    name: error_test
+    description: "Handler that always fails (for testing error metrics)"
+    handler:
+      path: handlers::echo::ErrorTestHandler
+    params: {}
+    timeout_ms: 1000

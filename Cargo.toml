@@ -9,6 +9,7 @@ members = [
     "crates/pforge-bridge",
     "crates/pforge-integration-tests",
     "examples/calculator",
+    "examples/telemetry-server",
 ]
 exclude = ["fuzz"]
 
