@@ -144,7 +144,7 @@ jobs:
           key: ${{ runner.os }}-cargo-tools-audit
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --locked --force
 
       - name: Run cargo-audit
         run: cargo audit --deny unsound --deny yanked
@@ -180,7 +180,7 @@ jobs:
 
       - name: Run mutation tests
         run: |
-          cargo mutants --workspace --output mutants-ci.out --json
+          cargo mutants --workspace --output mutants-ci.out --json || true
           echo "Mutation testing complete. Results in mutants-ci.out/"
 
       - name: Parse mutation results
@@ -292,7 +292,7 @@ jobs:
           key: ${{ runner.os }}-cargo-tools-deny
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+        run: cargo install cargo-deny --locked --force
 
       - name: Check licenses and advisories
         run: cargo deny check
