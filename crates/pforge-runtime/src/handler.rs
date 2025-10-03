@@ -122,3 +122,63 @@ pub trait Handler: Send + Sync + 'static {
         schemars::schema_for!(Self::Output)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use schemars::JsonSchema;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Deserialize, JsonSchema)]
+    struct TestInput {
+        value: i32,
+    }
+
+    #[derive(Debug, Serialize, JsonSchema)]
+    struct TestOutput {
+        result: i32,
+    }
+
+    struct TestHandler;
+
+    #[async_trait]
+    impl Handler for TestHandler {
+        type Input = TestInput;
+        type Output = TestOutput;
+        type Error = crate::Error;
+
+        async fn handle(&self, input: Self::Input) -> crate::Result<Self::Output> {
+            Ok(TestOutput {
+                result: input.value * 2,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_handler_schema_not_default() {
+        // Test that schemas are NOT Default::default() - kills the mutant
+        let input_schema = TestHandler::input_schema();
+        let default_schema = schemars::schema::RootSchema::default();
+
+        assert_ne!(
+            serde_json::to_string(&input_schema).unwrap(),
+            serde_json::to_string(&default_schema).unwrap(),
+            "Handler::input_schema() must not return Default::default()"
+        );
+
+        let output_schema = TestHandler::output_schema();
+        assert_ne!(
+            serde_json::to_string(&output_schema).unwrap(),
+            serde_json::to_string(&default_schema).unwrap(),
+            "Handler::output_schema() must not return Default::default()"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handler_execution() {
+        let handler = TestHandler;
+        let input = TestInput { value: 21 };
+        let result = handler.handle(input).await.unwrap();
+        assert_eq!(result.result, 42);
+    }
+}

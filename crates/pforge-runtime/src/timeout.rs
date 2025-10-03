@@ -344,4 +344,94 @@ mod tests {
         assert_eq!(result.unwrap(), 100);
         assert_eq!(counter.load(Ordering::SeqCst), 3);
     }
+
+    #[test]
+    fn test_backoff_multiplier_exact() {
+        // Kills mutants that change * to + or / in backoff calculation
+        let policy = RetryPolicy::new(5)
+            .with_backoff(Duration::from_millis(100), Duration::from_secs(10))
+            .with_multiplier(3.0)
+            .with_jitter(false);
+
+        // Verify exponential backoff: 100 * 3^0 = 100, 100 * 3^1 = 300, 100 * 3^2 = 900
+        assert_eq!(policy.backoff_duration(0).as_millis(), 100);
+        assert_eq!(policy.backoff_duration(1).as_millis(), 300);
+        assert_eq!(policy.backoff_duration(2).as_millis(), 900);
+        assert_eq!(policy.backoff_duration(3).as_millis(), 2700);
+    }
+
+    #[test]
+    fn test_is_retryable_logic() {
+        // Kills mutants that change || to && in is_retryable
+        let policy = RetryPolicy::new(3);
+
+        // Should retry on timeout errors
+        assert!(policy.is_retryable(&Error::Handler("timeout error".to_string())));
+        assert!(policy.is_retryable(&Error::Handler("timed out".to_string())));
+        assert!(policy.is_retryable(&Error::Handler("connection failed".to_string())));
+        assert!(policy.is_retryable(&Error::Handler("temporary issue".to_string())));
+
+        // Should NOT retry on other errors
+        assert!(!policy.is_retryable(&Error::Handler("fatal error".to_string())));
+        assert!(!policy.is_retryable(&Error::Timeout));
+    }
+
+    #[tokio::test]
+    async fn test_retry_attempt_comparison() {
+        // Kills mutants that change < to == or > in retry loop
+        let counter = Arc::new(AtomicU32::new(0));
+        let counter_clone = counter.clone();
+
+        let policy = RetryPolicy::new(5) // Exactly 5 attempts
+            .with_backoff(Duration::from_millis(1), Duration::from_millis(10))
+            .with_jitter(false);
+
+        let _result = retry_with_policy(&policy, || {
+            let counter = counter_clone.clone();
+            async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Err::<(), _>(Error::Handler("timeout error".to_string()))
+            }
+        })
+        .await;
+
+        // Must execute exactly max_attempts times (not less, not more)
+        assert_eq!(counter.load(Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn test_retry_backoff_calculation() {
+        // Kills mutants that change - to + or / in backoff calculation (attempt - 1)
+        let policy = RetryPolicy::new(3)
+            .with_backoff(Duration::from_millis(100), Duration::from_secs(1))
+            .with_multiplier(2.0)
+            .with_jitter(false);
+
+        let counter = Arc::new(AtomicU32::new(0));
+        let counter_clone = counter.clone();
+        let start = std::time::Instant::now();
+
+        let _result = retry_with_policy(&policy, || {
+            let c = counter_clone.clone();
+            async move {
+                c.fetch_add(1, Ordering::SeqCst);
+                Err::<(), _>(Error::Handler("timeout error".to_string()))
+            }
+        })
+        .await;
+
+        // With 3 attempts: attempt 0 (no sleep), attempt 1 (sleep 100ms), attempt 2 (sleep 200ms)
+        // Total time should be ~300ms, not 0ms (if backoff broken) or 600ms+ (if calculation wrong)
+        let total_time = start.elapsed();
+        assert!(
+            total_time >= Duration::from_millis(250),
+            "Total time too short: {:?}",
+            total_time
+        );
+        assert!(
+            total_time < Duration::from_millis(500),
+            "Total time too long: {:?}",
+            total_time
+        );
+    }
 }

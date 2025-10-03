@@ -135,3 +135,57 @@ jobs:
 
       - name: Check doc tests
         run: cargo test --doc
+
+  mutation:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+
+      - name: Run mutation tests
+        run: |
+          cargo mutants --workspace --output mutants-ci.out --json
+          echo "Mutation testing complete. Results in mutants-ci.out/"
+
+      - name: Parse mutation results
+        id: mutants
+        run: |
+          CAUGHT=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants-ci.out/mutants-ci.out/outcomes.json)
+          MISSED=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants-ci.out/mutants-ci.out/outcomes.json)
+          TOTAL=$((CAUGHT + MISSED))
+          if [ $TOTAL -gt 0 ]; then
+            RATE=$((CAUGHT * 100 / TOTAL))
+          else
+            RATE=0
+          fi
+          echo "caught=$CAUGHT" >> $GITHUB_OUTPUT
+          echo "missed=$MISSED" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "rate=$RATE" >> $GITHUB_OUTPUT
+          echo "Mutation Score: $RATE% ($CAUGHT/$TOTAL caught)"
+
+      - name: Check mutation threshold
+        run: |
+          RATE=${{ steps.mutants.outputs.rate }}
+          THRESHOLD=80
+          if [ $RATE -lt $THRESHOLD ]; then
+            echo "::warning::Mutation score $RATE% is below threshold $THRESHOLD%"
+            echo "Caught: ${{ steps.mutants.outputs.caught }}"
+            echo "Missed: ${{ steps.mutants.outputs.missed }}"
+            echo "Target: 90%+"
+            # Don't fail CI yet - mutation testing is informational
+            # exit 1
+          else
+            echo "✓ Mutation score $RATE% meets threshold $THRESHOLD%"
+          fi
+
+      - name: Upload mutation results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: mutation-results
+          path: mutants-ci.out/

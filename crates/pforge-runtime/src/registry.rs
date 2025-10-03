@@ -308,4 +308,47 @@ mod tests {
         assert!(registry.has_handler("handler2"));
         assert!(registry.has_handler("handler3"));
     }
+
+    #[tokio::test]
+    async fn test_schema_not_default() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        let input_schema = registry.get_input_schema("test").unwrap();
+        let default_schema = schemars::schema::RootSchema::default();
+
+        // Schemas should NOT be Default::default() - this kills the mutant
+        assert_ne!(
+            serde_json::to_string(&input_schema).unwrap(),
+            serde_json::to_string(&default_schema).unwrap(),
+            "Input schema should not be Default::default()"
+        );
+
+        let output_schema = registry.get_output_schema("test").unwrap();
+        assert_ne!(
+            serde_json::to_string(&output_schema).unwrap(),
+            serde_json::to_string(&default_schema).unwrap(),
+            "Output schema should not be Default::default()"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_schema_properties() {
+        let mut registry = HandlerRegistry::new();
+        registry.register("test", TestHandler);
+
+        // Verify input schema has expected structure
+        let input_schema = registry.get_input_schema("test").unwrap();
+        assert!(
+            input_schema.schema.object.is_some(),
+            "Input schema should have object"
+        );
+
+        // Verify output schema has expected structure
+        let output_schema = registry.get_output_schema("test").unwrap();
+        assert!(
+            output_schema.schema.object.is_some(),
+            "Output schema should have object"
+        );
+    }
 }
