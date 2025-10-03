@@ -2,7 +2,9 @@
 
 A declarative framework for building Model Context Protocol (MCP) servers using YAML configuration.
 
-[![CI](https://github.com/paiml/pforge/workflows/CI/badge.svg)](https://github.com/paiml/pforge/actions)
+[![CI](https://github.com/paiml/pforge/actions/workflows/ci.yml/badge.svg)](https://github.com/paiml/pforge/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/pforge-cli.svg)](https://crates.io/crates/pforge-cli)
+[![crates.io](https://img.shields.io/crates/v/pforge-runtime.svg)](https://crates.io/crates/pforge-runtime)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## What is pforge?
@@ -79,18 +81,18 @@ See the [book](https://paiml.github.io/pforge) for detailed examples of each typ
 
 ## Project Status
 
-**Version:** 0.1.0
+**Version:** 0.1.1
 
 **Published crates:**
 - `pforge-config` - Configuration parsing
 - `pforge-macro` - Procedural macros
 - `pforge-runtime` - Core runtime (depends on pmcp)
 - `pforge-codegen` - Code generation
-- `pforge-cli` - CLI tool (pending rate limit)
+- `pforge-cli` - CLI tool
 
-**Test results:** 115 tests passing (90 unit/integration, 12 property-based, 8 quality gates, 5 doctests)
+**Test results:** 120+ tests passing (90+ unit/integration, 12 property-based, 8 quality gates, 5+ doctests)
 
-See [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for detailed progress (18/40 tickets complete).
+See [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) for detailed progress.
 
 ## Development
 

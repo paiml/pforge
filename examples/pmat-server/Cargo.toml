@@ -2,6 +2,7 @@
 name = "pmat-server"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 publish = false
 
 # This is a standalone example, not part of the workspace

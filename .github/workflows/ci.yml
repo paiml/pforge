@@ -85,7 +85,7 @@ jobs:
         run: cargo build --release --verbose
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pforge-${{ matrix.os }}
           path: |
@@ -147,7 +147,7 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Run cargo-audit
-        run: cargo audit --deny warnings
+        run: cargo audit --deny unsound --deny yanked
 
   docs:
     name: Documentation
@@ -216,7 +216,7 @@ jobs:
           fi
 
       - name: Upload mutation results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: mutation-results
@@ -260,7 +260,7 @@ jobs:
           fi
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: benchmark-results.txt

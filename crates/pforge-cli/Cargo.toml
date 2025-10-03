@@ -10,9 +10,11 @@ keywords.workspace = true
 categories.workspace = true
 homepage.workspace = true
 documentation.workspace = true
+readme = "README.md"
 include = [
     "src/**/*",
     "templates/**/*",
+    "README.md",
     "Cargo.toml",
 ]
 
