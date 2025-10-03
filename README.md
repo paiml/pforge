@@ -81,7 +81,7 @@ See the [book](https://paiml.github.io/pforge) for detailed examples of each typ
 
 ## Project Status
 
-**Version:** 0.1.1
+**Version:** 0.1.2
 
 **Published crates:**
 - `pforge-config` - Configuration parsing
