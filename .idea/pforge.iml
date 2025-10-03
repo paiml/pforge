@@ -3,6 +3,7 @@
   <component name="NewModuleRootManager" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/pforge-bridge/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-cli/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-cli/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-codegen/src" isTestSource="false" />

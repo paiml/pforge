@@ -1,0 +1,23 @@
+[package]
+name = "pforge-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Language bridge FFI for pforge"
+keywords.workspace = true
+categories.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+pforge-runtime = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.8"

@@ -6,6 +6,7 @@ members = [
     "crates/pforge-codegen",
     "crates/pforge-config",
     "crates/pforge-macro",
+    "crates/pforge-bridge",
     "crates/pforge-integration-tests",
     "examples/calculator",
 ]
