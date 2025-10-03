@@ -35,6 +35,7 @@ async-trait = "0.1"
 
 # Testing dependencies
 proptest = "1.4"
+tempfile = "3.8"
 
 # Internal crates
 pforge-runtime = { path = "crates/pforge-runtime", version = "0.1.0" }

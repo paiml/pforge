@@ -12,6 +12,7 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 tokio = { workspace = true }
 proptest = { workspace = true }
+tempfile = { workspace = true }
 
 [[test]]
 name = "integration"
@@ -20,3 +21,7 @@ path = "integration_test.rs"
 [[test]]
 name = "property"
 path = "property_test.rs"
+
+[[test]]
+name = "e2e"
+path = "e2e_test.rs"

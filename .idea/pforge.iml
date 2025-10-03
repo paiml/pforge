@@ -9,6 +9,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-codegen/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-config/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-macro/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/pforge-runtime/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-runtime/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/calculator/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
