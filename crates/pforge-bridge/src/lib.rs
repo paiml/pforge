@@ -78,7 +78,10 @@ pub unsafe extern "C" fn pforge_execute_handler(
             let mut boxed = data.into_boxed_slice();
             let data_ptr = boxed.as_mut_ptr();
             let data_len = boxed.len();
-            std::mem::forget(boxed); // Don't drop, caller will free
+            // SAFETY: Transfer ownership to C caller. Memory will be freed via pforge_free_result.
+            // This is the correct pattern for FFI memory management.
+            #[allow(clippy::mem_forget)]
+            std::mem::forget(boxed);
 
             FfiResult {
                 code: 0,
