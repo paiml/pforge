@@ -76,6 +76,7 @@ pub mod resource;
 pub mod server;
 pub mod state;
 pub mod timeout;
+pub mod transport;
 
 pub use error::{Error, Result};
 pub use handler::Handler;

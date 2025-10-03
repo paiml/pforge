@@ -20,7 +20,7 @@ tokio = { workspace = true }
 pforge-config = { workspace = true }
 
 # Runtime-specific dependencies
-pmcp = "1.6"
+pmcp = { version = "1.6", features = ["sse", "websocket"] }
 schemars = { version = "0.8", features = ["derive"] }
 rustc-hash = "2.0"
 dashmap = "6.0"
