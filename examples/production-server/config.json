@@ -1,0 +1,18 @@
+{
+  "server": {
+    "name": "production-server",
+    "version": "1.0.0",
+    "environment": "production"
+  },
+  "features": {
+    "state_management": true,
+    "logging": true,
+    "metrics": false,
+    "tracing": true
+  },
+  "limits": {
+    "max_request_size": "10MB",
+    "max_response_size": "50MB",
+    "timeout_seconds": 30
+  }
+}

@@ -1,0 +1,120 @@
+forge:
+  name: production-server
+  version: 1.0.0
+  transport: stdio
+  description: "Production-Ready MCP Server - Full Feature Showcase"
+  optimization: release
+
+# State management for persistent data
+state:
+  backend: memory
+  ttl_seconds: 3600
+  max_size: 10485760  # 10MB
+
+tools:
+  # Native Rust handler with state
+  - type: native
+    name: counter_increment
+    description: "Increment a named counter with state persistence"
+    handler:
+      path: handlers::counter::CounterHandler
+    params:
+      name:
+        type: string
+        required: true
+        description: "Counter name"
+      increment:
+        type: integer
+        required: false
+        default: 1
+        description: "Amount to increment by"
+    timeout_ms: 1000
+
+  # Native handler with complex validation
+  - type: native
+    name: data_processor
+    description: "Process and validate complex data structures"
+    handler:
+      path: handlers::processor::DataProcessor
+    params:
+      data:
+        type: object
+        required: true
+        description: "Data to process"
+      format:
+        type: string
+        required: false
+        default: "json"
+        enum: ["json", "yaml", "toml"]
+        description: "Output format"
+    timeout_ms: 5000
+
+  # CLI handler with streaming
+  - type: cli
+    name: log_stream
+    description: "Stream system logs in real-time"
+    command: journalctl
+    args:
+      - "-f"
+      - "-n"
+      - "10"
+    stream: true
+    timeout_ms: 30000
+
+  # HTTP handler with authentication
+  - type: http
+    name: api_fetch
+    description: "Fetch data from external API with auth"
+    endpoint: "https://api.github.com/repos/paiml/pforge"
+    method: GET
+    headers:
+      Accept: "application/vnd.github.v3+json"
+      User-Agent: "pforge-production-server/1.0"
+    timeout_ms: 10000
+
+  # Pipeline combining multiple tools
+  - type: pipeline
+    name: full_workflow
+    description: "Complete workflow using multiple tools"
+    steps:
+      - tool: counter_increment
+        params:
+          name: "workflow_runs"
+          increment: 1
+      - tool: data_processor
+        params:
+          data: {"status": "processing"}
+          format: "json"
+      - tool: api_fetch
+    params: {}
+
+# Resources for documentation and data
+resources:
+  - uri: "file://./README.md"
+    name: "server_documentation"
+    description: "Server documentation and usage guide"
+    mime_type: "text/markdown"
+
+  - uri: "file://./config.json"
+    name: "server_config"
+    description: "Server configuration file"
+    mime_type: "application/json"
+
+# Prompts for AI assistance
+prompts:
+  - name: "generate_report"
+    description: "Generate a comprehensive server status report"
+    arguments:
+      - name: "include_metrics"
+        description: "Include performance metrics"
+        required: false
+
+  - name: "troubleshoot"
+    description: "Get troubleshooting suggestions"
+    arguments:
+      - name: "error_code"
+        description: "Error code to troubleshoot"
+        required: true
+      - name: "context"
+        description: "Additional context"
+        required: false
