@@ -1,33 +1,46 @@
 mod handlers;
 
+use pforge_config::parse_config;
+use pforge_runtime::McpServer;
+use std::path::Path;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Hello World MCP Server v0.1.0");
-    println!("This example demonstrates:");
-    println!("- Native Rust handler (greet)");
-    println!("- Type-safe input/output");
-    println!("- Async execution");
-    println!();
-    println!("Available tools:");
-    println!("  greet(name, greeting?) - Greet a person");
-    println!();
-    println!("Try it with an MCP client!");
+    // Load configuration from pforge.yaml
+    let config = parse_config(Path::new("pforge.yaml"))?;
 
-    // In a real server, you would:
-    // 1. Create HandlerRegistry
-    // 2. Register handlers
-    // 3. Create McpServer with config
-    // 4. Run server.run().await
+    eprintln!("╔═══════════════════════════════════════╗");
+    eprintln!("║   Hello World MCP Server              ║");
+    eprintln!("║   Powered by pforge v{}           ║", env!("CARGO_PKG_VERSION"));
+    eprintln!("╚═══════════════════════════════════════╝");
+    eprintln!();
+    eprintln!("This example demonstrates:");
+    eprintln!("  ✓ Native Rust handler (greet)");
+    eprintln!("  ✓ CLI handler (whoami)");
+    eprintln!("  ✓ Type-safe input/output");
+    eprintln!("  ✓ Async execution");
+    eprintln!("  ✓ YAML configuration");
+    eprintln!();
 
-    // For now, demonstrate handler works
-    let handler = handlers::greet::GreetHandler;
-    let input = handlers::greet::GreetInput {
-        name: "pforge".to_string(),
-        greeting: "Welcome to".to_string(),
-    };
+    // Create MCP server from configuration
+    let server = McpServer::new(config);
 
-    let result = pforge_runtime::Handler::handle(&handler, input).await?;
-    println!("Test: {}", result.message);
+    // Get registry to register native handlers
+    let registry = server.registry();
+    {
+        let mut reg = registry.write().await;
+        reg.register("greet", handlers::greet::GreetHandler);
+        eprintln!("Registered native handler: greet");
+    }
+
+    eprintln!();
+    eprintln!("Available tools:");
+    eprintln!("  • greet(name, greeting?) - Greet a person");
+    eprintln!("  • whoami() - Get current username");
+    eprintln!();
+
+    // Run the server
+    server.run().await?;
 
     Ok(())
 }
