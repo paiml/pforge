@@ -1,0 +1,95 @@
+name: Fuzzing
+
+on:
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Duration per target (seconds)'
+        required: false
+        default: '300'
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  fuzz:
+    name: Fuzz Testing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libstdc++-11-dev build-essential
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Cache fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.sha }}
+          restore-keys: |
+            fuzz-corpus-
+
+      - name: Run fuzz_config_parser
+        run: |
+          cargo +nightly fuzz run fuzz_config_parser -- \
+            -max_total_time=${{ github.event.inputs.duration || '300' }} \
+            -runs=100000 \
+            -print_final_stats=1
+        continue-on-error: true
+        id: fuzz_config
+
+      - name: Run fuzz_handler_dispatch
+        run: |
+          cargo +nightly fuzz run fuzz_handler_dispatch -- \
+            -max_total_time=${{ github.event.inputs.duration || '300' }} \
+            -runs=100000 \
+            -print_final_stats=1
+        continue-on-error: true
+        id: fuzz_handler
+
+      - name: Run fuzz_validation
+        run: |
+          cargo +nightly fuzz run fuzz_validation -- \
+            -max_total_time=${{ github.event.inputs.duration || '300' }} \
+            -runs=100000 \
+            -print_final_stats=1
+        continue-on-error: true
+        id: fuzz_validation
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ github.sha }}
+          path: |
+            fuzz/artifacts/
+            fuzz/corpus/
+          retention-days: 90
+
+      - name: Check for crashes
+        run: |
+          if [ -d "fuzz/artifacts" ] && [ "$(ls -A fuzz/artifacts)" ]; then
+            echo "❌ Fuzzing found crashes!"
+            ls -R fuzz/artifacts
+            exit 1
+          else
+            echo "✅ No crashes found"
+          fi
+
+      - name: Save corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ github.sha }}
+          path: fuzz/corpus/
+          retention-days: 30

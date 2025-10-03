@@ -1,0 +1,45 @@
+[package]
+name = "pforge-cli-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+schemars = { version = "0.8", features = ["preserve_order"] }
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+arbitrary = { version = "1.3", features = ["derive"] }
+
+[dependencies.pforge-config]
+path = "../crates/pforge-config"
+
+[dependencies.pforge-runtime]
+path = "../crates/pforge-runtime"
+
+[[bin]]
+name = "fuzz_config_parser"
+path = "fuzz_targets/fuzz_config_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_handler_dispatch"
+path = "fuzz_targets/fuzz_handler_dispatch.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_validation"
+path = "fuzz_targets/fuzz_validation.rs"
+test = false
+doc = false
+bench = false
