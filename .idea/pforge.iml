@@ -12,6 +12,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-runtime/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/pforge-runtime/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/calculator/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/telemetry-server/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
