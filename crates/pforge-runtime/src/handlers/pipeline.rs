@@ -164,3 +164,124 @@ impl PipelineHandler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pipeline_handler_new() {
+        let steps = vec![PipelineStep {
+            tool: "test_tool".to_string(),
+            input: None,
+            output_var: None,
+            condition: None,
+            error_policy: ErrorPolicy::FailFast,
+        }];
+
+        let handler = PipelineHandler::new(steps);
+        assert_eq!(handler.steps.len(), 1);
+        assert_eq!(handler.steps[0].tool, "test_tool");
+    }
+
+    #[test]
+    fn test_error_policy_equality() {
+        assert_eq!(ErrorPolicy::FailFast, ErrorPolicy::FailFast);
+        assert_eq!(ErrorPolicy::Continue, ErrorPolicy::Continue);
+        assert_ne!(ErrorPolicy::FailFast, ErrorPolicy::Continue);
+    }
+
+    #[test]
+    fn test_evaluate_condition_exists() {
+        let handler = PipelineHandler::new(vec![]);
+        let mut vars = HashMap::new();
+        vars.insert("key".to_string(), serde_json::json!("value"));
+
+        assert!(handler.evaluate_condition("key", &vars));
+        assert!(!handler.evaluate_condition("missing", &vars));
+    }
+
+    #[test]
+    fn test_evaluate_condition_not_exists() {
+        let handler = PipelineHandler::new(vec![]);
+        let mut vars = HashMap::new();
+        vars.insert("key".to_string(), serde_json::json!("value"));
+
+        assert!(!handler.evaluate_condition("!key", &vars));
+        assert!(handler.evaluate_condition("!missing", &vars));
+    }
+
+    #[test]
+    fn test_interpolate_variables_string() {
+        let handler = PipelineHandler::new(vec![]);
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), serde_json::json!("Alice"));
+
+        let template = serde_json::json!("Hello {{name}}!");
+        let result = handler.interpolate_variables(&template, &vars);
+
+        assert_eq!(result, serde_json::json!("Hello Alice!"));
+    }
+
+    #[test]
+    fn test_interpolate_variables_object() {
+        let handler = PipelineHandler::new(vec![]);
+        let mut vars = HashMap::new();
+        vars.insert("user".to_string(), serde_json::json!("Bob"));
+
+        let template = serde_json::json!({"greeting": "Hi {{user}}"});
+        let result = handler.interpolate_variables(&template, &vars);
+
+        assert_eq!(result["greeting"], "Hi Bob");
+    }
+
+    #[test]
+    fn test_interpolate_variables_array() {
+        let handler = PipelineHandler::new(vec![]);
+        let mut vars = HashMap::new();
+        vars.insert("item".to_string(), serde_json::json!("test"));
+
+        let template = serde_json::json!(["{{item}}", "other"]);
+        let result = handler.interpolate_variables(&template, &vars);
+
+        assert_eq!(result[0], "test");
+        assert_eq!(result[1], "other");
+    }
+
+    #[test]
+    fn test_interpolate_variables_no_match() {
+        let handler = PipelineHandler::new(vec![]);
+        let vars = HashMap::new();
+
+        let template = serde_json::json!("Hello {{missing}}!");
+        let result = handler.interpolate_variables(&template, &vars);
+
+        assert_eq!(result, serde_json::json!("Hello {{missing}}!"));
+    }
+
+    #[test]
+    fn test_pipeline_input_deserialization() {
+        let json = r#"{"variables": {"key": "value"}}"#;
+        let input: PipelineInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(input.variables.len(), 1);
+        assert_eq!(input.variables["key"], "value");
+    }
+
+    #[test]
+    fn test_pipeline_output_serialization() {
+        let output = PipelineOutput {
+            results: vec![StepResult {
+                tool: "test".to_string(),
+                success: true,
+                output: Some(serde_json::json!({"result": "ok"})),
+                error: None,
+            }],
+            variables: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("\"tool\":\"test\""));
+        assert!(json.contains("\"success\":true"));
+    }
+}

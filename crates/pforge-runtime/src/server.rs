@@ -138,3 +138,104 @@ impl McpServer {
         self.registry.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pforge_config::{ForgeMetadata, ParamSchema, ToolDef, TransportType};
+
+    fn create_test_config() -> ForgeConfig {
+        ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test-server".to_string(),
+                version: "0.1.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: pforge_config::OptimizationLevel::Debug,
+            },
+            tools: vec![],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        }
+    }
+
+    #[test]
+    fn test_server_new() {
+        let config = create_test_config();
+        let server = McpServer::new(config);
+
+        assert_eq!(server.config.forge.name, "test-server");
+        assert_eq!(server.config.forge.version, "0.1.0");
+    }
+
+    #[tokio::test]
+    async fn test_register_handlers_cli() {
+        let mut config = create_test_config();
+        config.tools.push(ToolDef::Cli {
+            name: "test_cli".to_string(),
+            description: "Test CLI handler".to_string(),
+            command: "echo".to_string(),
+            args: vec!["hello".to_string()],
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            stream: false,
+        });
+
+        let server = McpServer::new(config);
+        let result = server.register_handlers().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_register_handlers_http() {
+        let mut config = create_test_config();
+        config.tools.push(ToolDef::Http {
+            name: "test_http".to_string(),
+            description: "Test HTTP handler".to_string(),
+            endpoint: "https://api.example.com".to_string(),
+            method: pforge_config::HttpMethod::Get,
+            headers: std::collections::HashMap::new(),
+            auth: None,
+        });
+
+        let server = McpServer::new(config);
+        let result = server.register_handlers().await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_register_handlers_native() {
+        let mut config = create_test_config();
+        config.tools.push(ToolDef::Native {
+            name: "test_native".to_string(),
+            description: "Test native handler".to_string(),
+            handler: pforge_config::HandlerRef {
+                path: "handlers::test::TestHandler".to_string(),
+                inline: None,
+            },
+            params: ParamSchema {
+                fields: std::collections::HashMap::new(),
+            },
+            timeout_ms: Some(5000),
+        });
+
+        let server = McpServer::new(config);
+        let result = server.register_handlers().await;
+
+        // Should succeed (native handlers registered by generated code)
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_registry_access() {
+        let config = create_test_config();
+        let server = McpServer::new(config);
+
+        let registry = server.registry();
+        let _lock = registry.read().await;
+
+        // Registry is accessible (test passes if no panic)
+    }
+}

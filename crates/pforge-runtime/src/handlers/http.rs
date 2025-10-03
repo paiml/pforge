@@ -126,3 +126,77 @@ impl HttpHandler {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_http_handler_new() {
+        let handler = HttpHandler::new(
+            "https://api.example.com".to_string(),
+            HttpMethod::Get,
+            HashMap::new(),
+            None,
+        );
+
+        assert_eq!(handler.endpoint, "https://api.example.com");
+        assert!(handler.headers.is_empty());
+        assert!(handler.auth.is_none());
+    }
+
+    #[test]
+    fn test_http_handler_new_with_auth() {
+        let mut headers = HashMap::new();
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+
+        let auth = Some(AuthConfig::Bearer {
+            token: "test_token".to_string(),
+        });
+
+        let handler = HttpHandler::new(
+            "https://api.example.com".to_string(),
+            HttpMethod::Post,
+            headers.clone(),
+            auth,
+        );
+
+        assert_eq!(handler.endpoint, "https://api.example.com");
+        assert_eq!(handler.headers.len(), 1);
+        assert!(handler.auth.is_some());
+    }
+
+    #[test]
+    fn test_http_input_with_body() {
+        let json = r#"{"body": {"key": "value"}, "query": {}}"#;
+        let input: HttpInput = serde_json::from_str(json).unwrap();
+
+        assert!(input.body.is_some());
+        assert_eq!(input.body.unwrap()["key"], "value");
+    }
+
+    #[test]
+    fn test_http_input_with_query() {
+        let json = r#"{"body": null, "query": {"param": "value"}}"#;
+        let input: HttpInput = serde_json::from_str(json).unwrap();
+
+        assert!(input.body.is_none());
+        assert_eq!(input.query.get("param"), Some(&"value".to_string()));
+    }
+
+    #[test]
+    fn test_http_output_serialization() {
+        let mut headers = HashMap::new();
+        headers.insert("content-type".to_string(), "application/json".to_string());
+
+        let output = HttpOutput {
+            status: 200,
+            body: serde_json::json!({"result": "success"}),
+            headers,
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("\"status\":200"));
+        assert!(json.contains("\"result\":\"success\""));
+    }
+}
