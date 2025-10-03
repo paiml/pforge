@@ -1,0 +1,79 @@
+forge:
+  name: pmat-server
+  version: 0.1.0
+  transport: stdio
+  description: "PMAT Code Analysis MCP Server - Quality metrics and technical debt analysis"
+
+tools:
+  # Complexity analysis
+  - type: cli
+    name: analyze_complexity
+    description: "Analyze cyclomatic complexity of code"
+    command: pmat
+    args:
+      - analyze
+      - complexity
+      - "--max"
+      - "20"
+      - "--format"
+      - "json"
+    stream: false
+
+  # Technical debt detection
+  - type: cli
+    name: analyze_satd
+    description: "Detect Self-Admitted Technical Debt (SATD) comments"
+    command: pmat
+    args:
+      - analyze
+      - satd
+      - "--max"
+      - "0"
+      - "--format"
+      - "json"
+    stream: false
+
+  # Technical Debt Grade
+  - type: cli
+    name: analyze_tdg
+    description: "Calculate Technical Debt Grade (TDG)"
+    command: pmat
+    args:
+      - analyze
+      - tdg
+      - "--min"
+      - "0.75"
+      - "--format"
+      - "json"
+    stream: false
+
+  # Cognitive complexity
+  - type: cli
+    name: analyze_cognitive
+    description: "Analyze cognitive complexity"
+    command: pmat
+    args:
+      - analyze
+      - cognitive
+      - "--max"
+      - "15"
+      - "--format"
+      - "json"
+    stream: false
+
+  # Code metrics summary
+  - type: native
+    name: metrics_summary
+    description: "Generate comprehensive code metrics summary"
+    handler:
+      path: handlers::metrics::MetricsSummary
+    params:
+      path:
+        type: string
+        required: true
+        description: "Path to analyze (file or directory)"
+      include_history:
+        type: boolean
+        required: false
+        default: false
+        description: "Include historical trend data"
