@@ -180,10 +180,10 @@ proptest! {
     #[test]
     fn config_serialization_roundtrip(config in arb_forge_config()) {
         // Serialize to YAML
-        let yaml = serde_yml::to_string(&config).unwrap();
+        let yaml = serde_yaml::to_string(&config).unwrap();
 
         // Deserialize back
-        let parsed: ForgeConfig = serde_yml::from_str(&yaml).unwrap();
+        let parsed: ForgeConfig = serde_yaml::from_str(&yaml).unwrap();
 
         // Key properties should be preserved
         prop_assert_eq!(&config.forge.name, &parsed.forge.name);
@@ -223,8 +223,8 @@ proptest! {
     #[test]
     fn transport_types_valid(config in arb_forge_config()) {
         // All transport types should serialize/deserialize correctly
-        let yaml = serde_yml::to_string(&config.forge.transport).unwrap();
-        let parsed: TransportType = serde_yml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml::to_string(&config.forge.transport).unwrap();
+        let parsed: TransportType = serde_yaml::from_str(&yaml).unwrap();
         prop_assert_eq!(config.forge.transport, parsed);
     }
 
@@ -246,16 +246,16 @@ proptest! {
     #[test]
     fn http_methods_valid(method in arb_http_method()) {
         // Should serialize and deserialize correctly
-        let yaml = serde_yml::to_string(&method).unwrap();
-        let parsed: HttpMethod = serde_yml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml::to_string(&method).unwrap();
+        let parsed: HttpMethod = serde_yaml::from_str(&yaml).unwrap();
         prop_assert_eq!(method, parsed);
     }
 
     /// Property: Optimization levels are consistent
     #[test]
     fn optimization_levels_consistent(level in arb_optimization_level()) {
-        let yaml = serde_yml::to_string(&level).unwrap();
-        let parsed: OptimizationLevel = serde_yml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml::to_string(&level).unwrap();
+        let parsed: OptimizationLevel = serde_yaml::from_str(&yaml).unwrap();
         prop_assert_eq!(level, parsed);
     }
 }

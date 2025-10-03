@@ -9,8 +9,7 @@ pforge-runtime = { workspace = true }
 pforge-config = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = "0.9"
-serde_yml = { workspace = true }
+serde_yaml = { workspace = true }
 tokio = { workspace = true }
 proptest = { workspace = true }
 

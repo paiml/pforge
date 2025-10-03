@@ -9,7 +9,7 @@ pub fn parse_config(path: &Path) -> Result<ForgeConfig> {
 }
 
 pub fn parse_config_from_str(yaml: &str) -> Result<ForgeConfig> {
-    serde_yml::from_str(yaml).map_err(|e| ConfigError::ParseError(e.to_string()))
+    serde_yaml::from_str(yaml).map_err(|e| ConfigError::ParseError(e.to_string()))
 }
 
 #[cfg(test)]
