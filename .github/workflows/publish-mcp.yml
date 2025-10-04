@@ -2,7 +2,7 @@ name: Publish to MCP Registry
 
 on:
   push:
-    tags: ["v*"]  # Triggers on version tags like v0.1.2
+    tags: ["mcp-v*"]  # Triggers on MCP version tags like mcp-v0.1.2
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         run: cargo build --release --package pforge-cli
 
       - name: Publish to crates.io
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/mcp-v')
         run: |
           cargo publish --package pforge-config --token ${{ secrets.CARGO_TOKEN }} || true
           sleep 10
@@ -43,7 +43,9 @@ jobs:
 
       - name: Install MCP Publisher
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/latest/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/download/v1.2.3/mcp-publisher_1.2.3_${PLATFORM}_${ARCH}.tar.gz" | tar xz
           chmod +x mcp-publisher
 
       - name: Login to MCP Registry

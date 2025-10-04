@@ -7,7 +7,21 @@ A declarative framework for building Model Context Protocol (MCP) servers using 
 [![crates.io](https://img.shields.io/crates/v/pforge-runtime.svg)](https://crates.io/crates/pforge-runtime)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**MCP Server:** io.github.paiml/pforge
+## MCP Server
+
+**Registry Name:** [io.github.paiml/pforge](https://registry.modelcontextprotocol.io/)
+
+pforge is available in the Model Context Protocol (MCP) Registry. Install it via:
+
+```bash
+# Via Cargo (recommended)
+cargo install pforge-cli
+
+# Then run as MCP server
+pforge serve
+```
+
+**For Maintainers:** See [MCP Registry Publishing Guide](docs/mcp-registry-publish.md) for publishing instructions.
 
 ## What is pforge?
 
