@@ -7,6 +7,8 @@ A declarative framework for building Model Context Protocol (MCP) servers using 
 [![crates.io](https://img.shields.io/crates/v/pforge-runtime.svg)](https://crates.io/crates/pforge-runtime)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**MCP Server:** io.github.paiml/pforge
+
 ## What is pforge?
 
 pforge lets you define MCP servers in YAML instead of writing boilerplate code. It's built on top of [pmcp](https://github.com/paiml/pmcp) (rust-mcp-sdk) and generates optimized Rust code from your configuration.

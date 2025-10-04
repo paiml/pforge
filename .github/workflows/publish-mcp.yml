@@ -1,0 +1,53 @@
+name: Publish to MCP Registry
+
+on:
+  push:
+    tags: ["v*"]  # Triggers on version tags like v0.1.2
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for OIDC authentication
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run tests
+        run: cargo test --all --release
+
+      - name: Build release
+        run: cargo build --release --package pforge-cli
+
+      - name: Publish to crates.io
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cargo publish --package pforge-config --token ${{ secrets.CARGO_TOKEN }} || true
+          sleep 10
+          cargo publish --package pforge-macro --token ${{ secrets.CARGO_TOKEN }} || true
+          sleep 10
+          cargo publish --package pforge-runtime --token ${{ secrets.CARGO_TOKEN }} || true
+          sleep 10
+          cargo publish --package pforge-codegen --token ${{ secrets.CARGO_TOKEN }} || true
+          sleep 10
+          cargo publish --package pforge-cli --token ${{ secrets.CARGO_TOKEN }} || true
+        continue-on-error: true
+
+      - name: Install MCP Publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/download/latest/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Login to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

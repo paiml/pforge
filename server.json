@@ -1,0 +1,38 @@
+{
+  "$schema": "https://registry.modelcontextprotocol.io/v0/server-schema.json",
+  "name": "io.github.paiml/pforge",
+  "displayName": "pforge",
+  "description": "Zero-boilerplate MCP server framework with declarative YAML configuration",
+  "longDescription": "pforge is a declarative framework for building Model Context Protocol (MCP) servers using YAML configuration. Built on pmcp with strict PMAT quality enforcement, it provides Cargo Lambda simplicity × Flask ergonomics × Rust guarantees.",
+  "homepage": "https://github.com/paiml/pforge",
+  "repository": "https://github.com/paiml/pforge",
+  "license": "MIT",
+  "deployment": {
+    "type": "package",
+    "package": {
+      "name": "pforge-cli",
+      "type": "cargo",
+      "validation": {
+        "type": "readme",
+        "text": "io.github.paiml/pforge"
+      }
+    },
+    "run": {
+      "command": "pforge",
+      "args": ["serve"]
+    }
+  },
+  "tags": [
+    "framework",
+    "codegen",
+    "yaml",
+    "declarative",
+    "rust",
+    "tdd"
+  ],
+  "capabilities": {
+    "tools": true,
+    "resources": true,
+    "prompts": true
+  }
+}
