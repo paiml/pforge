@@ -244,10 +244,47 @@ pforge follows semantic versioning:
 - GitHub Actions: `id-token: write` (for OIDC)
 - GitHub Actions: `contents: read` (for checkout)
 
+## Verification Queries
+
+After publishing, verify pforge is in the registry:
+
+### Search by name:
+```bash
+curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=pforge" | jq '.'
+```
+
+### Get server directly (note: `/` must be URL-encoded as `%2F`):
+```bash
+curl -s "https://registry.modelcontextprotocol.io/v0/servers/io.github.paiml%2Fpforge" | jq '.'
+```
+
+### Expected response:
+```json
+{
+  "server": {
+    "name": "io.github.paiml/pforge",
+    "description": "Zero-boilerplate MCP server framework with declarative YAML configuration",
+    "version": "0.1.2",
+    "repository": {
+      "url": "https://github.com/paiml/pforge",
+      "source": "github"
+    }
+  },
+  "_meta": {
+    "io.modelcontextprotocol.registry/official": {
+      "status": "active",
+      "publishedAt": "2025-10-04T14:21:46.420973Z",
+      "isLatest": true
+    }
+  }
+}
+```
+
 ## Resources
 
 - **MCP Registry**: https://registry.modelcontextprotocol.io/
 - **Registry API Docs**: https://registry.modelcontextprotocol.io/docs
+- **Registry OpenAPI**: https://registry.modelcontextprotocol.io/openapi.yaml
 - **Publishing Guide**: https://github.com/modelcontextprotocol/registry/blob/main/docs/guides/publishing/publish-server.md
 - **GitHub Actions**: https://github.com/modelcontextprotocol/registry/blob/main/docs/guides/publishing/github-actions.md
 - **Schema**: https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json
