@@ -2,9 +2,10 @@
 
 > Build MCP (Model Context Protocol) servers with TypeScript and Deno
 
-[![Tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)](./tests)
+[![Tests](https://img.shields.io/badge/tests-74%20passing-brightgreen)](./tests)
 [![Quality](https://img.shields.io/badge/SATD-0-brightgreen)](./docs)
 [![Complexity](https://img.shields.io/badge/complexity-%E2%89%A420-brightgreen)](./docs)
+[![Schema](https://img.shields.io/badge/schema-validation-blue)](./docs/schema-validation.md)
 
 A high-performance, type-safe bridge for building Model Context Protocol servers
 using TypeScript and Deno. Seamlessly integrates with the Rust pforge runtime
@@ -94,6 +95,7 @@ import { PforgeBridge } from "https://raw.githubusercontent.com/your-org/pforge/
 
 - **Generic Handlers**: Full TypeScript type inference
 - **Strict Type Checking**: Compile-time safety
+- **Runtime Schema Validation**: Built-in JSON schema validation ([docs](./docs/schema-validation.md))
 - **Result Types**:
   `{ success: true, data: T } | { success: false, error: string }`
 
@@ -360,6 +362,47 @@ bridge.register({
 });
 ```
 
+### Schema Validation
+
+Automatically validate input with runtime type checking. [Full documentation](./docs/schema-validation.md)
+
+```typescript
+import { SchemaBuilder } from "./schema.ts";
+
+bridge.register({
+  name: "create_user",
+  description: "Create a new user",
+  handler: (input: { name: string; age: number; email: string }) => ({
+    success: true,
+    data: { id: 123, ...input }
+  }),
+  inputSchema: SchemaBuilder.object({
+    name: SchemaBuilder.string({ minLength: 1, maxLength: 100 }),
+    age: SchemaBuilder.number({ min: 0, max: 120 }),
+    email: SchemaBuilder.string({ minLength: 5 }),
+  }, ["name", "age", "email"]), // Required fields
+});
+
+// Valid input - passes validation
+const result1 = await bridge.execute("create_user", {
+  name: "Alice",
+  age: 30,
+  email: "alice@example.com"
+});
+// => { success: true, data: { ... } }
+
+// Invalid input - fails validation
+const result2 = await bridge.execute("create_user", {
+  name: "Alice",
+  age: -5 // Invalid!
+});
+// => { success: false, error: "Validation failed: Field 'age' must be at least 0" }
+```
+
+**Supported types:** string (with minLength/maxLength), number (with min/max), boolean, array, object
+
+**See also:** [Complete Schema Validation Guide](./docs/schema-validation.md)
+
 ## 🧪 Testing
 
 ### Run All Tests
@@ -370,8 +413,8 @@ deno test --unstable-ffi --allow-ffi --allow-env --allow-read tests/
 
 ### Test Categories
 
-- **Unit Tests** (31 tests): Core functionality
-- **Integration Tests** (16 tests): End-to-end workflows
+- **Unit Tests** (42 tests): Core functionality
+- **Integration Tests** (22 tests): End-to-end workflows
 - **Property Tests** (10 tests): Memory safety, 1000+ iterations each
 
 ### Run Benchmarks

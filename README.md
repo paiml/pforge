@@ -81,6 +81,47 @@ pforge supports four handler types:
 
 See the [book](https://paiml.github.io/pforge) for detailed examples of each type.
 
+## Language Bridges
+
+pforge provides language bridges for building MCP servers in your preferred language:
+
+### Deno/TypeScript Bridge
+
+Build type-safe MCP servers using TypeScript and Deno with native performance:
+
+```typescript
+import { PforgeBridge } from "https://raw.githubusercontent.com/paiml/pforge/main/bridges/deno/bridge.ts";
+
+const bridge = new PforgeBridge();
+
+bridge.register({
+  name: "greet",
+  description: "Greet a user by name",
+  handler: (input: { name: string }) => ({
+    success: true,
+    data: { message: `Hello, ${input.name}!` },
+  }),
+});
+
+const result = await bridge.execute("greet", { name: "Alice" });
+console.log(result.data);
+```
+
+**Features:**
+- Type-safe handler definitions with TypeScript generics
+- Runtime schema validation with no external dependencies
+- O(1) handler lookup performance
+- Both sync and async handler support
+- 74+ tests passing with full quality gates
+
+**Documentation:** [bridges/deno/README.md](bridges/deno/README.md)
+
+### Coming Soon
+
+- Python bridge (FFI-based with asyncio support)
+- Go bridge (CGo-based with goroutine support)
+- Node.js bridge (Native addon with N-API)
+
 ## Documentation
 
 - **[Book](https://paiml.github.io/pforge)** - Complete guide with examples and comparisons

@@ -1,0 +1,137 @@
+{
+  "name": "@pforge/deno-bridge",
+  "version": "0.1.0",
+  "description": "High-performance, type-safe bridge for building Model Context Protocol servers using TypeScript and Deno",
+  "exports": {
+    ".": "./bridge.ts",
+    "./bridge": "./bridge.ts",
+    "./handler": "./handler.ts",
+    "./schema": "./schema.ts",
+    "./ffi": "./ffi.ts"
+  },
+  "tasks": {
+    "test": "deno test --unstable-ffi --allow-ffi --allow-env --allow-read tests/",
+    "test:unit": "deno test --unstable-ffi --allow-ffi --allow-env --allow-read tests/unit/",
+    "test:integration": "deno test --unstable-ffi --allow-ffi --allow-env --allow-read tests/integration/",
+    "test:property": "deno test --unstable-ffi --allow-ffi --allow-env --allow-read tests/property/",
+    "bench": "deno bench --unstable-ffi --allow-ffi --allow-env --allow-read benchmarks/",
+    "example": "deno run --unstable-ffi --allow-ffi --allow-env --allow-read examples/hello_server.ts",
+    "quality": "deno fmt --check && deno lint && deno test --unstable-ffi --allow-ffi --allow-env --allow-read tests/",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "check": "deno check bridge.ts handler.ts schema.ts ffi.ts examples/hello_server.ts"
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 88,
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": false,
+    "proseWrap": "preserve",
+    "include": [
+      "**/*.ts"
+    ],
+    "exclude": [
+      "node_modules/",
+      "target/",
+      "dist/"
+    ]
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    },
+    "include": [
+      "**/*.ts"
+    ],
+    "exclude": [
+      "node_modules/",
+      "target/",
+      "dist/"
+    ]
+  },
+  "test": {
+    "include": [
+      "tests/**/*_test.ts"
+    ],
+    "exclude": [
+      "node_modules/",
+      "target/"
+    ]
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": [
+      "deno.ns",
+      "deno.unstable"
+    ]
+  },
+  "unstable": [
+    "ffi"
+  ],
+  "lock": false,
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "pforge",
+    "deno",
+    "typescript",
+    "ffi",
+    "rust",
+    "bridge",
+    "tools",
+    "ai",
+    "llm",
+    "sdk"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/pforge",
+    "directory": "bridges/deno"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/pforge/issues"
+  },
+  "homepage": "https://github.com/your-org/pforge/tree/main/bridges/deno#readme",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/your-org"
+    }
+  ],
+  "include": [
+    "bridge.ts",
+    "handler.ts",
+    "schema.ts",
+    "ffi.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "docs/",
+    "examples/"
+  ],
+  "exclude": [
+    "tests/",
+    "benchmarks/",
+    "node_modules/",
+    "target/",
+    "dist/",
+    ".git/"
+  ]
+}
