@@ -194,6 +194,11 @@ export class FfiBridge {
   executeHandler(handlerName: string, params: Uint8Array): Uint8Array {
     this.assertNotClosed();
 
+    // Validate handler name
+    if (!handlerName || handlerName.trim().length === 0) {
+      throw new Error("handler name cannot be empty");
+    }
+
     const namePtr = this.toCString(handlerName);
     const paramsPtr = Deno.UnsafePointer.of(params);
 
