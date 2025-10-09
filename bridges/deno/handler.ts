@@ -10,6 +10,9 @@
  * - Memory-safe by design
  */
 
+import type { Schema } from "./schema.ts";
+import { validate } from "./schema.ts";
+
 /**
  * Handler context passed to all handler executions
  *
@@ -74,8 +77,8 @@ export interface HandlerDef<TInput = unknown, TOutput = unknown> {
   /** Handler function */
   handler: HandlerFn<TInput, TOutput>;
 
-  /** Input schema (JSON Schema) - optional for now */
-  inputSchema?: Record<string, unknown>;
+  /** Input schema for validation (optional) */
+  inputSchema?: Schema;
 
   /** Timeout in milliseconds (default: 30000) */
   timeoutMs?: number;
@@ -171,6 +174,17 @@ export class HandlerRegistry {
         success: false,
         error: `Handler '${name}' not found`,
       };
+    }
+
+    // Validate input if schema is provided
+    if (handler.inputSchema) {
+      const validation = validate(input, handler.inputSchema);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: `Validation failed: ${validation.errors.join(", ")}`,
+        };
+      }
     }
 
     // Execute with timeout

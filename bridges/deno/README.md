@@ -6,7 +6,9 @@
 [![Quality](https://img.shields.io/badge/SATD-0-brightgreen)](./docs)
 [![Complexity](https://img.shields.io/badge/complexity-%E2%89%A420-brightgreen)](./docs)
 
-A high-performance, type-safe bridge for building Model Context Protocol servers using TypeScript and Deno. Seamlessly integrates with the Rust pforge runtime via FFI while providing an ergonomic TypeScript API.
+A high-performance, type-safe bridge for building Model Context Protocol servers
+using TypeScript and Deno. Seamlessly integrates with the Rust pforge runtime
+via FFI while providing an ergonomic TypeScript API.
 
 ## 🚀 Quick Start
 
@@ -22,8 +24,8 @@ bridge.register({
   description: "Greet a user by name",
   handler: (input: { name: string }) => ({
     success: true,
-    data: { message: `Hello, ${input.name}! 👋` }
-  })
+    data: { message: `Hello, ${input.name}! 👋` },
+  }),
 });
 
 // Execute the tool
@@ -81,6 +83,7 @@ import { PforgeBridge } from "https://raw.githubusercontent.com/your-org/pforge/
 ```
 
 **Key Components:**
+
 - **PforgeBridge**: High-level API for tool registration and execution
 - **HandlerRegistry**: O(1) lookup, type-safe handler management
 - **FfiBridge**: Low-level FFI bindings to Rust pforge runtime
@@ -88,17 +91,21 @@ import { PforgeBridge } from "https://raw.githubusercontent.com/your-org/pforge/
 ## 🎯 Features
 
 ### Type Safety
+
 - **Generic Handlers**: Full TypeScript type inference
 - **Strict Type Checking**: Compile-time safety
-- **Result Types**: `{ success: true, data: T } | { success: false, error: string }`
+- **Result Types**:
+  `{ success: true, data: T } | { success: false, error: string }`
 
 ### Performance
+
 - **O(1) Handler Lookup**: HashMap-based registry
 - **Zero-Copy JSON**: Minimal serialization overhead
 - **9.5µs Execution**: Per-call overhead (reused bridge)
 - **Memory Safe**: Validated with 1000+ property-based tests
 
 ### Developer Experience
+
 - **Simple API**: Just `register()` and `execute()`
 - **Async/Sync Support**: Both handler types work
 - **Clear Errors**: Descriptive error messages
@@ -135,7 +142,7 @@ bridge.register({
 
     return {
       success: true,
-      data: { result: operations[input.op] }
+      data: { result: operations[input.op] },
     };
   },
   timeoutMs: 5000, // Optional timeout (default: 30000)
@@ -143,6 +150,7 @@ bridge.register({
 ```
 
 **Parameters:**
+
 - `name`: Unique tool name
 - `description`: Tool description
 - `handler`: Function that processes input and returns result
@@ -156,7 +164,7 @@ Execute a tool by name.
 const result = await bridge.execute("calculate", {
   a: 10,
   b: 5,
-  op: "add"
+  op: "add",
 });
 
 if (result.success) {
@@ -233,7 +241,7 @@ Handler function signature. Can be sync or async.
 ```typescript
 type HandlerFn<TInput, TOutput> = (
   input: TInput,
-  context: HandlerContext
+  context: HandlerContext,
 ) => Promise<HandlerResult<TOutput>> | HandlerResult<TOutput>;
 ```
 
@@ -269,8 +277,8 @@ bridge.register({
   description: "Convert text to uppercase",
   handler: (input: { text: string }) => ({
     success: true,
-    data: { result: input.text.toUpperCase() }
-  })
+    data: { result: input.text.toUpperCase() },
+  }),
 });
 ```
 
@@ -285,23 +293,23 @@ bridge.register({
     if (input.userId < 1) {
       return {
         success: false,
-        error: "Invalid user ID"
+        error: "Invalid user ID",
       };
     }
 
     // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     return {
       success: true,
       data: {
         id: input.userId,
         name: "Alice",
-        email: "alice@example.com"
-      }
+        email: "alice@example.com",
+      },
     };
   },
-  timeoutMs: 5000
+  timeoutMs: 5000,
 });
 ```
 
@@ -315,15 +323,15 @@ bridge.register({
     if (input.b === 0) {
       return {
         success: false,
-        error: "Cannot divide by zero"
+        error: "Cannot divide by zero",
       };
     }
 
     return {
       success: true,
-      data: { result: input.a / input.b }
+      data: { result: input.a / input.b },
     };
-  }
+  },
 });
 
 // Execute with error
@@ -346,9 +354,9 @@ bridge.register({
 
     return {
       success: true,
-      data: { processed: input.value * 2 }
+      data: { processed: input.value * 2 },
     };
-  }
+  },
 });
 ```
 
@@ -374,13 +382,13 @@ deno bench --unstable-ffi --allow-ffi --allow-env --allow-read benchmarks/
 
 ## 📊 Performance
 
-| Metric | Value |
-|--------|-------|
+| Metric                       | Value           |
+| ---------------------------- | --------------- |
 | FFI Overhead (reused bridge) | ~9.5µs per call |
-| Create/Close Overhead | ~300µs |
-| Throughput (sequential) | >100K req/s |
-| Memory per Handler | <256 bytes |
-| Cold Start | <100ms |
+| Create/Close Overhead        | ~300µs          |
+| Throughput (sequential)      | >100K req/s     |
+| Memory per Handler           | <256 bytes      |
+| Cold Start                   | <100ms          |
 
 ## 🔒 Quality Standards
 
@@ -452,6 +460,7 @@ See [LICENSE](../../LICENSE) in the pforge repository.
 ## 🙏 Acknowledgments
 
 Built with:
+
 - **Deno** - Secure TypeScript runtime
 - **Rust pforge** - High-performance MCP runtime
 - **EXTREME TDD** - Toyota Way + Test-Driven Development
