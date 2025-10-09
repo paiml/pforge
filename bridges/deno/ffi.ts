@@ -200,7 +200,7 @@ export class FfiBridge {
     }
 
     const namePtr = this.toCString(handlerName);
-    const paramsPtr = Deno.UnsafePointer.of(params);
+    const paramsPtr = Deno.UnsafePointer.of(params as Uint8Array<ArrayBuffer>);
 
     // Deno FFI returns structs as arrays: [code, data, data_len, error]
     const result = this.lib.symbols.pforge_execute_handler(
@@ -219,7 +219,7 @@ export class FfiBridge {
     try {
       if (code !== 0) {
         let errorMsg = "Unknown error";
-        if (error !== null && error !== 0) {
+        if (error !== null) {
           try {
             errorMsg = Deno.UnsafePointerView.getCString(
               error as Deno.PointerObject<unknown>,
@@ -234,7 +234,7 @@ export class FfiBridge {
         );
       }
 
-      if (data === null || data === 0 || dataSizeNum === 0) {
+      if (data === null || dataSizeNum === 0) {
         return new Uint8Array(0);
       }
 
