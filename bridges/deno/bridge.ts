@@ -69,9 +69,7 @@ export class PforgeBridge {
     // Otherwise, delegate to FFI bridge (Rust handlers)
     try {
       // Serialize input to JSON
-      const inputStr = typeof input === "string"
-        ? input
-        : JSON.stringify(input);
+      const inputStr = typeof input === "string" ? input : JSON.stringify(input);
       const inputBytes = new TextEncoder().encode(inputStr);
 
       // Execute through FFI

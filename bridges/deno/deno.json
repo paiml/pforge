@@ -73,14 +73,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
-    "lib": [
-      "deno.ns",
-      "deno.unstable"
-    ]
+    "noFallthroughCasesInSwitch": true
   },
   "unstable": [
     "ffi"
@@ -103,17 +96,17 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/pforge",
+    "url": "https://github.com/paiml/pforge",
     "directory": "bridges/deno"
   },
   "bugs": {
-    "url": "https://github.com/your-org/pforge/issues"
+    "url": "https://github.com/paiml/pforge/issues"
   },
-  "homepage": "https://github.com/your-org/pforge/tree/main/bridges/deno#readme",
+  "homepage": "https://github.com/paiml/pforge/tree/main/bridges/deno#readme",
   "funding": [
     {
       "type": "github",
-      "url": "https://github.com/sponsors/your-org"
+      "url": "https://github.com/sponsors/paiml"
     }
   ],
   "include": [
@@ -127,8 +120,6 @@
     "examples/"
   ],
   "exclude": [
-    "tests/",
-    "benchmarks/",
     "node_modules/",
     "target/",
     "dist/",

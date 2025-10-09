@@ -14,7 +14,7 @@ via FFI while providing an ergonomic TypeScript API.
 ## 🚀 Quick Start
 
 ```typescript
-import { PforgeBridge } from "https://raw.githubusercontent.com/your-org/pforge/main/bridges/deno/bridge.ts";
+import { PforgeBridge } from "https://raw.githubusercontent.com/paiml/pforge/main/bridges/deno/bridge.ts";
 
 // Create bridge
 const bridge = new PforgeBridge();
@@ -52,7 +52,7 @@ bridge.close();
 ### Import in Your Project
 
 ```typescript
-import { PforgeBridge } from "https://raw.githubusercontent.com/your-org/pforge/main/bridges/deno/bridge.ts";
+import { PforgeBridge } from "https://raw.githubusercontent.com/paiml/pforge/main/bridges/deno/bridge.ts";
 ```
 
 ## 🏗️ Architecture
@@ -496,7 +496,7 @@ See [LICENSE](../../LICENSE) in the pforge repository.
 
 ## 🔗 Links
 
-- [pforge Repository](https://github.com/your-org/pforge)
+- [pforge Repository](https://github.com/paiml/pforge)
 - [MCP Specification](https://modelcontextprotocol.io)
 - [Deno Documentation](https://deno.land/manual)
 

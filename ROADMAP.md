@@ -68,7 +68,7 @@ pforge is a declarative MCP server framework designed for sub-10-line tool defin
 - ✅ **Code Duplicates**: 0 violations
 - ✅ **Documentation**: 65/65 chapters complete (added Python/Go EXTREME TDD chapters)
 - ✅ **Published to crates.io**: 5 crates v0.1.1 (pforge-config, pforge-macro, pforge-runtime, pforge-codegen, pforge-cli)
-- ✅ **Language Bridges**: Python (ctypes), Go (cgo) with EXTREME TDD guides
+- ✅ **Language Bridges**: Python (ctypes), Go (cgo), Deno/TypeScript (FFI) with EXTREME TDD guides
 - ✅ **Transports**: stdio, SSE, WebSocket
 - ✅ **Runnable Examples**: 2 cargo examples (calculator, middleware_demo)
 - ⚠️ **SATD Comments**: 5 low-severity (future work markers)
@@ -445,12 +445,39 @@ Production Readiness: ███████████████████�
 
 ---
 
-**Last Updated**: 2025-10-03
-**Status**: ✅ ALL PHASES COMPLETE | 🎉 v0.1.1 RELEASED ON CRATES.IO
-**Current Focus**: Quality deep dive complete - 91% coverage, A+ grade maintained
+**Last Updated**: 2025-10-09
+**Status**: ✅ ALL PHASES COMPLETE | 🎉 v0.1.1 RELEASED ON CRATES.IO | 🎉 DENO BRIDGE v0.1.0 RELEASED
+**Current Focus**: Quality deep dive complete - 91% coverage, A+ grade maintained | Deno/TypeScript bridge production-ready
 **Next Milestone**: v0.2.0 Feature Enhancements | Community Adoption
 
-### Recent Achievements (2025-10-03 - v0.1.1 Release)
+### Recent Achievements (2025-10-09 - Deno/TypeScript Bridge v0.1.0)
+
+**🎉 DENO/TYPESCRIPT BRIDGE v0.1.0 RELEASE ✅**
+- ✅ Complete Deno/TypeScript bridge for building MCP servers
+- ✅ FFI integration with Rust pforge runtime (~9.5µs overhead)
+- ✅ Type-safe handler definitions with TypeScript generics
+- ✅ Runtime schema validation system (zero external dependencies)
+- ✅ 74 tests passing (42 unit + 22 integration + 10 property-based)
+- ✅ O(1) handler lookup performance (HashMap-based registry)
+- ✅ Both sync and async handler support
+- ✅ Comprehensive documentation (1000+ lines):
+  - bridges/deno/README.md (465 lines)
+  - bridges/deno/docs/schema-validation.md (568 lines)
+  - bridges/deno/CHANGELOG.md (300+ lines)
+  - bridges/deno/RELEASE_NOTES.md (full GitHub release)
+- ✅ SchemaBuilder API for ergonomic validation:
+  - String validation (minLength, maxLength)
+  - Number validation (min, max)
+  - Boolean, array, object types
+  - Required vs optional fields
+- ✅ Complete package configuration (deno.json)
+- ✅ Released to GitHub (tag: deno-v0.1.0)
+- ✅ Performance benchmarks: >100K req/s throughput
+- ✅ Quality gates: Zero SATD, Complexity ≤20, Memory safe
+- ✅ Example server with 4 working tools
+- ✅ Developed using EXTREME TDD (10 cycles, 5-minute max each)
+
+### Previous Achievements (2025-10-03 - v0.1.1 Release)
 
 **🎉 v0.1.1 QUALITY DEEP DIVE RELEASE ✅**
 - ✅ Coverage improvements: 80.54% → 91.06% (+10.52%)

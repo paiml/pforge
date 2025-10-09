@@ -262,9 +262,9 @@ Built with:
 ---
 
 **Links:**
-- [pforge Repository](https://github.com/your-org/pforge)
+- [pforge Repository](https://github.com/paiml/pforge)
 - [MCP Specification](https://modelcontextprotocol.io)
 - [Deno Documentation](https://deno.land/manual)
 
-[0.1.0]: https://github.com/your-org/pforge/releases/tag/deno-v0.1.0
-[Unreleased]: https://github.com/your-org/pforge/compare/deno-v0.1.0...HEAD
+[0.1.0]: https://github.com/paiml/pforge/releases/tag/deno-v0.1.0
+[Unreleased]: https://github.com/paiml/pforge/compare/deno-v0.1.0...HEAD
