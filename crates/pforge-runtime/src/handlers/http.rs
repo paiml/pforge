@@ -1,15 +1,16 @@
 use crate::{Error, Result};
 use reqwest::{Client, Method};
+use rustc_hash::FxHashMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct HttpHandler {
     pub endpoint: String,
     pub method: HttpMethod,
-    pub headers: HashMap<String, String>,
+    pub headers: FxHashMap<String, String>,
     pub auth: Option<AuthConfig>,
+    pub timeout_ms: Option<u64>,
     client: Client,
 }
 
@@ -34,29 +35,41 @@ pub struct HttpInput {
     #[serde(default)]
     pub body: Option<serde_json::Value>,
     #[serde(default)]
-    pub query: HashMap<String, String>,
+    pub query: FxHashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct HttpOutput {
     pub status: u16,
     pub body: serde_json::Value,
-    pub headers: HashMap<String, String>,
+    pub headers: FxHashMap<String, String>,
 }
 
 impl HttpHandler {
     pub fn new(
         endpoint: String,
         method: HttpMethod,
-        headers: HashMap<String, String>,
+        headers: FxHashMap<String, String>,
         auth: Option<AuthConfig>,
+        timeout_ms: Option<u64>,
     ) -> Self {
+        // Build client with timeout if specified
+        let client = if let Some(timeout) = timeout_ms {
+            Client::builder()
+                .timeout(std::time::Duration::from_millis(timeout))
+                .build()
+                .unwrap_or_else(|_| Client::new())
+        } else {
+            Client::new()
+        };
+
         Self {
             endpoint,
             method,
             headers,
             auth,
-            client: Client::new(),
+            timeout_ms,
+            client,
         }
     }
 
@@ -106,7 +119,7 @@ impl HttpHandler {
         let status = response.status().as_u16();
 
         // Extract headers
-        let mut headers = HashMap::new();
+        let mut headers = FxHashMap::default();
         for (k, v) in response.headers() {
             if let Ok(v_str) = v.to_str() {
                 headers.insert(k.to_string(), v_str.to_string());
@@ -136,18 +149,20 @@ mod tests {
         let handler = HttpHandler::new(
             "https://api.example.com".to_string(),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         assert_eq!(handler.endpoint, "https://api.example.com");
         assert!(handler.headers.is_empty());
         assert!(handler.auth.is_none());
+        assert!(handler.timeout_ms.is_none());
     }
 
     #[test]
     fn test_http_handler_new_with_auth() {
-        let mut headers = HashMap::new();
+        let mut headers = FxHashMap::default();
         headers.insert("Content-Type".to_string(), "application/json".to_string());
 
         let auth = Some(AuthConfig::Bearer {
@@ -159,11 +174,13 @@ mod tests {
             HttpMethod::Post,
             headers.clone(),
             auth,
+            Some(30000), // 30 second timeout
         );
 
         assert_eq!(handler.endpoint, "https://api.example.com");
         assert_eq!(handler.headers.len(), 1);
         assert!(handler.auth.is_some());
+        assert_eq!(handler.timeout_ms, Some(30000));
     }
 
     #[test]
@@ -186,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_http_output_serialization() {
-        let mut headers = HashMap::new();
+        let mut headers = FxHashMap::default();
         headers.insert("content-type".to_string(), "application/json".to_string());
 
         let output = HttpOutput {
@@ -214,13 +231,14 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/test", server.url()),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -247,13 +265,14 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/api/data", server.url()),
             HttpMethod::Post,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         let input = HttpInput {
             body: Some(serde_json::json!({"key": "value"})),
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -280,11 +299,12 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/search", server.url()),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
-        let mut query = HashMap::new();
+        let mut query = FxHashMap::default();
         query.insert("q".to_string(), "rust".to_string());
         query.insert("limit".to_string(), "10".to_string());
 
@@ -310,15 +330,16 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/protected", server.url()),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
             Some(AuthConfig::Bearer {
                 token: "secret_token".to_string(),
             }),
+            None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -342,16 +363,17 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/admin", server.url()),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
             Some(AuthConfig::Basic {
                 username: "user".to_string(),
                 password: "pass".to_string(),
             }),
+            None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -375,16 +397,17 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/api", server.url()),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
             Some(AuthConfig::ApiKey {
                 key: "my_api_key".to_string(),
                 header: "x-api-key".to_string(),
             }),
+            None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -406,7 +429,7 @@ mod tests {
             .create_async()
             .await;
 
-        let mut headers = HashMap::new();
+        let mut headers = FxHashMap::default();
         headers.insert("x-custom".to_string(), "custom_value".to_string());
         headers.insert("x-request-id".to_string(), "123".to_string());
 
@@ -415,11 +438,12 @@ mod tests {
             HttpMethod::Get,
             headers,
             None,
+            None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -441,13 +465,14 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/update", server.url()),
             HttpMethod::Put,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         let input = HttpInput {
             body: Some(serde_json::json!({"data": "new_value"})),
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -470,13 +495,14 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/resource/123", server.url()),
             HttpMethod::Delete,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -498,13 +524,14 @@ mod tests {
         let handler = HttpHandler::new(
             format!("{}/partial", server.url()),
             HttpMethod::Patch,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         let input = HttpInput {
             body: Some(serde_json::json!({"field": "value"})),
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let output = handler.execute(input).await.unwrap();
@@ -519,13 +546,14 @@ mod tests {
         let handler = HttpHandler::new(
             "http://localhost:1/nonexistent".to_string(),
             HttpMethod::Get,
-            HashMap::new(),
+            FxHashMap::default(),
+            None,
             None,
         );
 
         let input = HttpInput {
             body: None,
-            query: HashMap::new(),
+            query: FxHashMap::default(),
         };
 
         let result = handler.execute(input).await;

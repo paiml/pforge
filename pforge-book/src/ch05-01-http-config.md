@@ -379,7 +379,8 @@ async fn test_http_handler() {
         format!("{}/users/{{id}}", mock_server.uri()),
         HttpMethod::Get,
         HashMap::new(),
-        None,
+        None,  // auth
+        Some(5000),  // timeout_ms
     );
 
     let result = handler.execute(HttpInput {

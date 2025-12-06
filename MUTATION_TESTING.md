@@ -121,7 +121,7 @@ Surviving mutants:
 **Category:** Empty Ok() returns and deleted negations
 
 Surviving mutants:
-- `state.rs:59` - `replace SledStateManager::delete with Ok(())`
+- `state.rs:98` - `replace RedbStateManager::delete with Ok(())`
 - `state.rs:66` - `replace exists with Ok(false)`
 - `state.rs:66` - `replace exists with Ok(true)`
 - `resource.rs:22` - `replace ResourceHandler::write with Ok(())`

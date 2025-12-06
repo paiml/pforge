@@ -1,0 +1,30 @@
+# Clippy configuration for pforge
+# Enforces project-specific style and safety preferences
+
+# Cognitive complexity threshold (default: 25)
+cognitive-complexity-threshold = 20
+
+# Maximum number of lines in a single function (default: 100)
+too-many-lines-threshold = 100
+
+# Maximum number of function arguments (default: 7)
+too-many-arguments-threshold = 6
+
+# Disallowed methods - enforce safe patterns
+disallowed-methods = [
+    { path = "std::option::Option::unwrap", reason = "Use `expect()` with a descriptive message or proper error handling" },
+    { path = "std::result::Result::unwrap", reason = "Use `expect()` with a descriptive message or propagate with `?`" },
+    { path = "std::panic::panic", reason = "Use proper error handling instead of panicking", allow-invalid = true },
+]
+
+# Disallowed types for better practices
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "Use rustc_hash::FxHashMap for better performance" },
+    { path = "std::collections::HashSet", reason = "Use rustc_hash::FxHashSet for better performance" },
+]
+
+# Allow certain identifiers that might trigger false positives
+allowed-idents-below-min-chars = ["i", "j", "k", "n", "x", "y", "id", "tx", "rx"]
+
+# MSRV (Minimum Supported Rust Version)
+msrv = "1.75.0"

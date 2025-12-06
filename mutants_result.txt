@@ -1,0 +1,3 @@
+Found 256 mutants to test
+ok       Unmutated baseline in 50.7s build + 9.9s test
+MISSED   crates/pforge-runtime/src/resource.rs:127:12: delete ! in ResourceManager::subscribe in 1.4s build + 7.2s test

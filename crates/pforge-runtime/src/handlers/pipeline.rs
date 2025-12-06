@@ -1,6 +1,6 @@
 use crate::{HandlerRegistry, Result};
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct PipelineHandler {
@@ -25,13 +25,13 @@ pub enum ErrorPolicy {
 #[derive(Debug, Deserialize)]
 pub struct PipelineInput {
     #[serde(default)]
-    pub variables: HashMap<String, serde_json::Value>,
+    pub variables: FxHashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PipelineOutput {
     pub results: Vec<StepResult>,
-    pub variables: HashMap<String, serde_json::Value>,
+    pub variables: FxHashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,7 +117,7 @@ impl PipelineHandler {
     fn evaluate_condition(
         &self,
         condition: &str,
-        variables: &HashMap<String, serde_json::Value>,
+        variables: &FxHashMap<String, serde_json::Value>,
     ) -> bool {
         // Simple variable existence check for MVP
         // Format: "variable_name" or "!variable_name"
@@ -128,40 +128,155 @@ impl PipelineHandler {
         }
     }
 
-    #[allow(clippy::only_used_in_recursion)]
     fn interpolate_variables(
         &self,
         template: &serde_json::Value,
-        variables: &HashMap<String, serde_json::Value>,
+        variables: &FxHashMap<String, serde_json::Value>,
     ) -> serde_json::Value {
-        match template {
-            serde_json::Value::String(s) => {
-                // Replace {{var}} with variable value
-                let mut result = s.clone();
-                for (key, value) in variables {
-                    let pattern = format!("{{{{{}}}}}", key);
-                    if let Some(value_str) = value.as_str() {
-                        result = result.replace(&pattern, value_str);
-                    }
+        interpolate_value(template, variables)
+    }
+}
+
+/// Interpolate template variables in a JSON value.
+/// Supports {{var}} syntax for variable substitution.
+fn interpolate_value(
+    template: &serde_json::Value,
+    variables: &FxHashMap<String, serde_json::Value>,
+) -> serde_json::Value {
+    match template {
+        serde_json::Value::String(s) => {
+            // Replace {{var}} with variable value
+            let mut result = s.clone();
+            for (key, value) in variables {
+                let pattern = format!("{{{{{}}}}}", key);
+                if let Some(value_str) = value.as_str() {
+                    result = result.replace(&pattern, value_str);
                 }
-                serde_json::Value::String(result)
             }
-            serde_json::Value::Object(obj) => {
-                let mut new_obj = serde_json::Map::new();
-                for (k, v) in obj {
-                    new_obj.insert(k.clone(), self.interpolate_variables(v, variables));
-                }
-                serde_json::Value::Object(new_obj)
-            }
-            serde_json::Value::Array(arr) => {
-                let new_arr: Vec<_> = arr
-                    .iter()
-                    .map(|v| self.interpolate_variables(v, variables))
-                    .collect();
-                serde_json::Value::Array(new_arr)
-            }
-            other => other.clone(),
+            serde_json::Value::String(result)
         }
+        serde_json::Value::Object(obj) => {
+            let mut new_obj = serde_json::Map::new();
+            for (k, v) in obj {
+                new_obj.insert(k.clone(), interpolate_value(v, variables));
+            }
+            serde_json::Value::Object(new_obj)
+        }
+        serde_json::Value::Array(arr) => {
+            let new_arr: Vec<_> = arr
+                .iter()
+                .map(|v| interpolate_value(v, variables))
+                .collect();
+            serde_json::Value::Array(new_arr)
+        }
+        other => other.clone(),
+    }
+}
+
+/// Adapter that wraps PipelineHandler to implement the Handler trait.
+/// Captures a registry clone for dispatching sub-tool calls.
+pub struct PipelineHandlerAdapter {
+    handler: PipelineHandler,
+    registry: std::sync::Arc<tokio::sync::RwLock<crate::HandlerRegistry>>,
+}
+
+impl PipelineHandlerAdapter {
+    /// Create a new pipeline handler adapter with the given steps and registry.
+    pub fn new(
+        steps: Vec<PipelineStep>,
+        registry: std::sync::Arc<tokio::sync::RwLock<crate::HandlerRegistry>>,
+    ) -> Self {
+        Self {
+            handler: PipelineHandler::new(steps),
+            registry,
+        }
+    }
+
+    /// Convert config steps to runtime steps.
+    pub fn from_config_steps(
+        config_steps: &[pforge_config::PipelineStep],
+        registry: std::sync::Arc<tokio::sync::RwLock<crate::HandlerRegistry>>,
+    ) -> Self {
+        let steps = config_steps
+            .iter()
+            .map(|s| PipelineStep {
+                tool: s.tool.clone(),
+                input: s.input.clone(),
+                output_var: s.output_var.clone(),
+                condition: s.condition.clone(),
+                error_policy: match s.error_policy {
+                    pforge_config::ErrorPolicy::FailFast => ErrorPolicy::FailFast,
+                    pforge_config::ErrorPolicy::Continue => ErrorPolicy::Continue,
+                },
+            })
+            .collect();
+
+        Self {
+            handler: PipelineHandler::new(steps),
+            registry,
+        }
+    }
+}
+
+use schemars::JsonSchema;
+
+/// Input for the pipeline handler adapter.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PipelineAdapterInput {
+    /// Variables to pass to the pipeline.
+    #[serde(default)]
+    pub variables: FxHashMap<String, serde_json::Value>,
+}
+
+/// Output from the pipeline handler adapter.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct PipelineAdapterOutput {
+    /// Results from each step.
+    pub results: Vec<StepResultSchema>,
+    /// Final variable state.
+    pub variables: FxHashMap<String, serde_json::Value>,
+}
+
+/// Step result with JSON schema support.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct StepResultSchema {
+    /// Tool name that was executed.
+    pub tool: String,
+    /// Whether the step succeeded.
+    pub success: bool,
+    /// Output from the step (if successful).
+    pub output: Option<serde_json::Value>,
+    /// Error message (if failed).
+    pub error: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl crate::Handler for PipelineHandlerAdapter {
+    type Input = PipelineAdapterInput;
+    type Output = PipelineAdapterOutput;
+    type Error = crate::Error;
+
+    async fn handle(&self, input: Self::Input) -> Result<Self::Output> {
+        let registry = self.registry.read().await;
+        let pipeline_input = PipelineInput {
+            variables: input.variables,
+        };
+
+        let output = self.handler.execute(pipeline_input, &registry).await?;
+
+        Ok(PipelineAdapterOutput {
+            results: output
+                .results
+                .into_iter()
+                .map(|r| StepResultSchema {
+                    tool: r.tool,
+                    success: r.success,
+                    output: r.output,
+                    error: r.error,
+                })
+                .collect(),
+            variables: output.variables,
+        })
     }
 }
 
@@ -194,7 +309,7 @@ mod tests {
     #[test]
     fn test_evaluate_condition_exists() {
         let handler = PipelineHandler::new(vec![]);
-        let mut vars = HashMap::new();
+        let mut vars = FxHashMap::default();
         vars.insert("key".to_string(), serde_json::json!("value"));
 
         assert!(handler.evaluate_condition("key", &vars));
@@ -204,7 +319,7 @@ mod tests {
     #[test]
     fn test_evaluate_condition_not_exists() {
         let handler = PipelineHandler::new(vec![]);
-        let mut vars = HashMap::new();
+        let mut vars = FxHashMap::default();
         vars.insert("key".to_string(), serde_json::json!("value"));
 
         assert!(!handler.evaluate_condition("!key", &vars));
@@ -214,7 +329,7 @@ mod tests {
     #[test]
     fn test_interpolate_variables_string() {
         let handler = PipelineHandler::new(vec![]);
-        let mut vars = HashMap::new();
+        let mut vars = FxHashMap::default();
         vars.insert("name".to_string(), serde_json::json!("Alice"));
 
         let template = serde_json::json!("Hello {{name}}!");
@@ -226,7 +341,7 @@ mod tests {
     #[test]
     fn test_interpolate_variables_object() {
         let handler = PipelineHandler::new(vec![]);
-        let mut vars = HashMap::new();
+        let mut vars = FxHashMap::default();
         vars.insert("user".to_string(), serde_json::json!("Bob"));
 
         let template = serde_json::json!({"greeting": "Hi {{user}}"});
@@ -238,7 +353,7 @@ mod tests {
     #[test]
     fn test_interpolate_variables_array() {
         let handler = PipelineHandler::new(vec![]);
-        let mut vars = HashMap::new();
+        let mut vars = FxHashMap::default();
         vars.insert("item".to_string(), serde_json::json!("test"));
 
         let template = serde_json::json!(["{{item}}", "other"]);
@@ -251,7 +366,7 @@ mod tests {
     #[test]
     fn test_interpolate_variables_no_match() {
         let handler = PipelineHandler::new(vec![]);
-        let vars = HashMap::new();
+        let vars = FxHashMap::default();
 
         let template = serde_json::json!("Hello {{missing}}!");
         let result = handler.interpolate_variables(&template, &vars);
@@ -277,7 +392,7 @@ mod tests {
                 output: Some(serde_json::json!({"result": "ok"})),
                 error: None,
             }],
-            variables: HashMap::new(),
+            variables: FxHashMap::default(),
         };
 
         let json = serde_json::to_string(&output).unwrap();
@@ -330,7 +445,7 @@ mod tests {
         }]);
 
         let input = PipelineInput {
-            variables: HashMap::new(),
+            variables: FxHashMap::default(),
         };
 
         let output = handler.execute(input, &registry).await.unwrap();
@@ -355,7 +470,7 @@ mod tests {
         }]);
 
         let input = PipelineInput {
-            variables: HashMap::new(),
+            variables: FxHashMap::default(),
         };
 
         let output = handler.execute(input, &registry).await.unwrap();
@@ -388,7 +503,7 @@ mod tests {
         ]);
 
         let input = PipelineInput {
-            variables: HashMap::new(),
+            variables: FxHashMap::default(),
         };
 
         let output = handler.execute(input, &registry).await.unwrap();
@@ -423,7 +538,7 @@ mod tests {
         ]);
 
         let input = PipelineInput {
-            variables: HashMap::new(),
+            variables: FxHashMap::default(),
         };
 
         let result = handler.execute(input, &registry).await;

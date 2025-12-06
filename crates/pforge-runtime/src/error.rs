@@ -17,6 +17,9 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(String),
 
+    #[error("State error: {0}")]
+    StateError(String),
+
     #[error("Timeout error")]
     Timeout,
 }

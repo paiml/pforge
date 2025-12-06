@@ -236,26 +236,23 @@ impl StatefulPipeline {
 }
 ```
 
-### Persistent State
+### Persistent State (Future: trueno-db)
+
+Future versions will use trueno-db for persistent state with SIMD-accelerated key hashing:
 
 ```rust
-use sled::Db;
+use trueno_db::kv::{KvStore, MemoryKvStore};
 
 pub struct PersistentPipeline {
-    db: Db,
+    store: MemoryKvStore,  // Will support persistent backends in future
     pipeline: PipelineHandler,
 }
 
 impl PersistentPipeline {
     async fn handle(&self, input: Input) -> Result<Output> {
-        // Load state from disk
+        // Load state from KV store
         let mut variables = input.variables;
-        for item in self.db.iter() {
-            let (key, value) = item?;
-            let key = String::from_utf8(key.to_vec())?;
-            let value: Value = serde_json::from_slice(&value)?;
-            variables.insert(key, value);
-        }
+        // Future: iterate over persisted keys
 
         // Execute
         let result = self.pipeline.execute(
@@ -263,10 +260,10 @@ impl PersistentPipeline {
             &self.registry,
         ).await?;
 
-        // Save state to disk
+        // Save state to KV store
         for (key, value) in &result.variables {
             let value_bytes = serde_json::to_vec(value)?;
-            self.db.insert(key.as_bytes(), value_bytes)?;
+            self.store.set(key, value_bytes).await?;
         }
 
         Ok(result)

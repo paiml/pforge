@@ -1,5 +1,8 @@
 use crate::{Error, HandlerRegistry, Result};
+use async_trait::async_trait;
 use pforge_config::ForgeConfig;
+use pmcp::server::ToolHandler;
+use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -7,6 +10,71 @@ use tokio::sync::RwLock;
 pub struct McpServer {
     config: ForgeConfig,
     registry: Arc<RwLock<HandlerRegistry>>,
+}
+
+/// Adapter to wrap pforge handlers as pmcp ToolHandler
+struct PforgeToolAdapter {
+    registry: Arc<RwLock<HandlerRegistry>>,
+    tool_name: String,
+    description: Option<String>,
+}
+
+#[async_trait]
+impl ToolHandler for PforgeToolAdapter {
+    async fn handle(
+        &self,
+        args: Value,
+        _extra: pmcp::server::cancellation::RequestHandlerExtra,
+    ) -> pmcp::Result<Value> {
+        // Serialize args to bytes for pforge dispatch
+        let params = serde_json::to_vec(&args)
+            .map_err(|e| pmcp::Error::protocol_msg(format!("Failed to serialize args: {}", e)))?;
+
+        let registry = self.registry.read().await;
+        let result_bytes = registry
+            .dispatch(&self.tool_name, &params)
+            .await
+            .map_err(|e| pmcp::Error::protocol_msg(e.to_string()))?;
+
+        // Deserialize result back to Value
+        let result: Value = serde_json::from_slice(&result_bytes).map_err(|e| {
+            pmcp::Error::protocol_msg(format!("Failed to deserialize result: {}", e))
+        })?;
+
+        Ok(result)
+    }
+
+    fn metadata(&self) -> Option<pmcp::types::ToolInfo> {
+        // Try to get actual schema from registry (may fail if lock is held)
+        let input_schema = if let Ok(guard) = self.registry.try_read() {
+            if let Some(schema) = guard.get_input_schema(&self.tool_name) {
+                // Convert RootSchema to serde_json::Value
+                serde_json::to_value(&schema).unwrap_or_else(|_| {
+                    serde_json::json!({
+                        "type": "object",
+                        "properties": {}
+                    })
+                })
+            } else {
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                })
+            }
+        } else {
+            // Fallback if lock unavailable
+            serde_json::json!({
+                "type": "object",
+                "properties": {}
+            })
+        };
+
+        Some(pmcp::types::ToolInfo {
+            name: self.tool_name.clone(),
+            description: self.description.clone(),
+            input_schema,
+        })
+    }
 }
 
 impl McpServer {
@@ -38,6 +106,7 @@ impl McpServer {
                     cwd,
                     env,
                     stream,
+                    timeout_ms,
                     ..
                 } => {
                     use crate::handlers::cli::CliHandler;
@@ -46,7 +115,7 @@ impl McpServer {
                         args.clone(),
                         cwd.clone(),
                         env.clone(),
-                        None, // timeout from tool config
+                        *timeout_ms,
                         *stream,
                     );
                     registry.register(name, handler);
@@ -58,6 +127,7 @@ impl McpServer {
                     method,
                     headers,
                     auth,
+                    timeout_ms,
                     ..
                 } => {
                     use crate::handlers::http::{
@@ -95,12 +165,17 @@ impl McpServer {
                         handler_method,
                         headers.clone(),
                         handler_auth,
+                        *timeout_ms,
                     );
                     registry.register(name, handler);
                     eprintln!("Registered HTTP handler: {}", name);
                 }
-                pforge_config::ToolDef::Pipeline { name, .. } => {
-                    eprintln!("Note: Pipeline handler '{}' pending implementation", name);
+                pforge_config::ToolDef::Pipeline { name, steps, .. } => {
+                    use crate::handlers::pipeline::PipelineHandlerAdapter;
+                    let handler =
+                        PipelineHandlerAdapter::from_config_steps(steps, self.registry.clone());
+                    registry.register(name, handler);
+                    eprintln!("Registered Pipeline handler: {}", name);
                 }
             }
         }
@@ -108,7 +183,7 @@ impl McpServer {
         Ok(())
     }
 
-    /// Run the MCP server
+    /// Run the MCP server using pmcp protocol implementation
     pub async fn run(&self) -> Result<()> {
         eprintln!(
             "Starting MCP server: {} v{}",
@@ -117,17 +192,98 @@ impl McpServer {
         eprintln!("Transport: {:?}", self.config.forge.transport);
         eprintln!("Tools registered: {}", self.config.tools.len());
 
-        // Register handlers
+        // Register handlers in pforge registry
         self.register_handlers().await?;
 
-        // TODO: Implement actual MCP protocol loop
-        // For now, just keep the server alive
-        eprintln!("\n⚠ MCP protocol loop not yet implemented");
-        eprintln!("Server configuration loaded and handlers registered successfully");
-        eprintln!("Press Ctrl+C to exit");
+        // Build pmcp server with tool adapters
+        let mut builder = pmcp::Server::builder()
+            .name(&self.config.forge.name)
+            .version(&self.config.forge.version);
 
-        // Wait indefinitely (will be replaced with actual MCP loop)
-        tokio::signal::ctrl_c().await.map_err(Error::Io)?;
+        // Add tool adapters for each registered tool
+        for tool in &self.config.tools {
+            let (tool_name, description) = match tool {
+                pforge_config::ToolDef::Native {
+                    name, description, ..
+                } => (name.clone(), Some(description.clone())),
+                pforge_config::ToolDef::Cli {
+                    name, description, ..
+                } => (name.clone(), Some(description.clone())),
+                pforge_config::ToolDef::Http {
+                    name, description, ..
+                } => (name.clone(), Some(description.clone())),
+                pforge_config::ToolDef::Pipeline {
+                    name, description, ..
+                } => (name.clone(), Some(description.clone())),
+            };
+
+            let adapter = PforgeToolAdapter {
+                registry: self.registry.clone(),
+                tool_name: tool_name.clone(),
+                description,
+            };
+            builder = builder.tool(&tool_name, adapter);
+        }
+
+        let server = builder
+            .build()
+            .map_err(|e| Error::Handler(format!("Failed to build MCP server: {}", e)))?;
+
+        eprintln!("MCP server ready, starting protocol loop...");
+
+        // Run the server with appropriate transport
+        match self.config.forge.transport {
+            pforge_config::TransportType::Stdio => {
+                server
+                    .run_stdio()
+                    .await
+                    .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+            }
+            pforge_config::TransportType::Sse => {
+                use pmcp::shared::{OptimizedSseConfig, OptimizedSseTransport};
+                use std::time::Duration;
+
+                let config = OptimizedSseConfig {
+                    url: "http://localhost:8080/sse".to_string(),
+                    connection_timeout: Duration::from_secs(30),
+                    keepalive_interval: Duration::from_secs(15),
+                    max_reconnects: 5,
+                    reconnect_delay: Duration::from_secs(1),
+                    buffer_size: 100,
+                    flush_interval: Duration::from_millis(100),
+                    enable_pooling: true,
+                    max_connections: 10,
+                    enable_compression: false,
+                };
+                let transport = OptimizedSseTransport::new(config);
+                server
+                    .run(transport)
+                    .await
+                    .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+            }
+            pforge_config::TransportType::WebSocket => {
+                use pmcp::shared::{WebSocketConfig, WebSocketTransport};
+                use std::time::Duration;
+
+                let url = "ws://localhost:8080/ws"
+                    .parse()
+                    .map_err(|e| Error::Handler(format!("Invalid WebSocket URL: {}", e)))?;
+                let config = WebSocketConfig {
+                    url,
+                    auto_reconnect: true,
+                    reconnect_delay: Duration::from_secs(1),
+                    max_reconnect_delay: Duration::from_secs(30),
+                    max_reconnect_attempts: Some(5),
+                    ping_interval: Some(Duration::from_secs(30)),
+                    request_timeout: Duration::from_secs(10),
+                };
+                let transport = WebSocketTransport::new(config);
+                server
+                    .run(transport)
+                    .await
+                    .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+            }
+        }
 
         eprintln!("\nShutting down...");
         Ok(())
@@ -177,8 +333,9 @@ mod tests {
             command: "echo".to_string(),
             args: vec!["hello".to_string()],
             cwd: None,
-            env: std::collections::HashMap::new(),
+            env: rustc_hash::FxHashMap::default(),
             stream: false,
+            timeout_ms: None,
         });
 
         let server = McpServer::new(config);
@@ -195,8 +352,9 @@ mod tests {
             description: "Test HTTP handler".to_string(),
             endpoint: "https://api.example.com".to_string(),
             method: pforge_config::HttpMethod::Get,
-            headers: std::collections::HashMap::new(),
+            headers: rustc_hash::FxHashMap::default(),
             auth: None,
+            timeout_ms: None,
         });
 
         let server = McpServer::new(config);
@@ -216,7 +374,7 @@ mod tests {
                 inline: None,
             },
             params: ParamSchema {
-                fields: std::collections::HashMap::new(),
+                fields: rustc_hash::FxHashMap::default(),
             },
             timeout_ms: Some(5000),
         });
@@ -240,6 +398,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_registry_returns_actual_registry() {
+        // This test catches mutation: registry() returning a new empty registry
+        let mut config = create_test_config();
+        config.tools.push(ToolDef::Cli {
+            name: "test_cli".to_string(),
+            description: "Test CLI".to_string(),
+            command: "echo".to_string(),
+            args: vec!["test".to_string()],
+            cwd: None,
+            env: rustc_hash::FxHashMap::default(),
+            stream: false,
+            timeout_ms: None,
+        });
+
+        let server = McpServer::new(config);
+        server.register_handlers().await.unwrap();
+
+        // Get registry and verify the handler is registered
+        let registry = server.registry();
+        let reg = registry.read().await;
+
+        // The CLI handler should be registered - verify via len
+        assert_eq!(reg.len(), 1, "Registry should contain registered handler");
+    }
+
+    #[tokio::test]
     async fn test_register_handlers_pipeline() {
         let mut config = create_test_config();
         config.tools.push(ToolDef::Pipeline {
@@ -250,9 +434,12 @@ mod tests {
 
         let server = McpServer::new(config);
         let result = server.register_handlers().await;
-
-        // Should succeed (pipeline handler pending)
         assert!(result.is_ok());
+
+        // Verify the pipeline is actually registered
+        let registry = server.registry();
+        let reg = registry.read().await;
+        assert_eq!(reg.len(), 1, "Pipeline handler should be registered");
     }
 
     #[tokio::test]
@@ -265,8 +452,9 @@ mod tests {
             command: "echo".to_string(),
             args: vec![],
             cwd: None,
-            env: std::collections::HashMap::new(),
+            env: rustc_hash::FxHashMap::default(),
             stream: false,
+            timeout_ms: None,
         });
 
         config.tools.push(ToolDef::Http {
@@ -274,8 +462,9 @@ mod tests {
             description: "HTTP 1".to_string(),
             endpoint: "https://example.com".to_string(),
             method: pforge_config::HttpMethod::Get,
-            headers: std::collections::HashMap::new(),
+            headers: rustc_hash::FxHashMap::default(),
             auth: None,
+            timeout_ms: None,
         });
 
         let server = McpServer::new(config);

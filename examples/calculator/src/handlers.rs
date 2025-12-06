@@ -61,7 +61,7 @@ mod tests {
             b: 3.0,
         };
 
-        let output = handler.handle(input).await.unwrap();
+        let output = handler.handle(input).await.expect("add should succeed");
         assert_eq!(output.result, 8.0);
     }
 
@@ -74,7 +74,10 @@ mod tests {
             b: 3.0,
         };
 
-        let output = handler.handle(input).await.unwrap();
+        let output = handler
+            .handle(input)
+            .await
+            .expect("subtract should succeed");
         assert_eq!(output.result, 7.0);
     }
 
@@ -87,7 +90,10 @@ mod tests {
             b: 5.0,
         };
 
-        let output = handler.handle(input).await.unwrap();
+        let output = handler
+            .handle(input)
+            .await
+            .expect("multiply should succeed");
         assert_eq!(output.result, 20.0);
     }
 
@@ -100,7 +106,7 @@ mod tests {
             b: 3.0,
         };
 
-        let output = handler.handle(input).await.unwrap();
+        let output = handler.handle(input).await.expect("divide should succeed");
         assert_eq!(output.result, 5.0);
     }
 

@@ -1,9 +1,9 @@
 use crate::{ConfigError, ForgeConfig, Result, ToolDef};
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 pub fn validate_config(config: &ForgeConfig) -> Result<()> {
     // Check for duplicate tool names
-    let mut tool_names = HashSet::new();
+    let mut tool_names = FxHashSet::default();
     for tool in &config.tools {
         let name = tool.name();
         if !tool_names.insert(name) {
@@ -29,8 +29,7 @@ fn validate_handler_path(path: &str) -> Result<()> {
     // Basic validation: should contain ::
     if !path.contains("::") {
         return Err(ConfigError::InvalidHandlerPath(format!(
-            "invalid format: {} (expected format: module::function)",
-            path
+            "invalid format: {path} (expected format: module::function)"
         )));
     }
 
@@ -59,7 +58,7 @@ mod tests {
                     inline: None,
                 },
                 params: ParamSchema {
-                    fields: std::collections::HashMap::new(),
+                    fields: rustc_hash::FxHashMap::default(),
                 },
                 timeout_ms: None,
             }],
@@ -89,7 +88,7 @@ mod tests {
                         inline: None,
                     },
                     params: ParamSchema {
-                        fields: std::collections::HashMap::new(),
+                        fields: rustc_hash::FxHashMap::default(),
                     },
                     timeout_ms: None,
                 },
@@ -101,7 +100,7 @@ mod tests {
                         inline: None,
                     },
                     params: ParamSchema {
-                        fields: std::collections::HashMap::new(),
+                        fields: rustc_hash::FxHashMap::default(),
                     },
                     timeout_ms: None,
                 },

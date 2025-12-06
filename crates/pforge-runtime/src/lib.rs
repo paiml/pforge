@@ -61,7 +61,7 @@
 //! - **Type safety**: Full compile-time type checking with Serde + JsonSchema
 //! - **Async-first**: Built on tokio for high-performance async execution
 //! - **Fault tolerance**: Circuit breaker, retry with exponential backoff, timeouts
-//! - **State management**: Persistent (Sled) and in-memory backends with TTL support
+//! - **State management**: In-memory backend (trueno-db KV persistence coming in Phase 6)
 //! - **Middleware**: Composable request/response processing chain
 //! - **MCP protocol**: Full support for resources, prompts, and tools
 
@@ -91,7 +91,10 @@ pub use recovery::{
 pub use registry::HandlerRegistry;
 pub use resource::{ResourceHandler, ResourceManager};
 pub use server::McpServer;
-pub use state::{MemoryStateManager, SledStateManager, StateManager};
+pub use state::{MemoryStateManager, StateManager};
+// trueno-db KV persistence (Phase 6)
+#[cfg(feature = "persistence")]
+pub use state::TruenoKvStateManager;
 pub use telemetry::{
     ComponentHealth, HealthCheck, HealthStatus, MetricsCollector, TelemetryMiddleware,
 };

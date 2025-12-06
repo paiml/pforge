@@ -46,7 +46,10 @@ mod tests {
             collector: collector.clone(),
         };
 
-        let output = handler.handle(GetMetricsInput {}).await.unwrap();
+        let output = handler
+            .handle(GetMetricsInput {})
+            .await
+            .expect("get metrics should succeed");
         assert_eq!(output.format, "prometheus");
         assert!(output.metrics.contains("pforge_requests_total"));
     }

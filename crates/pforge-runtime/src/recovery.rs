@@ -178,14 +178,14 @@ where
 /// Error tracking for monitoring and debugging
 pub struct ErrorTracker {
     total_errors: Arc<AtomicU64>,
-    errors_by_type: Arc<RwLock<std::collections::HashMap<String, u64>>>,
+    errors_by_type: Arc<RwLock<rustc_hash::FxHashMap<String, u64>>>,
 }
 
 impl ErrorTracker {
     pub fn new() -> Self {
         Self {
             total_errors: Arc::new(AtomicU64::new(0)),
-            errors_by_type: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            errors_by_type: Arc::new(RwLock::new(rustc_hash::FxHashMap::default())),
         }
     }
 
@@ -216,7 +216,7 @@ impl ErrorTracker {
         self.total_errors.load(Ordering::SeqCst)
     }
 
-    pub async fn errors_by_type(&self) -> std::collections::HashMap<String, u64> {
+    pub async fn errors_by_type(&self) -> rustc_hash::FxHashMap<String, u64> {
         self.errors_by_type.read().await.clone()
     }
 

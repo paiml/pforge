@@ -1,7 +1,7 @@
 use crate::{Error, Result};
+use rustc_hash::FxHashMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -11,7 +11,7 @@ pub struct CliHandler {
     pub command: String,
     pub args: Vec<String>,
     pub cwd: Option<String>,
-    pub env: HashMap<String, String>,
+    pub env: FxHashMap<String, String>,
     pub timeout_ms: Option<u64>,
     pub stream: bool,
 }
@@ -21,7 +21,7 @@ pub struct CliInput {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
-    pub env: HashMap<String, String>,
+    pub env: FxHashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -36,7 +36,7 @@ impl CliHandler {
         command: String,
         args: Vec<String>,
         cwd: Option<String>,
-        env: HashMap<String, String>,
+        env: FxHashMap<String, String>,
         timeout_ms: Option<u64>,
         stream: bool,
     ) -> Self {
@@ -112,7 +112,7 @@ mod tests {
             "echo".to_string(),
             vec!["hello".to_string()],
             None,
-            HashMap::new(),
+            FxHashMap::default(),
             None,
             false,
         );
@@ -132,14 +132,14 @@ mod tests {
             "echo".to_string(),
             vec!["hello".to_string()],
             None,
-            HashMap::new(),
+            FxHashMap::default(),
             None,
             false,
         );
 
         let input = CliInput {
             args: vec![],
-            env: HashMap::new(),
+            env: FxHashMap::default(),
         };
 
         let result = handler.execute(input).await;
@@ -156,14 +156,14 @@ mod tests {
             "echo".to_string(),
             vec![],
             None,
-            HashMap::new(),
+            FxHashMap::default(),
             None,
             false,
         );
 
         let input = CliInput {
             args: vec!["test".to_string(), "message".to_string()],
-            env: HashMap::new(),
+            env: FxHashMap::default(),
         };
 
         let result = handler.execute(input).await;
@@ -180,14 +180,14 @@ mod tests {
             "sleep".to_string(),
             vec!["2".to_string()],
             None,
-            HashMap::new(),
+            FxHashMap::default(),
             Some(100), // 100ms timeout
             false,
         );
 
         let input = CliInput {
             args: vec![],
-            env: HashMap::new(),
+            env: FxHashMap::default(),
         };
 
         let result = handler.execute(input).await;
@@ -201,14 +201,14 @@ mod tests {
             "nonexistent_command_that_should_fail".to_string(),
             vec![],
             None,
-            HashMap::new(),
+            FxHashMap::default(),
             None,
             false,
         );
 
         let input = CliInput {
             args: vec![],
-            env: HashMap::new(),
+            env: FxHashMap::default(),
         };
 
         let result = handler.execute(input).await;
@@ -218,7 +218,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cli_handler_with_env() {
-        let mut env = HashMap::new();
+        let mut env = FxHashMap::default();
         env.insert("TEST_VAR".to_string(), "test_value".to_string());
 
         let handler = CliHandler::new(
@@ -232,7 +232,7 @@ mod tests {
 
         let input = CliInput {
             args: vec![],
-            env: HashMap::new(),
+            env: FxHashMap::default(),
         };
 
         let result = handler.execute(input).await;

@@ -74,7 +74,7 @@ mod tests {
             delay_ms: None,
         };
 
-        let output = handler.handle(input).await.unwrap();
+        let output = handler.handle(input).await.expect("echo should succeed");
         assert_eq!(output.message, "Hello");
         assert_eq!(output.length, 5);
         assert_eq!(output.delayed_ms, 0);
@@ -89,7 +89,10 @@ mod tests {
         };
 
         let start = std::time::Instant::now();
-        let output = handler.handle(input).await.unwrap();
+        let output = handler
+            .handle(input)
+            .await
+            .expect("echo with delay should succeed");
         let elapsed = start.elapsed();
 
         assert_eq!(output.delayed_ms, 10);

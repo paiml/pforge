@@ -209,13 +209,13 @@ async fn test_prompt_manager_full_workflow() {
         name: "greeting".to_string(),
         description: "Greet user".to_string(),
         template: "Hello {{name}}, you are {{age}} years old!".to_string(),
-        arguments: std::collections::HashMap::new(),
+        arguments: rustc_hash::FxHashMap::default(),
     };
 
     manager.register(prompt).unwrap();
 
     // Render prompt
-    let mut args = std::collections::HashMap::new();
+    let mut args = rustc_hash::FxHashMap::default();
     args.insert("name".to_string(), json!("Alice"));
     args.insert("age".to_string(), json!(30));
 

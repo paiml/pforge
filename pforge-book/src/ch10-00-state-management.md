@@ -18,52 +18,7 @@ pub trait StateManager: Send + Sync {
 
 ## State Backends
 
-### 1. Sled (Persistent Storage)
-
-**Use case:** Production servers requiring persistence across restarts
-
-```yaml
-state:
-  backend: sled
-  path: /var/lib/my-server/state
-  cache_size: 10000  # Number of keys to cache in memory
-```
-
-**Implementation:**
-```rust
-pub struct SledStateManager {
-    db: sled::Db,
-}
-
-impl SledStateManager {
-    pub fn new(path: &str) -> Result<Self> {
-        let db = sled::open(path)?;
-        Ok(Self { db })
-    }
-}
-```
-
-**Characteristics:**
-- **Persistence:** All data survives process restarts
-- **Performance:** O(log n) read/write (B-tree)
-- **Durability:** ACID guarantees with fsync
-- **Size:** Can handle billions of keys
-- **Concurrency:** Thread-safe with internal locking
-
-**Best practices:**
-```rust
-// Efficient batch operations
-async fn batch_update(&self, updates: Vec<(String, Vec<u8>)>) -> Result<()> {
-    let mut batch = Batch::default();
-    for (key, value) in updates {
-        batch.insert(key.as_bytes(), value);
-    }
-    self.db.apply_batch(batch)?;
-    Ok(())
-}
-```
-
-### 2. Memory (In-Memory Storage)
+### Memory (In-Memory Storage)
 
 **Use case:** Testing, caching, ephemeral data
 
@@ -315,11 +270,11 @@ async fn batch_get(&self, keys: Vec<String>) -> Result<HashMap<String, Vec<u8>>>
 
 ### 2. Connection Pooling
 
-For Sled, use a shared instance:
+For Redb, use a shared instance:
 ```rust
 lazy_static! {
-    static ref STATE: Arc<SledStateManager> = Arc::new(
-        SledStateManager::new("/var/lib/state").unwrap()
+    static ref STATE: Arc<RedbStateManager> = Arc::new(
+        RedbStateManager::new("/var/lib/state.redb").unwrap()
     );
 }
 ```
@@ -410,8 +365,8 @@ mod tests {
 ## Best Practices
 
 1. **Use appropriate backend**
-   - Sled for persistence
-   - Memory for caching and testing
+   - Memory for development, caching, and testing
+   - trueno-db (future) for persistence with SIMD acceleration
 
 2. **Serialize consistently**
    - Use JSON for complex types
@@ -432,19 +387,53 @@ mod tests {
    - Implement cleanup routines
    - Use TTL to prevent unbounded growth
 
-7. **Test with real backends**
-   - Use temporary directories for Sled in tests
+7. **Test with memory backend**
+   - Use `MemoryStateManager` for fast, isolated tests
 
-## Future: Redis Backend
+## trueno-db Backend (with TTL Support)
 
-Future versions will support distributed state:
+pforge integrates with trueno-db for SIMD-accelerated persistent state. Enable with the `persistence` feature:
 
 ```yaml
 state:
-  backend: redis
-  url: redis://localhost:6379
-  pool_size: 10
+  backend: trueno
 ```
+
+The trueno-db KV store provides:
+- **SIMD-optimized hashing**: Fast key lookups via trueno's hash module (AVX-512/AVX2/SSE2)
+- **Lock-free concurrency**: DashMap-backed `MemoryKvStore` for high-throughput
+- **Async-first API**: Full tokio compatibility
+- **TTL support**: Automatic key expiration via expiration tracking
+- **Platform agnostic**: Same API for native, WASM, and GPU environments
+- **PAIML stack alignment**: Consistent tooling across the ecosystem
+
+```rust
+use pforge_runtime::state::TruenoKvStateManager;
+
+// Create state manager with TTL support
+let state = TruenoKvStateManager::new();
+
+// Set with TTL
+state.set("session_key", session_data, Some(Duration::from_secs(3600))).await?;
+
+// Expired keys are automatically cleaned up on access
+let value = state.get("session_key").await?; // Returns None if expired
+```
+
+### TTL Implementation
+
+The `TruenoKvStateManager` tracks expiration via a separate `DashMap`:
+
+```rust
+pub struct TruenoKvStateManager {
+    store: MemoryKvStore,
+    expirations: dashmap::DashMap<String, Instant>,
+}
+```
+
+Keys are lazily cleaned up when accessed after expiration.
+
+See the [trueno-db KV Store documentation](https://github.com/paiml/trueno-db) for more details.
 
 ---
 

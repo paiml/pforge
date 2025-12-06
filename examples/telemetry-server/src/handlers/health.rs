@@ -100,7 +100,10 @@ mod tests {
             health: health.clone(),
         };
 
-        let output = handler.handle(GetHealthInput {}).await.unwrap();
+        let output = handler
+            .handle(GetHealthInput {})
+            .await
+            .expect("get health should succeed");
         assert_eq!(output.status, "Healthy");
     }
 
@@ -117,12 +120,17 @@ mod tests {
             message: Some("High latency detected".to_string()),
         };
 
-        let output = handler.handle(input).await.unwrap();
+        let output = handler
+            .handle(input)
+            .await
+            .expect("set component health should succeed");
         assert_eq!(output.component, "database");
         assert_eq!(output.status, "Degraded");
 
         // Verify it was registered
-        let component = health.get_component("database").unwrap();
+        let component = health
+            .get_component("database")
+            .expect("component should exist");
         assert_eq!(component.status, HealthStatus::Degraded);
     }
 

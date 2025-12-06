@@ -172,7 +172,7 @@ pub trait StateManager: Send + Sync {
 
 **Implementations**:
 
-1. **SledStateManager**: Persistent storage with Sled embedded database
+1. **RedbStateManager**: Persistent storage with Redb embedded database (pure Rust, actively maintained)
 2. **MemoryStateManager**: In-memory storage with DashMap for concurrent access
 
 **Design**: Abstract trait allows swapping backends without changing handler code.

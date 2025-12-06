@@ -1,5 +1,5 @@
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Root configuration structure
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -26,7 +26,7 @@ pub struct ForgeMetadata {
     pub optimization: OptimizationLevel,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransportType {
     Stdio,
@@ -35,7 +35,7 @@ pub enum TransportType {
     WebSocket,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum OptimizationLevel {
     #[default]
@@ -62,9 +62,12 @@ pub enum ToolDef {
         #[serde(default)]
         cwd: Option<String>,
         #[serde(default)]
-        env: HashMap<String, String>,
+        env: FxHashMap<String, String>,
         #[serde(default)]
         stream: bool,
+        /// Timeout in milliseconds for command execution
+        #[serde(default)]
+        timeout_ms: Option<u64>,
     },
     Http {
         name: String,
@@ -74,7 +77,10 @@ pub enum ToolDef {
         #[serde(default)]
         auth: Option<AuthConfig>,
         #[serde(default)]
-        headers: HashMap<String, String>,
+        headers: FxHashMap<String, String>,
+        /// Timeout in milliseconds for HTTP request
+        #[serde(default)]
+        timeout_ms: Option<u64>,
     },
     Pipeline {
         name: String,
@@ -86,10 +92,10 @@ pub enum ToolDef {
 impl ToolDef {
     pub fn name(&self) -> &str {
         match self {
-            ToolDef::Native { name, .. } => name,
-            ToolDef::Cli { name, .. } => name,
-            ToolDef::Http { name, .. } => name,
-            ToolDef::Pipeline { name, .. } => name,
+            Self::Native { name, .. }
+            | Self::Cli { name, .. }
+            | Self::Http { name, .. }
+            | Self::Pipeline { name, .. } => name,
         }
     }
 }
@@ -104,7 +110,7 @@ pub struct HandlerRef {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ParamSchema {
     #[serde(flatten)]
-    pub fields: HashMap<String, ParamType>,
+    pub fields: FxHashMap<String, ParamType>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -125,7 +131,7 @@ pub enum ParamType {
     },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SimpleType {
     String,
@@ -150,7 +156,7 @@ pub struct Validation {
     pub max_length: Option<usize>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     Get,
@@ -181,7 +187,7 @@ pub struct PipelineStep {
     pub error_policy: ErrorPolicy,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorPolicy {
     #[default]
@@ -197,7 +203,7 @@ pub struct ResourceDef {
     pub supports: Vec<ResourceOperation>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceOperation {
     Read,
@@ -211,7 +217,7 @@ pub struct PromptDef {
     pub description: String,
     pub template: String,
     #[serde(default)]
-    pub arguments: HashMap<String, ParamType>,
+    pub arguments: FxHashMap<String, ParamType>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -219,16 +225,16 @@ pub struct StateDef {
     pub backend: StateBackend,
     pub path: String,
     #[serde(default)]
-    pub options: HashMap<String, serde_json::Value>,
+    pub options: FxHashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum StateBackend {
     Sled,
     Memory,
 }
 
-fn default_transport() -> TransportType {
+const fn default_transport() -> TransportType {
     TransportType::Stdio
 }

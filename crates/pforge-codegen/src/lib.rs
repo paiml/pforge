@@ -44,7 +44,7 @@ pub fn write_generated_code(config: &ForgeConfig, output_path: &Path) -> Result<
 mod tests {
     use super::*;
     use pforge_config::*;
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
 
     fn create_test_config() -> ForgeConfig {
         ForgeConfig {
@@ -63,7 +63,7 @@ mod tests {
                 },
                 params: ParamSchema {
                     fields: {
-                        let mut map = HashMap::new();
+                        let mut map = FxHashMap::default();
                         map.insert("input".to_string(), ParamType::Simple(SimpleType::String));
                         map
                     },

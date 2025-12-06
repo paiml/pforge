@@ -1,23 +1,23 @@
 use crate::{Error, Result};
 use pforge_config::{ParamType, PromptDef};
+use rustc_hash::FxHashMap;
 use serde_json::Value;
-use std::collections::HashMap;
 
 /// Prompt manager handles prompt rendering with template interpolation
 pub struct PromptManager {
-    prompts: HashMap<String, PromptEntry>,
+    prompts: FxHashMap<String, PromptEntry>,
 }
 
 struct PromptEntry {
     description: String,
     template: String,
-    arguments: HashMap<String, ParamType>,
+    arguments: FxHashMap<String, ParamType>,
 }
 
 impl PromptManager {
     pub fn new() -> Self {
         Self {
-            prompts: HashMap::new(),
+            prompts: FxHashMap::default(),
         }
     }
 
@@ -43,7 +43,7 @@ impl PromptManager {
     }
 
     /// Render a prompt with given arguments
-    pub fn render(&self, name: &str, args: HashMap<String, Value>) -> Result<String> {
+    pub fn render(&self, name: &str, args: FxHashMap<String, Value>) -> Result<String> {
         let entry = self
             .prompts
             .get(name)
@@ -70,7 +70,11 @@ impl PromptManager {
     }
 
     /// Validate arguments against schema
-    fn validate_arguments(&self, entry: &PromptEntry, args: &HashMap<String, Value>) -> Result<()> {
+    fn validate_arguments(
+        &self,
+        entry: &PromptEntry,
+        args: &FxHashMap<String, Value>,
+    ) -> Result<()> {
         // Check required arguments
         for (arg_name, param_type) in &entry.arguments {
             let is_required = match param_type {
@@ -92,7 +96,7 @@ impl PromptManager {
 
     /// Interpolate template with argument values
     /// Supports {{variable}} syntax
-    fn interpolate(&self, template: &str, args: &HashMap<String, Value>) -> Result<String> {
+    fn interpolate(&self, template: &str, args: &FxHashMap<String, Value>) -> Result<String> {
         let mut result = template.to_string();
 
         for (key, value) in args {
@@ -140,7 +144,7 @@ impl Default for PromptManager {
 #[derive(Debug, Clone)]
 pub struct PromptMetadata {
     pub description: String,
-    pub arguments: HashMap<String, ParamType>,
+    pub arguments: FxHashMap<String, ParamType>,
 }
 
 #[cfg(test)]
@@ -157,7 +161,7 @@ mod tests {
             name: "greeting".to_string(),
             description: "A simple greeting prompt".to_string(),
             template: "Hello, {{name}}!".to_string(),
-            arguments: HashMap::new(),
+            arguments: FxHashMap::default(),
         };
 
         manager.register(def).unwrap();
@@ -172,7 +176,7 @@ mod tests {
             name: "test".to_string(),
             description: "Test".to_string(),
             template: "{{x}}".to_string(),
-            arguments: HashMap::new(),
+            arguments: FxHashMap::default(),
         };
 
         manager.register(def.clone()).unwrap();
@@ -192,12 +196,12 @@ mod tests {
             name: "greeting".to_string(),
             description: "Greeting".to_string(),
             template: "Hello, {{name}}! You are {{age}} years old.".to_string(),
-            arguments: HashMap::new(),
+            arguments: FxHashMap::default(),
         };
 
         manager.register(def).unwrap();
 
-        let mut args = HashMap::new();
+        let mut args = FxHashMap::default();
         args.insert("name".to_string(), json!("Alice"));
         args.insert("age".to_string(), json!(30));
 
@@ -209,7 +213,7 @@ mod tests {
     fn test_required_argument_validation() {
         let mut manager = PromptManager::new();
 
-        let mut arguments = HashMap::new();
+        let mut arguments = FxHashMap::default();
         arguments.insert(
             "name".to_string(),
             ParamType::Complex {
@@ -230,7 +234,7 @@ mod tests {
 
         manager.register(def).unwrap();
 
-        let args = HashMap::new();
+        let args = FxHashMap::default();
         let result = manager.render("greeting", args);
         assert!(result.is_err());
         assert!(result
@@ -247,12 +251,12 @@ mod tests {
             name: "test".to_string(),
             description: "Test".to_string(),
             template: "Hello, {{name}}! Welcome to {{location}}.".to_string(),
-            arguments: HashMap::new(),
+            arguments: FxHashMap::default(),
         };
 
         manager.register(def).unwrap();
 
-        let mut args = HashMap::new();
+        let mut args = FxHashMap::default();
         args.insert("name".to_string(), json!("Alice"));
         // Missing 'location' argument
 
@@ -268,7 +272,7 @@ mod tests {
     fn test_get_prompt_metadata() {
         let mut manager = PromptManager::new();
 
-        let mut arguments = HashMap::new();
+        let mut arguments = FxHashMap::default();
         arguments.insert(
             "name".to_string(),
             ParamType::Complex {
@@ -302,17 +306,94 @@ mod tests {
             name: "test".to_string(),
             description: "Test".to_string(),
             template: "String: {{str}}, Number: {{num}}, Bool: {{bool}}".to_string(),
-            arguments: HashMap::new(),
+            arguments: FxHashMap::default(),
         };
 
         manager.register(def).unwrap();
 
-        let mut args = HashMap::new();
+        let mut args = FxHashMap::default();
         args.insert("str".to_string(), json!("hello"));
         args.insert("num".to_string(), json!(42));
         args.insert("bool".to_string(), json!(true));
 
         let result = manager.render("test", args).unwrap();
         assert_eq!(result, "String: hello, Number: 42, Bool: true");
+    }
+
+    #[test]
+    fn test_required_argument_provided_succeeds() {
+        // This test catches the && to || mutation in validate_arguments
+        // When is_required=true AND arg IS provided, should succeed
+        let mut manager = PromptManager::new();
+
+        let mut arguments = FxHashMap::default();
+        arguments.insert(
+            "name".to_string(),
+            ParamType::Complex {
+                ty: SimpleType::String,
+                required: true,
+                default: None,
+                description: None,
+                validation: None,
+            },
+        );
+
+        let def = PromptDef {
+            name: "greeting".to_string(),
+            description: "Greeting".to_string(),
+            template: "Hello, {{name}}!".to_string(),
+            arguments,
+        };
+
+        manager.register(def).unwrap();
+
+        let mut args = FxHashMap::default();
+        args.insert("name".to_string(), json!("Alice"));
+
+        // This should succeed - required arg is provided
+        let result = manager.render("greeting", args).unwrap();
+        assert_eq!(result, "Hello, Alice!");
+    }
+
+    #[test]
+    fn test_null_value_interpolation() {
+        // This test catches the deletion of Value::Null match arm
+        let mut manager = PromptManager::new();
+
+        let def = PromptDef {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            template: "Value is: {{val}}.".to_string(),
+            arguments: FxHashMap::default(),
+        };
+
+        manager.register(def).unwrap();
+
+        let mut args = FxHashMap::default();
+        args.insert("val".to_string(), Value::Null);
+
+        let result = manager.render("test", args).unwrap();
+        // Null should be rendered as empty string
+        assert_eq!(result, "Value is: .");
+    }
+
+    #[test]
+    fn test_array_value_interpolation() {
+        let mut manager = PromptManager::new();
+
+        let def = PromptDef {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            template: "Items: {{items}}".to_string(),
+            arguments: FxHashMap::default(),
+        };
+
+        manager.register(def).unwrap();
+
+        let mut args = FxHashMap::default();
+        args.insert("items".to_string(), json!(["a", "b", "c"]));
+
+        let result = manager.render("test", args).unwrap();
+        assert_eq!(result, "Items: [\"a\",\"b\",\"c\"]");
     }
 }

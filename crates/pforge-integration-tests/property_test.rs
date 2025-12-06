@@ -7,7 +7,7 @@
 
 use pforge_config::*;
 use proptest::prelude::*;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 // ============================================================================
 // Arbitrary Generators
@@ -81,7 +81,9 @@ fn arb_param_schema() -> impl Strategy<Value = ParamSchema> {
         arb_simple_type().prop_map(ParamType::Simple),
         0..5,
     )
-    .prop_map(|fields| ParamSchema { fields })
+    .prop_map(|fields| ParamSchema {
+        fields: fields.into_iter().collect(),
+    })
 }
 
 /// Generate arbitrary native tool definitions
@@ -115,8 +117,9 @@ fn arb_cli_tool() -> impl Strategy<Value = ToolDef> {
             command,
             args,
             cwd: None,
-            env: HashMap::new(),
+            env: FxHashMap::default(),
             stream: false,
+            timeout_ms: None,
         })
 }
 
@@ -133,8 +136,9 @@ fn arb_http_tool() -> impl Strategy<Value = ToolDef> {
             description,
             endpoint,
             method,
-            headers: HashMap::new(),
+            headers: FxHashMap::default(),
             auth: None,
+            timeout_ms: None,
         })
 }
 
@@ -152,7 +156,7 @@ fn arb_forge_config() -> impl Strategy<Value = ForgeConfig> {
         .prop_map(|(forge, tools)| {
             // Ensure unique tool names
             let mut unique_tools = Vec::new();
-            let mut seen_names = std::collections::HashSet::new();
+            let mut seen_names = rustc_hash::FxHashSet::default();
 
             for tool in tools {
                 let name = tool.name();
@@ -195,7 +199,7 @@ proptest! {
     #[test]
     fn tool_names_unique(config in arb_forge_config()) {
         // All tool names should be unique
-        let mut names = std::collections::HashSet::new();
+        let mut names = rustc_hash::FxHashSet::default();
         for tool in &config.tools {
             prop_assert!(names.insert(tool.name()));
         }
@@ -280,14 +284,14 @@ proptest! {
                     name: name.clone(),
                     description: "Tool 1".to_string(),
                     handler: HandlerRef { path: "mod1::handler".to_string(), inline: None },
-                    params: ParamSchema { fields: HashMap::new() },
+                    params: ParamSchema { fields: FxHashMap::default() },
                     timeout_ms: None,
                 },
                 ToolDef::Native {
                     name: name.clone(),
                     description: "Tool 2".to_string(),
                     handler: HandlerRef { path: "mod2::handler".to_string(), inline: None },
-                    params: ParamSchema { fields: HashMap::new() },
+                    params: ParamSchema { fields: FxHashMap::default() },
                     timeout_ms: None,
                 },
             ],
@@ -317,7 +321,7 @@ proptest! {
                     name: "test_tool".to_string(),
                     description: "Test".to_string(),
                     handler: HandlerRef { path, inline: None },
-                    params: ParamSchema { fields: HashMap::new() },
+                    params: ParamSchema { fields: FxHashMap::default() },
                     timeout_ms: None,
                 },
             ],

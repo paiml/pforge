@@ -75,7 +75,7 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 cwd,
                 env: _,
                 stream,
-                description: _,
+                ..
             } => {
                 output.push_str(&format!(
                     "    registry.register(\"{}\", CliHandler::new(\n",
@@ -90,7 +90,7 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                     output.push_str("        None,\n");
                 }
 
-                output.push_str("        HashMap::new(), // env\n");
+                output.push_str("        FxHashMap::default(), // env\n");
                 output.push_str("        None, // timeout\n");
                 output.push_str(&format!("        {},\n", stream));
                 output.push_str("    ));\n");
@@ -99,9 +99,7 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 name,
                 endpoint,
                 method,
-                headers: _,
-                auth: _,
-                description: _,
+                ..
             } => {
                 output.push_str(&format!(
                     "    registry.register(\"{}\", HttpHandler::new(\n",
@@ -109,16 +107,61 @@ pub fn generate_handler_registration(config: &ForgeConfig) -> Result<String> {
                 ));
                 output.push_str(&format!("        \"{}\".to_string(),\n", endpoint));
                 output.push_str(&format!("        HttpMethod::{:?},\n", method));
-                output.push_str("        HashMap::new(), // headers\n");
+                output.push_str("        FxHashMap::default(), // headers\n");
                 output.push_str("        None, // auth\n");
                 output.push_str("    ));\n");
             }
             pforge_config::ToolDef::Pipeline {
-                name: _,
-                steps: _,
+                name,
+                steps,
                 description: _,
             } => {
-                output.push_str("    // Pipeline handler TBD\n");
+                output.push_str(&format!(
+                    "    registry.register(\"{}\", PipelineHandler::new(vec![\n",
+                    name
+                ));
+                for step in steps {
+                    output.push_str("        PipelineStep {\n");
+                    output.push_str(&format!(
+                        "            tool: \"{}\".to_string(),\n",
+                        step.tool
+                    ));
+                    // Generate input
+                    if let Some(input_val) = &step.input {
+                        output.push_str(&format!(
+                            "            input: Some(serde_json::json!({})),\n",
+                            serde_json::to_string(input_val).unwrap_or_else(|_| "{}".to_string())
+                        ));
+                    } else {
+                        output.push_str("            input: None,\n");
+                    }
+                    // Generate output_var
+                    if let Some(var) = &step.output_var {
+                        output.push_str(&format!(
+                            "            output_var: Some(\"{}\".to_string()),\n",
+                            var
+                        ));
+                    } else {
+                        output.push_str("            output_var: None,\n");
+                    }
+                    // Generate condition
+                    if let Some(cond) = &step.condition {
+                        output.push_str(&format!(
+                            "            condition: Some(\"{}\".to_string()),\n",
+                            cond
+                        ));
+                    } else {
+                        output.push_str("            condition: None,\n");
+                    }
+                    // Generate error policy
+                    let policy = match step.error_policy {
+                        pforge_config::ErrorPolicy::FailFast => "ErrorPolicy::FailFast",
+                        pforge_config::ErrorPolicy::Continue => "ErrorPolicy::Continue",
+                    };
+                    output.push_str(&format!("            error_policy: {},\n", policy));
+                    output.push_str("        },\n");
+                }
+                output.push_str("    ]));\n");
             }
         }
     }
@@ -162,7 +205,7 @@ fn format_string_vec(vec: &[String]) -> String {
 mod tests {
     use super::*;
     use pforge_config::*;
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
 
     #[test]
     fn test_to_pascal_case() {
@@ -198,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_generate_param_struct_simple() {
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert("name".to_string(), ParamType::Simple(SimpleType::String));
         fields.insert("age".to_string(), ParamType::Simple(SimpleType::Integer));
 
@@ -214,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_generate_param_struct_complex() {
-        let mut fields = HashMap::new();
+        let mut fields = FxHashMap::default();
         fields.insert(
             "optional_field".to_string(),
             ParamType::Complex {
@@ -252,7 +295,7 @@ mod tests {
                     inline: None,
                 },
                 params: ParamSchema {
-                    fields: HashMap::new(),
+                    fields: FxHashMap::default(),
                 },
                 timeout_ms: None,
             }],
@@ -283,8 +326,9 @@ mod tests {
                 command: "echo".to_string(),
                 args: vec!["hello".to_string()],
                 cwd: None,
-                env: HashMap::new(),
+                env: FxHashMap::default(),
                 stream: false,
+                timeout_ms: None,
             }],
             resources: vec![],
             prompts: vec![],
@@ -313,8 +357,9 @@ mod tests {
                 description: "HTTP Test".to_string(),
                 endpoint: "https://api.example.com".to_string(),
                 method: HttpMethod::Get,
-                headers: HashMap::new(),
+                headers: FxHashMap::default(),
                 auth: None,
+                timeout_ms: None,
             }],
             resources: vec![],
             prompts: vec![],
@@ -327,5 +372,51 @@ mod tests {
         assert!(code.contains("HttpHandler::new"));
         assert!(code.contains("https://api.example.com"));
         assert!(code.contains("HttpMethod::Get"));
+    }
+
+    #[test]
+    fn test_generate_handler_registration_pipeline() {
+        let config = ForgeConfig {
+            forge: ForgeMetadata {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                transport: TransportType::Stdio,
+                optimization: OptimizationLevel::Debug,
+            },
+            tools: vec![ToolDef::Pipeline {
+                name: "pipeline_tool".to_string(),
+                description: "Pipeline Test".to_string(),
+                steps: vec![
+                    pforge_config::PipelineStep {
+                        tool: "step1".to_string(),
+                        input: Some(serde_json::json!({"key": "value"})),
+                        output_var: Some("result".to_string()),
+                        condition: None,
+                        error_policy: pforge_config::ErrorPolicy::FailFast,
+                    },
+                    pforge_config::PipelineStep {
+                        tool: "step2".to_string(),
+                        input: None,
+                        output_var: None,
+                        condition: Some("result".to_string()),
+                        error_policy: pforge_config::ErrorPolicy::Continue,
+                    },
+                ],
+            }],
+            resources: vec![],
+            prompts: vec![],
+            state: None,
+        };
+
+        let result = generate_handler_registration(&config);
+        assert!(result.is_ok());
+        let code = result.unwrap();
+        assert!(code.contains("PipelineHandler::new"));
+        assert!(code.contains("tool: \"step1\""));
+        assert!(code.contains("tool: \"step2\""));
+        assert!(code.contains("output_var: Some(\"result\""));
+        assert!(code.contains("condition: Some(\"result\""));
+        assert!(code.contains("ErrorPolicy::FailFast"));
+        assert!(code.contains("ErrorPolicy::Continue"));
     }
 }

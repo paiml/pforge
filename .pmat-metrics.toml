@@ -1,0 +1,55 @@
+# PMAT Quality Metrics Configuration
+# Generated for pforge project compliance
+
+[thresholds]
+# Test coverage minimum (percentage)
+coverage = 80.0
+
+# Mutation testing kill rate (percentage)
+mutation_score = 80.0
+
+# Maximum cyclomatic complexity per function
+max_complexity = 20
+
+# Technical Debt Grade minimum (0.0-1.0)
+min_tdg = 0.75
+
+# Maximum SATD (Self-Admitted Technical Debt) comments allowed
+max_satd = 0
+
+[lint]
+# Treat warnings as errors
+deny_warnings = true
+
+# Required clippy lint groups
+required_lints = [
+    "clippy::all",
+    "clippy::pedantic",
+    "clippy::nursery",
+]
+
+# Allowed clippy lints (exceptions)
+allowed_lints = [
+    "clippy::module_name_repetitions",
+    "clippy::must_use_candidate",
+    "clippy::missing_errors_doc",
+    "clippy::missing_panics_doc",
+]
+
+[benchmarks]
+# Benchmark configuration
+framework = "criterion"
+# Performance regression threshold (percentage)
+regression_threshold = 10.0
+
+[documentation]
+# Minimum documentation coverage (percentage)
+min_doc_coverage = 80.0
+# Require examples in public API docs
+require_examples = true
+
+[dependencies]
+# Maximum allowed security vulnerabilities
+max_vulnerabilities = 0
+# Require audit
+require_audit = true

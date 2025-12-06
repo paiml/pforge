@@ -3,20 +3,20 @@ use crate::{Error, Result};
 use pforge_config::HandlerRef;
 use pforge_config::{ResourceDef, ResourceOperation};
 use regex::Regex;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 /// Resource handler trait for read/write/subscribe operations
 #[async_trait::async_trait]
 pub trait ResourceHandler: Send + Sync {
     /// Read resource content
-    async fn read(&self, uri: &str, params: HashMap<String, String>) -> Result<Vec<u8>>;
+    async fn read(&self, uri: &str, params: FxHashMap<String, String>) -> Result<Vec<u8>>;
 
     /// Write resource content (if supported)
     async fn write(
         &self,
         uri: &str,
-        params: HashMap<String, String>,
+        params: FxHashMap<String, String>,
         content: Vec<u8>,
     ) -> Result<()> {
         let _ = (uri, params, content);
@@ -24,7 +24,7 @@ pub trait ResourceHandler: Send + Sync {
     }
 
     /// Subscribe to resource changes (if supported)
-    async fn subscribe(&self, uri: &str, params: HashMap<String, String>) -> Result<()> {
+    async fn subscribe(&self, uri: &str, params: FxHashMap<String, String>) -> Result<()> {
         let _ = (uri, params);
         Err(Error::Handler(
             "Subscribe operation not supported".to_string(),
@@ -68,10 +68,10 @@ impl ResourceManager {
     }
 
     /// Match URI and extract parameters (internal use)
-    fn match_uri(&self, uri: &str) -> Option<(&ResourceEntry, HashMap<String, String>)> {
+    fn match_uri(&self, uri: &str) -> Option<(&ResourceEntry, FxHashMap<String, String>)> {
         for entry in &self.resources {
             if let Some(captures) = entry.pattern.captures(uri) {
-                let mut params = HashMap::new();
+                let mut params = FxHashMap::default();
 
                 for (i, name) in entry.param_names.iter().enumerate() {
                     if let Some(value) = captures.get(i + 1) {
@@ -212,14 +212,14 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ResourceHandler for TestResourceHandler {
-        async fn read(&self, _uri: &str, _params: HashMap<String, String>) -> Result<Vec<u8>> {
+        async fn read(&self, _uri: &str, _params: FxHashMap<String, String>) -> Result<Vec<u8>> {
             Ok(self.read_response.clone())
         }
 
         async fn write(
             &self,
             _uri: &str,
-            _params: HashMap<String, String>,
+            _params: FxHashMap<String, String>,
             _content: Vec<u8>,
         ) -> Result<()> {
             Ok(())
@@ -318,5 +318,131 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("does not support write"));
+    }
+
+    /// Test resource write when operation is supported
+    #[tokio::test]
+    async fn test_resource_write_supported() {
+        let mut manager = ResourceManager::new();
+
+        let def = ResourceDef {
+            uri_template: "file:///{path}".to_string(),
+            handler: HandlerRef {
+                path: "test::handler".to_string(),
+                inline: None,
+            },
+            supports: vec![ResourceOperation::Read, ResourceOperation::Write],
+        };
+
+        let handler = Arc::new(TestResourceHandler {
+            read_response: b"test".to_vec(),
+        });
+
+        manager.register(def, handler).unwrap();
+
+        // This should succeed - handler implements write returning Ok(())
+        let result = manager.write("file:///test.txt", b"data".to_vec()).await;
+        assert!(result.is_ok());
+    }
+
+    /// Handler that uses default write/subscribe implementations
+    struct ReadOnlyResourceHandler;
+
+    #[async_trait::async_trait]
+    impl ResourceHandler for ReadOnlyResourceHandler {
+        async fn read(&self, _uri: &str, _params: FxHashMap<String, String>) -> Result<Vec<u8>> {
+            Ok(b"read only content".to_vec())
+        }
+        // Note: write and subscribe use DEFAULT implementations that return errors
+    }
+
+    /// Test that default write implementation returns error
+    /// This catches the mutation: ResourceHandler::write -> Result<()> with Ok(())
+    #[tokio::test]
+    async fn test_default_write_returns_error() {
+        let handler = ReadOnlyResourceHandler;
+        let result = handler.write("uri", FxHashMap::default(), vec![]).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Write operation not supported"));
+    }
+
+    /// Test that default subscribe implementation returns error
+    #[tokio::test]
+    async fn test_default_subscribe_returns_error() {
+        let handler = ReadOnlyResourceHandler;
+        let result = handler.subscribe("uri", FxHashMap::default()).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Subscribe operation not supported"));
+    }
+
+    /// Test subscribe on unsupported resource
+    #[tokio::test]
+    async fn test_subscribe_not_supported() {
+        let mut manager = ResourceManager::new();
+
+        let def = ResourceDef {
+            uri_template: "file:///{path}".to_string(),
+            handler: HandlerRef {
+                path: "test::handler".to_string(),
+                inline: None,
+            },
+            supports: vec![ResourceOperation::Read], // No Subscribe support
+        };
+
+        let handler = Arc::new(TestResourceHandler {
+            read_response: b"test".to_vec(),
+        });
+
+        manager.register(def, handler).unwrap();
+
+        // Subscribe should fail - operation not supported
+        let result = manager.subscribe("file:///test.txt").await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("does not support subscribe"));
+    }
+
+    /// Test subscribe on supported resource
+    /// Handler that supports subscribe
+    struct SubscribableResourceHandler;
+
+    #[async_trait::async_trait]
+    impl ResourceHandler for SubscribableResourceHandler {
+        async fn read(&self, _uri: &str, _params: FxHashMap<String, String>) -> Result<Vec<u8>> {
+            Ok(b"content".to_vec())
+        }
+
+        async fn subscribe(&self, _uri: &str, _params: FxHashMap<String, String>) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_supported() {
+        let mut manager = ResourceManager::new();
+
+        let def = ResourceDef {
+            uri_template: "events:///{topic}".to_string(),
+            handler: HandlerRef {
+                path: "test::handler".to_string(),
+                inline: None,
+            },
+            supports: vec![ResourceOperation::Read, ResourceOperation::Subscribe],
+        };
+
+        let handler = Arc::new(SubscribableResourceHandler);
+        manager.register(def, handler).unwrap();
+
+        // Subscribe should succeed
+        let result = manager.subscribe("events:///updates").await;
+        assert!(result.is_ok());
     }
 }
