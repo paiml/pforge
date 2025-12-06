@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2024-12-06
+
+### Fixed
+- **BREAKING**: Fixed pmcp 1.8.6 compatibility in pforge-runtime (#1)
+  - `ToolInfo` struct is now non-exhaustive in pmcp 1.8.6
+  - Updated to use `ToolInfo::new()` constructor instead of struct literal
+  - Bumped pmcp dependency from 1.6 to 1.8
+
 ## [0.1.3] - 2024-12-06
 
 ### Added

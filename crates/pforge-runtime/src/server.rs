@@ -69,11 +69,11 @@ impl ToolHandler for PforgeToolAdapter {
             })
         };
 
-        Some(pmcp::types::ToolInfo {
-            name: self.tool_name.clone(),
-            description: self.description.clone(),
+        Some(pmcp::types::ToolInfo::new(
+            self.tool_name.clone(),
+            self.description.clone(),
             input_schema,
-        })
+        ))
     }
 }
 

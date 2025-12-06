@@ -33,7 +33,7 @@ tokio = { workspace = true }
 pforge-config = { workspace = true }
 
 # Runtime-specific dependencies
-pmcp = { version = "1.6", default-features = false }
+pmcp = { version = "1.8", default-features = false }
 schemars = { version = "0.8", features = ["derive"] }
 rustc-hash = "2.0"
 dashmap = "6.0"

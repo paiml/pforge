@@ -102,10 +102,10 @@ const result = await bridge.execute("create_user", {
 
 ### 📚 Documentation
 
-- **[README.md](bridges/deno/README.md)** - Getting started guide with complete API reference
-- **[docs/schema-validation.md](bridges/deno/docs/schema-validation.md)** - Comprehensive schema validation guide
-- **[CHANGELOG.md](bridges/deno/CHANGELOG.md)** - Detailed changelog
-- **[examples/hello_server.ts](bridges/deno/examples/hello_server.ts)** - Working example server
+- **[README.md](README.md)** - Getting started guide with complete API reference
+- **[docs/schema-validation.md](docs/schema-validation.md)** - Comprehensive schema validation guide
+- **[CHANGELOG.md](CHANGELOG.md)** - Detailed changelog
+- **[examples/hello_server.ts](examples/hello_server.ts)** - Working example server
 
 ### 🛠️ Installation
 
@@ -209,7 +209,6 @@ Built with:
 
 We welcome contributions! Please see:
 - [CLAUDE.md](../../CLAUDE.md) - Development workflow and standards
-- [Contributing Guidelines](../../CONTRIBUTING.md) - How to contribute
 
 ## 📄 License
 
@@ -217,9 +216,9 @@ MIT - see [LICENSE](../../LICENSE)
 
 ## 🔗 Links
 
-- **Documentation**: [bridges/deno/README.md](bridges/deno/README.md)
-- **Schema Guide**: [bridges/deno/docs/schema-validation.md](bridges/deno/docs/schema-validation.md)
-- **Changelog**: [bridges/deno/CHANGELOG.md](bridges/deno/CHANGELOG.md)
+- **Documentation**: [README.md](README.md)
+- **Schema Guide**: [docs/schema-validation.md](docs/schema-validation.md)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Main Repository**: [https://github.com/paiml/pforge](https://github.com/paiml/pforge)
 - **MCP Specification**: [https://modelcontextprotocol.io](https://modelcontextprotocol.io)
 - **Deno**: [https://deno.land](https://deno.land)
@@ -230,6 +229,6 @@ Found a bug or have a feature request? Please [open an issue](https://github.com
 
 ---
 
-**Full Changelog**: [bridges/deno/CHANGELOG.md](bridges/deno/CHANGELOG.md)
+**Full Changelog**: [CHANGELOG.md](CHANGELOG.md)
 
-**Installation**: See [bridges/deno/README.md](bridges/deno/README.md#installation)
+**Installation**: See [README.md](README.md#installation)
