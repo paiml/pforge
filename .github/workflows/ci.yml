@@ -186,8 +186,8 @@ jobs:
       - name: Parse mutation results
         id: mutants
         run: |
-          CAUGHT=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants-ci.out/mutants-ci.out/outcomes.json)
-          MISSED=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants-ci.out/mutants-ci.out/outcomes.json)
+          CAUGHT=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants-ci.out/outcomes.json)
+          MISSED=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants-ci.out/outcomes.json)
           TOTAL=$((CAUGHT + MISSED))
           if [ $TOTAL -gt 0 ]; then
             RATE=$((CAUGHT * 100 / TOTAL))
