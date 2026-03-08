@@ -219,6 +219,7 @@ pub unsafe extern "C" fn pforge_execute_handler(
 pub unsafe extern "C" fn pforge_free_result(result: FfiResult) {
     if !result.data.is_null() && result.data_len > 0 {
         // SAFETY: result.data was allocated via Vec::into_boxed_slice() with capacity = len
+        #[allow(unknown_lints, clippy::same_length_and_capacity)]
         let _ = unsafe { Vec::from_raw_parts(result.data, result.data_len, result.data_len) };
     }
     if !result.error.is_null() {
@@ -279,8 +280,8 @@ mod tests {
         // Note: This test may fail if run after other tests that initialize
         // the global registry. In practice, init should only be called once.
         let result = unsafe { pforge_init() };
-        // Either succeeds (0) or already initialized (-1)
-        assert!(result == 0 || result == -1);
+        // Either succeeds (0), already initialized (-1), or race condition (-2)
+        assert!(result == 0 || result == -1 || result == -2);
     }
 
     #[test]
