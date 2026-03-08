@@ -79,9 +79,10 @@ jobs:
 
       - name: Check for crashes
         run: |
-          if [ -d "fuzz/artifacts" ] && [ "$(ls -A fuzz/artifacts)" ]; then
+          crash_files=$(find fuzz/artifacts -type f 2>/dev/null | head -1)
+          if [ -n "$crash_files" ]; then
             echo "❌ Fuzzing found crashes!"
-            ls -R fuzz/artifacts
+            find fuzz/artifacts -type f
             exit 1
           else
             echo "✅ No crashes found"
