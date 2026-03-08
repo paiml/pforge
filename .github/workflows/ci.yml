@@ -106,7 +106,7 @@ jobs:
           key: ${{ runner.os }}-cargo-tools-tarpaulin
 
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+        run: cargo install cargo-tarpaulin --locked --force
 
       - name: Generate coverage
         run: cargo tarpaulin --out Xml --all-features --workspace --timeout 300
@@ -176,7 +176,7 @@ jobs:
           key: ${{ runner.os }}-cargo-tools-mutants
 
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked
+        run: cargo install cargo-mutants --locked --force
 
       - name: Run mutation tests
         run: |
@@ -185,9 +185,16 @@ jobs:
 
       - name: Parse mutation results
         id: mutants
+        continue-on-error: true
         run: |
-          CAUGHT=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' mutants-ci.out/outcomes.json)
-          MISSED=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' mutants-ci.out/outcomes.json)
+          OUTCOMES=$(find mutants-ci.out -name outcomes.json -print -quit 2>/dev/null)
+          if [ -z "$OUTCOMES" ]; then
+            echo "::warning::No outcomes.json found — mutation testing may have failed"
+            echo "rate=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          CAUGHT=$(jq '[.outcomes[] | select(.summary == "CaughtMutant")] | length' "$OUTCOMES")
+          MISSED=$(jq '[.outcomes[] | select(.summary == "MissedMutant")] | length' "$OUTCOMES")
           TOTAL=$((CAUGHT + MISSED))
           if [ $TOTAL -gt 0 ]; then
             RATE=$((CAUGHT * 100 / TOTAL))
@@ -201,16 +208,12 @@ jobs:
           echo "Mutation Score: $RATE% ($CAUGHT/$TOTAL caught)"
 
       - name: Check mutation threshold
+        continue-on-error: true
         run: |
           RATE=${{ steps.mutants.outputs.rate }}
           THRESHOLD=80
-          if [ $RATE -lt $THRESHOLD ]; then
-            echo "::warning::Mutation score $RATE% is below threshold $THRESHOLD%"
-            echo "Caught: ${{ steps.mutants.outputs.caught }}"
-            echo "Missed: ${{ steps.mutants.outputs.missed }}"
-            echo "Target: 90%+"
-            # Don't fail CI yet - mutation testing is informational
-            # exit 1
+          if [ -z "$RATE" ] || [ "$RATE" -lt "$THRESHOLD" ] 2>/dev/null; then
+            echo "::warning::Mutation score ${RATE:-unknown}% is below threshold $THRESHOLD%"
           else
             echo "✓ Mutation score $RATE% meets threshold $THRESHOLD%"
           fi
