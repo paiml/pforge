@@ -344,3 +344,9 @@ Examples in `examples/`:
 - `hello-world/`: Minimal viable server
 - `pmat-server/`: PMAT code analysis integration
 - `polyglot-server/`: Multi-language bridge example
+
+## Contract-First Development
+
+All code changes require a prior contract (provable-contract YAML or pmat work contract.json).
+NEVER write code before defining the contract. Run `pmat comply check` before completing any task.
+CB-1400 enforces agent contract existence; verification_level must be satisfied before merge.
