@@ -1,0 +1,7 @@
+[build.env]
+passthrough = ["CARGO_TERM_COLOR"]
+
+[target.x86_64-unknown-linux-gnu]
+pre-build = [
+    "apt-get update && apt-get install -y libssl-dev pkg-config"
+]
