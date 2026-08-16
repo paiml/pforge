@@ -14,7 +14,7 @@ members = [
 exclude = ["fuzz"]
 
 [workspace.package]
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/paiml/pforge"
@@ -43,10 +43,10 @@ tempfile = "3.27"
 aprender-db = { version = "0.63", default-features = false }
 
 # Internal crates
-pforge-runtime = { path = "crates/pforge-runtime", version = "0.1.0" }
-pforge-config = { path = "crates/pforge-config", version = "0.1.0" }
-pforge-codegen = { path = "crates/pforge-codegen", version = "0.1.0" }
-pforge-macro = { path = "crates/pforge-macro", version = "0.1.0" }
+pforge-runtime = { path = "crates/pforge-runtime", version = "0.2" }
+pforge-config = { path = "crates/pforge-config", version = "0.2" }
+pforge-codegen = { path = "crates/pforge-codegen", version = "0.2" }
+pforge-macro = { path = "crates/pforge-macro", version = "0.2" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
