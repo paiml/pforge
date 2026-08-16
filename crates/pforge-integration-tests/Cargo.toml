@@ -14,7 +14,7 @@ serde_yaml = { workspace = true }
 tokio = { workspace = true }
 proptest = { workspace = true }
 tempfile = { workspace = true }
-rustc-hash = "2.0"
+rustc-hash = "2.1"
 
 [[test]]
 name = "integration"
@@ -27,6 +27,12 @@ path = "property_test.rs"
 [[test]]
 name = "e2e"
 path = "e2e_test.rs"
+
+# Speaks the real MCP wire protocol to a spawned `pforge serve`. Everything
+# else in this crate stops one layer below the protocol.
+[[test]]
+name = "mcp_protocol"
+path = "mcp_protocol_test.rs"
 
 [lints]
 workspace = true

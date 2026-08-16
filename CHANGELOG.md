@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-16
+
+**Breaking**: `pforge-runtime` re-exports `pmcp` types in its public API —
+`create_transport() -> Result<Box<dyn Transport>>` is `pmcp::shared::Transport` —
+so moving pmcp 1.8 -> 2.18 changes that signature for consumers. That is why this
+is 0.2.0 and not 0.1.5.
+
+### Changed
+
+- **pmcp 1.8 -> 2.18.** Published `pforge-runtime 0.1.4` declared `pmcp: ^1.8`
+  non-optionally, so every consumer was held ten releases back and could not opt
+  out — and anyone wanting pmcp 2.x elsewhere in their tree compiled two
+  incompatible copies of it. Consumers also missed pmcp #316, where a stdio
+  server dropped responses to requests it had already accepted once the client
+  closed stdin (the ordinary batch/one-shot shape). No source changes were needed
+  across pforge's 18 pmcp call sites.
+- **trueno-db -> aprender-db.** `trueno-db` was consolidated into the aprender
+  monorepo (APR-MONO, 2026-06-12) and is no longer published standalone; the
+  crates.io copy is 0.4.0, last touched 2026-04-07, against aprender-db 0.63.0.
+  Note for anyone doing the same migration: the PACKAGE renamed, the CRATE did
+  not. `aprender-db` declares `[lib] name = "trueno_db"`, so `use trueno_db::...`
+  stays correct and changing it to `aprender_db` gives E0433 even though
+  `cargo tree` shows the dependency present.
+- Every other dependency updated — 214 packages moved, including thiserror 1->2,
+  rand 0.8->0.10, reqwest 0.12->0.13, notify 6->8, criterion 0.5->0.8. Only two
+  code changes were required: reqwest 0.13 moved `RequestBuilder::query` behind a
+  cargo feature, and criterion 0.8 deprecated its `black_box` re-export.
+
+### Fixed
+
+- **`pforge serve` corrupted its own protocol stream.** On a stdio transport
+  stdout IS the MCP channel, and `serve` opened by writing five `println!` lines
+  into it ahead of the first JSON-RPC frame ("Starting pforge server...",
+  the config path, the server name, the transport, the tool count). A tolerant
+  client skips them; a strict one fails to parse and reports the server as
+  broken. `pforge dev` had the same defect and delegates to `serve`, so its
+  output landed in the stream too. Both now write progress to stderr, which is
+  what `McpServer::run` already did.
+- **RUSTSEC-2026-0098, -0099, -0204**: `rustls-webpki` 0.103.10 (name-constraint
+  bypasses for URI and wildcard names) and `crossbeam-epoch` 0.9.18 (invalid
+  pointer dereference). Both transitive, so a library consumer resolving their
+  own tree was already getting patched versions; this binds the lockfile for
+  `cargo install --locked pforge`.
+- Coverage no longer runs `cargo llvm-cov nextest`, which spawns a process per
+  test binary and produces a profraw explosion. `PROPTEST_CASES` and
+  `QUICKCHECK_TESTS` are pinned so a green property run means the same amount of
+  searching on every machine.
+
+### Added
+
+- **Tests that prove pforge is an MCP server.** The suite had 228 tests and none
+  of them had exchanged a JSON-RPC frame with a running server — every one
+  stopped a layer below the protocol. `e2e_test.rs::test_stdio_transport_config`
+  is the clearest case: its name says end-to-end, its body deserializes YAML and
+  asserts an enum value. `mcp_protocol_test.rs` spawns the real binary, speaks
+  MCP over stdin/stdout and asserts on the bytes returned. It found the stdout
+  bug above on its first honest run.
+
 ## [0.1.4] - 2024-12-06
 
 ### Fixed

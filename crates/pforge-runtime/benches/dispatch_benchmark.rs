@@ -1,7 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use pforge_runtime::{Handler, HandlerRegistry};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::hint::black_box;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 struct BenchInput {

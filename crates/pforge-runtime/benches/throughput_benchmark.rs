@@ -1,7 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use pforge_runtime::{Handler, HandlerRegistry};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::hint::black_box;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

@@ -5,36 +5,47 @@
 .PHONY: all test test-all test-fast test-doc test-property build clean install coverage coverage-summary coverage-html quality-gate help
 
 # Default target
+# Property-test budget. Pinned rather than left to proptest's default so a
+# green run means the same amount of searching on every machine, and so CI can
+# turn it up without editing recipes (CB-126-D / CB-127-B).
+PROPTEST_CASES ?= 256
+QUICKCHECK_TESTS ?= 256
+
 all: test
 
 # Run all tests (unit, integration, doctests)
 test: test-doc
 	@echo "🧪 Running all tests..."
-	@cargo test --all
+	@PROPTEST_CASES=$(PROPTEST_CASES) QUICKCHECK_TESTS=$(QUICKCHECK_TESTS) \
+		cargo test --all
 	@echo "✅ All tests passed!"
 
 # Run documentation tests
 test-doc:
 	@echo "📚 Running documentation tests..."
-	@cargo test --doc
+	@PROPTEST_CASES=$(PROPTEST_CASES) QUICKCHECK_TESTS=$(QUICKCHECK_TESTS) \
+		cargo test --doc
 	@echo "✅ Doctests passed!"
 
 # Run property-based tests (PFORGE-3002)
 test-property:
 	@echo "🔀 Running property-based tests..."
-	@cargo test --test property --release -- --test-threads=1
+	@PROPTEST_CASES=$(PROPTEST_CASES) QUICKCHECK_TESTS=$(QUICKCHECK_TESTS) \
+		cargo test --test property --release -- --test-threads=1
 	@echo "✅ Property tests passed!"
 
 # Run all tests including integration tests
 test-all:
 	@echo "🧪 Running all tests (including integration)..."
-	@cargo test --all --all-features
+	@PROPTEST_CASES=$(PROPTEST_CASES) QUICKCHECK_TESTS=$(QUICKCHECK_TESTS) \
+		cargo test --all --all-features
 	@echo "✅ All tests passed!"
 
 # Fast test run (no coverage)
 test-fast:
 	@echo "⚡ Running fast tests..."
-	@cargo test --lib --quiet
+	@PROPTEST_CASES=$(PROPTEST_CASES) QUICKCHECK_TESTS=$(QUICKCHECK_TESTS) \
+		cargo test --lib --quiet
 	@echo "✅ Fast tests passed!"
 
 # Build all crates
@@ -67,16 +78,14 @@ install:
 # Note: Temporarily moves ~/.cargo/config.toml to avoid mold linker interference
 coverage:
 	@echo "📊 Running comprehensive test coverage analysis..."
-	@echo "🔍 Checking for cargo-llvm-cov and cargo-nextest..."
+	@echo "🔍 Checking for cargo-llvm-cov..."
 	@which cargo-llvm-cov > /dev/null 2>&1 || (echo "📦 Installing cargo-llvm-cov..." && cargo install cargo-llvm-cov --locked)
-	@which cargo-nextest > /dev/null 2>&1 || (echo "📦 Installing cargo-nextest..." && cargo install cargo-nextest --locked)
-	@echo "🧹 Cleaning old coverage data..."
-	@cargo llvm-cov clean --workspace
 	@mkdir -p target/coverage
 	@echo "⚙️  Temporarily disabling global cargo config (mold breaks coverage)..."
 	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
 	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
-	@cargo llvm-cov --no-report nextest --no-tests=warn --all-features --workspace
+	@PROPTEST_CASES=$(PROPTEST_CASES) QUICKCHECK_TESTS=$(QUICKCHECK_TESTS) \
+		cargo llvm-cov --no-report test --lib --all-features --workspace
 	@echo "📊 Phase 2: Generating coverage reports..."
 	@cargo llvm-cov report --html --output-dir target/coverage/html
 	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info

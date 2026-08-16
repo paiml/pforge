@@ -265,13 +265,24 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
+    /// The FFI version string is the crate's own version.
+    ///
+    /// This asserted `starts_with("0.1")`, which pinned a version PREFIX rather
+    /// than the property that matters — that the C ABI reports the same version
+    /// cargo built. It passed for every 0.1.x and broke the moment the workspace
+    /// went to 0.2.0, having verified nothing along the way: a bridge returning
+    /// a hardcoded "0.1.99" would have satisfied it.
     #[test]
     fn test_version() {
         unsafe {
             let version = pforge_version();
             assert!(!version.is_null());
             let version_str = CStr::from_ptr(version).to_str().unwrap();
-            assert!(version_str.starts_with("0.1"));
+            assert_eq!(
+                version_str,
+                env!("CARGO_PKG_VERSION"),
+                "the FFI version string must be the crate version cargo built"
+            );
         }
     }
 

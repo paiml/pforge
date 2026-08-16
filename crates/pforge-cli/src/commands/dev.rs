@@ -8,10 +8,13 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Run the server in development mode with optional hot reload
+/// `dev` ends in `serve::execute`, so every line it prints goes to the same
+/// place the MCP protocol will. Progress therefore goes to stderr here too —
+/// see the note in `serve.rs`. stdout belongs to the client.
 pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
-    println!("Starting pforge in development mode...");
-    println!("  Config: {}", config_path);
-    println!("  Watch: {}", watch);
+    eprintln!("Starting pforge in development mode...");
+    eprintln!("  Config: {}", config_path);
+    eprintln!("  Watch: {}", watch);
 
     if !watch {
         // No hot reload - just run serve mode
@@ -19,7 +22,7 @@ pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
     }
 
     // Hot reload enabled
-    println!("\n🔄 Hot reload enabled - watching for changes...");
+    eprintln!("\n🔄 Hot reload enabled - watching for changes...");
 
     let should_reload = Arc::new(AtomicBool::new(false));
     let should_reload_watcher = should_reload.clone();
@@ -56,7 +59,7 @@ pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
                 .watch(watch_dir, RecursiveMode::Recursive)
                 .expect("Failed to watch directory");
 
-            println!("  Watching: {}", watch_dir.display());
+            eprintln!("  Watching: {}", watch_dir.display());
 
             // Keep the watcher alive
             loop {
@@ -67,7 +70,7 @@ pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
 
     // Main server loop with hot reload
     loop {
-        println!("\n📦 Loading configuration...");
+        eprintln!("\n📦 Loading configuration...");
 
         // Load and validate config
         let config = match parse_config(Path::new(config_path)) {
@@ -83,8 +86,8 @@ pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
             }
         };
 
-        println!("✅ Loaded: {} v{}", config.forge.name, config.forge.version);
-        println!("   Tools: {}", config.tools.len());
+        eprintln!("✅ Loaded: {} v{}", config.forge.name, config.forge.version);
+        eprintln!("   Tools: {}", config.tools.len());
 
         // Create and run server
         let server = pforge_runtime::McpServer::new(config);
@@ -94,7 +97,7 @@ pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
             result = server.run() => {
                 match result {
                     Ok(()) => {
-                        println!("Server stopped normally");
+                        eprintln!("Server stopped normally");
                         break;
                     }
                     Err(e) => {
@@ -105,7 +108,7 @@ pub async fn execute(config_path: &str, watch: bool) -> Result<()> {
             }
             _ = rx.recv() => {
                 if should_reload.load(Ordering::SeqCst) {
-                    println!("\n🔄 Changes detected - reloading...");
+                    eprintln!("\n🔄 Changes detected - reloading...");
                     should_reload.store(false, Ordering::SeqCst);
                     // Server will be restarted in next loop iteration
                 }

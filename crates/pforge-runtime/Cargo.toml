@@ -19,8 +19,8 @@ sse = ["pmcp/sse"]
 websocket = ["pmcp/websocket"]
 # Handler features
 http-handlers = ["dep:reqwest"]
-# trueno-db KV persistence (Phase 6)
-persistence = ["dep:trueno-db"]
+# aprender-db KV persistence (Phase 6; trueno-db was consolidated into aprender, APR-MONO)
+persistence = ["dep:aprender-db"]
 # Full feature set
 full = ["sse", "websocket", "http-handlers", "persistence"]
 
@@ -33,21 +33,21 @@ tokio = { workspace = true }
 pforge-config = { workspace = true }
 
 # Runtime-specific dependencies
-pmcp = { version = "1.8", default-features = false }
+pmcp = { version = "2.18", default-features = false }
 schemars = { version = "0.8", features = ["derive"] }
-rustc-hash = "2.0"
-dashmap = "6.0"
-reqwest = { version = "0.12", features = ["json"], optional = true }
-# trueno-db for KV persistence (Phase 6)
-trueno-db = { workspace = true, optional = true }
-regex = "1.10"
-rand = "0.8"
+rustc-hash = "2.1"
+dashmap = "6.2"
+reqwest = { version = "0.13", features = ["json", "query"], optional = true }
+# aprender-db for KV persistence (Phase 6; trueno-db is no longer published standalone)
+aprender-db = { workspace = true, optional = true }
+regex = "1.13"
+rand = "0.10"
 
 [dev-dependencies]
-tempfile = "3.8"
-proptest = "1.4"
-criterion = { version = "0.5", features = ["async_tokio"] }
-mockito = "1.2"
+tempfile = "3.27"
+proptest = "1.11"
+criterion = { version = "0.8", features = ["async_tokio"] }
+mockito = "1.7"
 
 [[bench]]
 name = "dispatch_benchmark"
