@@ -28,5 +28,11 @@ path = "property_test.rs"
 name = "e2e"
 path = "e2e_test.rs"
 
+# Speaks the real MCP wire protocol to a spawned `pforge serve`. Everything
+# else in this crate stops one layer below the protocol.
+[[test]]
+name = "mcp_protocol"
+path = "mcp_protocol_test.rs"
+
 [lints]
 workspace = true
