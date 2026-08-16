@@ -19,3 +19,23 @@ jobs:
     with:
       repo: ${{ github.event.repository.name }}
     secrets: inherit
+
+  # The org ruleset "Green Main — unified gate enforcement" requires a status
+  # check named exactly `gate`. A reusable workflow's jobs always report with
+  # the caller's job name prefixed — `ci / gate`, `ci / test` — so nothing this
+  # repo produced could ever satisfy it, and every pull request sat at
+  # "the base branch policy prohibits the merge" with all checks green.
+  #
+  # This is the same unprefixed top-level job pmat carries for the same reason.
+  gate:
+    runs-on: ubuntu-latest
+    needs: [ci]
+    if: always()
+    steps:
+      - name: Check required jobs
+        run: |
+          if [ "${{ needs.ci.result }}" != "success" ]; then
+            echo "ci failed: ${{ needs.ci.result }}"
+            exit 1
+          fi
+          echo "ci passed"
