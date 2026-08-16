@@ -4,6 +4,22 @@
 
 use crate::{Error, Result};
 use pforge_config::TransportType;
+// `OptimizedSseTransport` is deprecated in pmcp 2.x in favour of
+// `StreamableHttpTransport`, "which bounds every peer-controlled read".
+//
+// NOT migrated here, deliberately. The two are different wire protocols with
+// unrelated configs — `OptimizedSseConfig` carries keepalive, reconnect,
+// pooling and compression knobs that `StreamableHttpTransportConfig` (url,
+// extra_headers, auth_provider, session) has no equivalent for. Swapping them
+// changes what `transport: sse` actually speaks, so it breaks every client
+// configured against a pforge SSE endpoint. That is a product decision for a
+// pforge release, not a side effect of a dependency bump. pmcp keeps the type
+// "for 2.x compatibility", so it remains available meanwhile.
+//
+// The deprecation does flag a real exposure — an unbounded peer-controlled
+// read is a DoS vector — so this should not sit indefinitely. Tracked
+// separately.
+#[allow(deprecated)]
 use pmcp::shared::{
     OptimizedSseConfig, OptimizedSseTransport, StdioTransport, Transport, WebSocketConfig,
     WebSocketTransport,
@@ -30,6 +46,7 @@ pub fn create_transport(transport_type: &TransportType) -> Result<Box<dyn Transp
                 max_connections: 10,
                 enable_compression: false,
             };
+            #[allow(deprecated)]
             let transport = OptimizedSseTransport::new(config);
             Ok(Box::new(transport))
         }

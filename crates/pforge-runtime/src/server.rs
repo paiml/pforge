@@ -240,6 +240,10 @@ impl McpServer {
                     .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
             }
             pforge_config::TransportType::Sse => {
+                // See transport.rs for why this is not migrated to
+                // StreamableHttpTransport: it is a wire-protocol change, not a
+                // rename.
+                #[allow(deprecated)]
                 use pmcp::shared::{OptimizedSseConfig, OptimizedSseTransport};
                 use std::time::Duration;
 
@@ -255,6 +259,8 @@ impl McpServer {
                     max_connections: 10,
                     enable_compression: false,
                 };
+                #[allow(deprecated)]
+                // see transport.rs: SSE -> StreamableHttp is a wire-protocol change
                 let transport = OptimizedSseTransport::new(config);
                 server
                     .run(transport)

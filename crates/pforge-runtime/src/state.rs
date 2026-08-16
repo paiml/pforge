@@ -105,7 +105,7 @@ impl StateManager for MemoryStateManager {
     }
 }
 
-// trueno-db KV backend (Phase 6)
+// KV backend (Phase 6), now via the aprender-db package
 #[cfg(feature = "persistence")]
 pub use trueno_kv::TruenoKvStateManager;
 
@@ -114,9 +114,13 @@ mod trueno_kv {
     use super::*;
     use crate::Error;
     use tokio::time::Instant;
+    // Crate is `trueno_db`, package is `aprender-db`: the aprender monorepo
+    // keeps the original lib names across the APR-MONO consolidation
+    // (`aprender-db/Cargo.toml` declares `[lib] name = "trueno_db"`), so the
+    // dependency moved but the `use` path did not.
     use trueno_db::kv::{KvStore, MemoryKvStore};
 
-    /// State manager backed by trueno-db KV store.
+    /// State manager backed by the trueno_db KV store (aprender-db package).
     ///
     /// Provides SIMD-optimized key hashing via `trueno::hash` module.
     /// Currently uses in-memory storage; future versions will support
