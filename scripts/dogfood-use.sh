@@ -8,28 +8,31 @@
 #
 # WHY THIS EXISTS RATHER THAN MORE UNIT TESTS
 #
-# A test you author cannot falsify a premise you hold. pforge's suites are
+# A test you author cannot falsify a premise you hold. pforge's suites were
 # green while `pforge new` + `pforge serve` — the exact two commands `pforge
-# new` prints under "Next steps" — produce a server that advertises a tool it
-# cannot call (paiml/pforge#12). Those tests share an author with the code, so
-# they confirmed the workflow rather than ran it.
+# new` prints under "Next steps" — produced a server that advertised a tool it
+# could not call (paiml/pforge#12, #13). Those tests share an author with the
+# code, so they confirmed the workflow rather than ran it. This runs it.
 #
-# THE INVARIANT UNDER TEST
+# THE INVARIANT, CHECKED FROM BOTH SIDES
 #
 #   Every name returned by tools/list MUST be callable via tools/call.
 #
-# An MCP client — usually an LLM — reads tools/list and believes it. A tool
-# that is advertised and then errors on call is worse than one never
-# advertised: the failure surfaces to the model at use time as a confusing
-# protocol error rather than as a missing capability.
+#   A. A `cli` tool IS registered by the generic binary, so the server must
+#      start, advertise it, dispatch it, and publish a non-empty inputSchema.
+#   B. A `native` tool is NOT registered by the generic binary, so the server
+#      must REFUSE TO START rather than advertise something it cannot dispatch.
+#
+# Checking only (A) would let the old bug back in the moment someone re-adds an
+# adapter for unregistered tools; checking only (B) would pass on a server that
+# refuses everything. Both, or neither means anything.
 #
 # THE CONVERSATION IS DRIVEN BY scripts/mcp_probe.py, NOT BY SHELL.
-# The first version of this script piped requests in and redirected stdout to a
-# file. Measured: the identical 3-message conversation yielded 2 response lines
-# to a pipe and 0 to a file, because the server block-buffers when stdout is
-# not a tty and `timeout` killed it before the flush. A gate that reports "no
-# output" for a server that answered correctly is red for the wrong reason, and
-# a gate that is red for the wrong reason gets ignored.
+# The first cut piped requests in with stdout redirected to a file. Measured:
+# the identical 3-message conversation yielded 2 response lines to a pipe and 0
+# to a file — the server block-buffers when stdout is not a tty, and `timeout`
+# killed it before the flush. A gate that reports "no output" for a server that
+# answered correctly is red for the wrong reason, and those get ignored.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -48,36 +51,41 @@ note "binary: $BIN"
 "$BIN" --version >/dev/null 2>&1 \
   || fail "\`$BIN --version\` does not work — forjar's cargo package resource identifies every managed tool this way"
 
-# ── 1. Scaffold with the real binary ────────────────────────────────────────
-PROJ_ROOT="$WORK/dogfood-scaffold"
-rm -rf "$PROJ_ROOT"; mkdir -p "$PROJ_ROOT"
-( cd "$PROJ_ROOT" && "$BIN" new demo >/dev/null 2>&1 ) \
-  || fail "\`pforge new demo\` failed — the scaffold is the input to everything below"
-PROJ="$PROJ_ROOT/demo"
-[ -f "$PROJ/pforge.yaml" ] || fail "\`pforge new\` produced no pforge.yaml at $PROJ"
-note "scaffolded: $PROJ"
+# ── A. A dispatchable tool must round-trip completely ───────────────────────
+PROJ_A="$WORK/dispatchable"
+mkdir -p "$PROJ_A"
+cat > "$PROJ_A/pforge.yaml" <<'YAML'
+forge:
+  name: dogfood-cli
+  version: 0.1.0
+  transport: stdio
 
-# ── 2. Drive real MCP against the real server ───────────────────────────────
+tools:
+  - type: cli
+    name: echo_it
+    description: "Echo a fixed string"
+    command: echo
+    args: ["dogfood-ok"]
+YAML
+
 REPORT="$WORK/mcp-report.json"
-python3 "$HERE/mcp_probe.py" "$BIN" "$PROJ" > "$REPORT" 2>"$WORK/probe.err" \
+python3 "$HERE/mcp_probe.py" "$BIN" "$PROJ_A" > "$REPORT" 2>"$WORK/probe.err" \
   || fail "mcp_probe.py crashed: $(head -3 "$WORK/probe.err" 2>/dev/null)"
 [ -s "$REPORT" ] || fail "probe produced no report"
 
-python3 - "$REPORT" "$PROJ/pforge.yaml" <<'PY'
-import json, sys, re
+python3 - "$REPORT" <<'PY'
+import json, sys
 
 report = json.load(open(sys.argv[1]))
-yaml_text = open(sys.argv[2]).read()
 problems = []
 
 if not report.get("initialize"):
-    problems.append("server never answered `initialize` — the MCP transport is not reachable at all")
+    problems.append("server never answered `initialize` — the MCP transport is not reachable")
 
 tools = report.get("tools") or []
 if not tools:
     problems.append("tools/list returned no tools; every assertion below would be vacuous")
 
-# INVARIANT: everything advertised must be callable.
 for name, verdict in (report.get("calls") or {}).items():
     if verdict == "NOTFOUND":
         problems.append(
@@ -87,18 +95,12 @@ for name, verdict in (report.get("calls") or {}).items():
     elif verdict == "NORESPONSE":
         problems.append(f"tools/call '{name}' produced no response at all")
 
-# The published schema is the client's only contract for calling a tool.
-if re.search(r"^\s*params:", yaml_text, re.M):
-    empty = [
-        t.get("name", "?")
-        for t in tools
-        if not ((t.get("inputSchema") or {}).get("properties") or {})
-    ]
-    if empty:
+# The published schema is the client's ONLY contract for calling a tool.
+for t in tools:
+    if not ((t.get("inputSchema") or {}).get("properties") or {}):
         problems.append(
-            "pforge.yaml declares params but inputSchema.properties is empty for: "
-            + ", ".join(empty)
-            + " (paiml/pforge#13) — an LLM given properties:{} cannot know what to pass"
+            f"'{t.get('name','?')}' publishes an empty inputSchema.properties "
+            f"(paiml/pforge#13) — an LLM given properties:{{}} cannot know what to pass"
         )
 
 if problems:
@@ -107,7 +109,34 @@ if problems:
         print(f"  · {p}", file=sys.stderr)
     sys.exit(1)
 
-print(f"  tools advertised and all callable: {', '.join(t.get('name','?') for t in tools)}")
+print("  A: advertised and callable: " + ", ".join(t.get("name", "?") for t in tools))
 PY
 
-echo "dogfood-use: pforge round-tripped its own scaffold through MCP"
+# ── B. An UNdispatchable tool must be refused, not advertised ───────────────
+PROJ_B_ROOT="$WORK/native"
+rm -rf "$PROJ_B_ROOT"; mkdir -p "$PROJ_B_ROOT"
+( cd "$PROJ_B_ROOT" && "$BIN" new demo >/dev/null 2>&1 ) \
+  || fail "\`pforge new demo\` failed — the scaffold is the fixture for (B)"
+PROJ_B="$PROJ_B_ROOT/demo"
+[ -f "$PROJ_B/pforge.yaml" ] || fail "\`pforge new\` produced no pforge.yaml"
+
+set +e
+REFUSAL=$( cd "$PROJ_B" && printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+           | "$BIN" serve 2>&1 >/dev/null )
+RC=$?
+set -e
+
+if [ "$RC" -eq 0 ]; then
+  fail "\`pforge serve\` STARTED on a scaffold whose native handler it cannot dispatch. It would advertise a tool that always fails on call (paiml/pforge#12)."
+fi
+case "$REFUSAL" in
+  *"refusing to start"*) : ;;
+  *) fail "serve exited $RC but without the explicit refusal — an operator cannot act on an unexplained failure. Got: $(echo "$REFUSAL" | tail -2)" ;;
+esac
+case "$REFUSAL" in
+  *"pforge build"*) : ;;
+  *) fail "the refusal does not say how to fix it (build the project's own binary)" ;;
+esac
+note "B: native scaffold correctly refused, naming the tool and the remedy"
+
+echo "dogfood-use: pforge round-tripped its own output through MCP, both sides of the invariant"
