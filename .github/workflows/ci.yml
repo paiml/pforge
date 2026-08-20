@@ -54,7 +54,16 @@ jobs:
   # A feature matrix that is never run drifts back immediately, so this job is
   # the guard, not the one-time fix.
   feature-matrix:
-    runs-on: ubuntu-latest
+    # The fleet, not ubuntu-latest: .cargo/config.toml pins an ABSOLUTE
+    # target-dir (/mnt/zram/targets/pforge) that only exists on fleet machines,
+    # so a GitHub-hosted cargo job in this repo dies with
+    # "failed to create directory `/mnt/zram/targets`: Permission denied".
+    runs-on: [self-hosted, clean-room]
+    env:
+      # That same absolute target-dir is SHARED by every job on the machine, and
+      # seven matrix legs writing one target dir race each other. Give each leg
+      # its own under the per-job temp.
+      CARGO_TARGET_DIR: ${{ runner.temp }}/feature-matrix
     strategy:
       fail-fast: false
       matrix:
@@ -70,9 +79,10 @@ jobs:
           - "--no-default-features --features persistence"
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+
+      # No toolchain action here on purpose: fleet runners share one $HOME, and
+      # installing toolchains into a shared ~/.cargo/bin has taken the fleet out
+      # three times. The runners already carry stable + clippy.
 
       # `-p pforge-runtime`, NOT `--workspace`. This is the whole correctness of
       # this job, and the first draft of it got this wrong.
