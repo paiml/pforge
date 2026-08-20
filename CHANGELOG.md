@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-20
+
+**Fixed**
+
+- **`pforge serve` no longer advertises tools it cannot call.** A `type: native`
+  tool's handler is compiled into a *server binary*; the generic `pforge serve`
+  has no knowledge of it. The server registered nothing for such tools yet added
+  an MCP adapter for them anyway, so `tools/list` returned `hello` while
+  `tools/call` answered `-32603 Tool not found: hello`, and `inputSchema.properties`
+  was empty because there was no handler type to derive a schema from. `run()`
+  now refuses to start, naming the offending tools and the remedy. (#12, #13)
+- **`pforge --version` works.** clap's derive emits a version flag only when
+  declared, and it never was — so nothing could identify the binary, including
+  forjar's `cargo package` resource, which is how every managed tool in the fleet
+  is verified. (#9)
+- **`--no-default-features` builds.** `sse`, `websocket` and `http-handlers` were
+  declared optional and used unconditionally, so they were optional in name only
+  and a consumer avoiding reqwest/TLS got a compile error instead of a smaller
+  build. Transports that are compiled out now fail at construction with a message
+  naming the missing feature, rather than vanishing or panicking. (#10)
+- **The fuzzing lane runs all three targets.** `fuzz_handler_dispatch` had failed
+  to *build* since `HandlerRegistry::get` was removed, and `continue-on-error`
+  turned that into a green tick every day. Building is now a hard gate, separate
+  from findings. (#11)
+
+**Added**
+
+- `[package.metadata.transports]` declaring the `cli` and `mcp` interfaces, with
+  e2e suites that spawn the release binary rather than calling the library — a
+  library-level suite cannot observe whether a transport is reachable from `main`.
+- `scripts/dogfood-use.sh` + `scripts/mcp_probe.py`: the release gate that runs
+  the workflow `pforge new` itself prints, and asserts the invariant an MCP client
+  depends on — every name in `tools/list` must be callable via `tools/call` —
+  from both sides.
+- A CI `feature-matrix` over all 7 feature configurations, wired into `gate`.
+  It targets `-p pforge-runtime`, not `--workspace`: cargo unifies features across
+  a workspace build, so a workspace-level matrix passes with the bug present.
+
 ## [0.2.0] - 2026-08-16
 
 **Breaking**: `pforge-runtime` re-exports `pmcp` types in its public API —

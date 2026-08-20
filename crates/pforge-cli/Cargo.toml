@@ -38,3 +38,16 @@ tempfile = "3.27"
 
 [lints]
 workspace = true
+
+# ── Release interface declaration (dogfood protocol gate 7d) ────────────────
+# Every interface this release ships is declared here, versioned with the code
+# it describes. No declaration is a FAIL, not a skip: "we have no HTTP surface"
+# has to be an enforced fact rather than an assumption, and `transport-absence`
+# fails the release if the binary advertises a serve/mcp/http subcommand that
+# nothing here covers.
+#
+# `serve` is advertised in `pforge --help`, so the mcp transport is declared and
+# exercised end to end against the shipped binary.
+[package.metadata.transports]
+cli = { e2e = "e2e_cli_t" }
+mcp = { e2e = "e2e_mcp_stdio_t" }

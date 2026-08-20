@@ -40,6 +40,31 @@ jobs:
           restore-keys: |
             fuzz-corpus-
 
+      # BUILD EVERY TARGET FIRST, AND FAIL HARD IF ONE DOES NOT COMPILE.
+      #
+      # This lane reported success every day while running two of its three
+      # targets: fuzz_handler_dispatch had failed to BUILD since
+      # HandlerRegistry::get was removed, and `continue-on-error: true` on the
+      # run steps turned that into a green tick (paiml/pforge#11). The
+      # downstream "Check for crashes" step then found no crash artifacts —
+      # because the fuzzer never started — and absence of evidence was read as
+      # evidence of absence.
+      #
+      # continue-on-error is defensible for a FINDING: a crash should upload
+      # artifacts rather than wedge the lane. It is never right for a target
+      # that does not compile. That is a broken lane, not a result.
+      - name: Build all fuzz targets (a target that cannot build is a broken lane)
+        run: |
+          set -euo pipefail
+          targets=$(ls fuzz/fuzz_targets/*.rs | xargs -n1 basename | sed 's/\.rs$//')
+          echo "targets: $targets"
+          for t in $targets; do
+            echo "::group::build $t"
+            cargo +nightly fuzz build "$t"
+            echo "::endgroup::"
+          done
+          echo "$targets" > /tmp/fuzz-targets.txt
+
       - name: Run fuzz_config_parser
         run: |
           cargo +nightly fuzz run fuzz_config_parser -- \
@@ -66,6 +91,27 @@ jobs:
             -print_final_stats=1
         continue-on-error: true
         id: fuzz_validation
+
+      # A run step that was skipped or died instantly still leaves outcome
+      # 'failure' rather than silence, so assert on the outcomes explicitly:
+      # a lane where every target failed for a non-crash reason is not a lane
+      # that found three bugs, it is a lane that did not run.
+      - name: Every fuzz target must have executed
+        run: |
+          set -euo pipefail
+          declare -A o=(
+            [fuzz_config_parser]="${{ steps.fuzz_config.outcome }}"
+            [fuzz_handler_dispatch]="${{ steps.fuzz_handler.outcome }}"
+            [fuzz_validation]="${{ steps.fuzz_validation.outcome }}"
+          )
+          missing=0
+          for t in "${!o[@]}"; do
+            echo "$t: ${o[$t]}"
+            if [ "${o[$t]}" = "skipped" ] || [ -z "${o[$t]}" ]; then
+              echo "::error::$t did not run"; missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
 
       - name: Upload crash artifacts
         if: failure()

@@ -210,6 +210,52 @@ impl McpServer {
         // Register handlers in pforge registry
         self.register_handlers().await?;
 
+        // Every name we are about to ADVERTISE must be DISPATCHABLE.
+        //
+        // Before this check, `pforge new` + `pforge serve` — the exact two
+        // commands `pforge new` prints under "Next steps" — produced a server
+        // where tools/list returned `hello` and tools/call answered
+        // "Tool not found: hello". The scaffold declares a `type: native`
+        // handler that lives in the generated project's own src/, and this is
+        // the GENERIC pforge binary, which has no knowledge of that Rust. The
+        // Native arm of register_handlers registers nothing and prints a note
+        // to stderr; the builder below then added an adapter for it anyway.
+        //
+        // A stderr note is not a contract. An MCP client — usually an LLM —
+        // reads tools/list and believes it, so an advertised-but-uncallable
+        // tool surfaces at use time as a confusing protocol error rather than
+        // as a missing capability. Refusing to start says the true thing once,
+        // to the operator, at the moment they can act on it.
+        {
+            let registry = self.registry.read().await;
+            let undispatchable: Vec<&str> = self
+                .config
+                .tools
+                .iter()
+                .map(|t| match t {
+                    pforge_config::ToolDef::Native { name, .. }
+                    | pforge_config::ToolDef::Cli { name, .. }
+                    | pforge_config::ToolDef::Http { name, .. }
+                    | pforge_config::ToolDef::Pipeline { name, .. } => name.as_str(),
+                })
+                .filter(|name| !registry.has_handler(name))
+                .collect();
+
+            if !undispatchable.is_empty() {
+                return Err(Error::Handler(format!(
+                    "refusing to start: {} tool(s) are declared in the config but have no \
+                     registered handler, so they would be advertised by tools/list and fail \
+                     tools/call: {}.\n\
+                     \n\
+                     A `type: native` tool's handler is compiled INTO a server binary. The \
+                     generic `pforge serve` cannot dispatch it — build the project's own \
+                     binary (`pforge build`) and run that instead.",
+                    undispatchable.len(),
+                    undispatchable.join(", ")
+                )));
+            }
+        }
+
         // Build pmcp server with tool adapters
         let mut builder = pmcp::Server::builder()
             .name(&self.config.forge.name)
