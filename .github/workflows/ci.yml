@@ -29,7 +29,7 @@ jobs:
   # This is the same unprefixed top-level job pmat carries for the same reason.
   gate:
     runs-on: ubuntu-latest
-    needs: [ci]
+    needs: [ci, feature-matrix]
     if: always()
     steps:
       - name: Check required jobs
@@ -38,4 +38,82 @@ jobs:
             echo "ci failed: ${{ needs.ci.result }}"
             exit 1
           fi
+          if [ "${{ needs.feature-matrix.result }}" != "success" ]; then
+            echo "feature-matrix failed: ${{ needs.feature-matrix.result }}"
+            exit 1
+          fi
           echo "ci passed"
+
+  # pforge declares sse, websocket, http-handlers and persistence optional, but
+  # until 2026-08-20 nothing ever BUILT a configuration other than the default,
+  # so all four were optional in name only: `--no-default-features` did not
+  # compile at all (paiml/pforge#10). The defect was invisible for the crate's
+  # whole life because the only configuration anyone exercised was the one where
+  # everything is on.
+  #
+  # A feature matrix that is never run drifts back immediately, so this job is
+  # the guard, not the one-time fix.
+  feature-matrix:
+    # The fleet, not ubuntu-latest: .cargo/config.toml pins an ABSOLUTE
+    # target-dir (/mnt/zram/targets/pforge) that only exists on fleet machines,
+    # so a GitHub-hosted cargo job in this repo dies with
+    # "failed to create directory `/mnt/zram/targets`: Permission denied".
+    runs-on: [self-hosted, clean-room]
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - "--no-default-features"
+          - ""
+          - "--all-features"
+          # Each optional feature alone, so a missing cfg on ONE of them cannot
+          # hide behind a sibling that happens to pull in the same import.
+          - "--no-default-features --features sse"
+          - "--no-default-features --features websocket"
+          - "--no-default-features --features http-handlers"
+          - "--no-default-features --features persistence"
+    steps:
+      - uses: actions/checkout@v5
+
+      # That absolute target-dir is SHARED by every job on the machine, and
+      # seven matrix legs writing one target dir race each other. Give each leg
+      # its own under the per-job temp.
+      #
+      # Set here rather than in job-level `env:` because the `runner` context is
+      # not available there — using it silently makes the whole workflow file
+      # invalid, which GitHub reports as a run with zero jobs and no log rather
+      # than as a syntax error.
+      - name: Isolate this leg's target dir
+        run: echo "CARGO_TARGET_DIR=${RUNNER_TEMP}/feature-matrix" >> "$GITHUB_ENV"
+
+      # No toolchain action here on purpose: fleet runners share one $HOME, and
+      # installing toolchains into a shared ~/.cargo/bin has taken the fleet out
+      # three times. The runners already carry stable + clippy.
+
+      # `-p pforge-runtime`, NOT `--workspace`. This is the whole correctness of
+      # this job, and the first draft of it got this wrong.
+      #
+      # Cargo unifies features across a workspace build: pforge-cli depends on
+      # pforge-runtime with default features, so `cargo check --workspace
+      # --no-default-features` turns sse/websocket/http-handlers straight back
+      # ON. Verified by reintroducing the paiml/pforge#10 bug and running both:
+      # the --workspace form PASSED with the bug present, the -p form failed.
+      #
+      # So a workspace-level feature matrix is not a weaker guard here — it is
+      # a green check that cannot fail for the reason it exists.
+      - name: clippy ${{ matrix.features }}
+        run: cargo clippy -p pforge-runtime --all-targets ${{ matrix.features }} -- -D warnings
+      - name: test ${{ matrix.features }}
+        run: cargo test -p pforge-runtime ${{ matrix.features }}
+
+      # Probe the instrument: the minimal build must actually EXCLUDE the
+      # optional modules. If a future refactor makes http unconditional again,
+      # the steps above would still pass while silently protecting nothing.
+      - name: minimal build must not contain the optional handlers
+        if: matrix.features == '--no-default-features'
+        run: |
+          if cargo tree -p pforge-runtime --no-default-features -e normal 2>/dev/null | grep -q reqwest; then
+            echo "::error::reqwest is present in the minimal build — http-handlers is not really optional"
+            exit 1
+          fi
+          echo "minimal build excludes reqwest, as http-handlers being optional requires"
