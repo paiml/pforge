@@ -5,6 +5,16 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "pforge")]
+// `version` is NOT implied by deriving Parser — clap emits --version/-V only
+// when the command declares one, so pforge shipped without it and answered
+// `error: unexpected argument '--version' found`.
+//
+// That is load-bearing beyond politeness: tooling establishes that an installed
+// binary is present AND the expected build by running `<bin> --version`.
+// paiml/infra's clean-room gate A4 does exactly that, and forjar's cargo
+// package resource verifies every managed tool the same way — so without this,
+// pforge could never be managed as a forjar stack tool.
+#[command(version)]
 #[command(about = "Declarative MCP server framework", long_about = None)]
 struct Cli {
     #[command(subcommand)]
