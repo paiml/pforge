@@ -130,45 +130,60 @@ impl McpServer {
                     timeout_ms,
                     ..
                 } => {
-                    use crate::handlers::http::{
-                        AuthConfig as HttpAuthConfig, HttpHandler, HttpMethod as HandlerHttpMethod,
-                    };
+                    #[cfg(not(feature = "http-handlers"))]
+                    {
+                        // These are bound by the pattern and only read by the
+                        // feature-enabled arm below.
+                        let _ = (endpoint, method, headers, auth, timeout_ms);
+                        return Err(Error::feature_disabled(
+                            "http-handlers",
+                            &format!("tool `{}` (type: http)", name),
+                        ));
+                    }
 
-                    let handler_method = match method {
-                        pforge_config::HttpMethod::Get => HandlerHttpMethod::Get,
-                        pforge_config::HttpMethod::Post => HandlerHttpMethod::Post,
-                        pforge_config::HttpMethod::Put => HandlerHttpMethod::Put,
-                        pforge_config::HttpMethod::Delete => HandlerHttpMethod::Delete,
-                        pforge_config::HttpMethod::Patch => HandlerHttpMethod::Patch,
-                    };
+                    #[cfg(feature = "http-handlers")]
+                    {
+                        use crate::handlers::http::{
+                            AuthConfig as HttpAuthConfig, HttpHandler,
+                            HttpMethod as HandlerHttpMethod,
+                        };
 
-                    let handler_auth = auth.as_ref().map(|a| match a {
-                        pforge_config::AuthConfig::Bearer { token } => HttpAuthConfig::Bearer {
-                            token: token.clone(),
-                        },
-                        pforge_config::AuthConfig::Basic { username, password } => {
-                            HttpAuthConfig::Basic {
-                                username: username.clone(),
-                                password: password.clone(),
+                        let handler_method = match method {
+                            pforge_config::HttpMethod::Get => HandlerHttpMethod::Get,
+                            pforge_config::HttpMethod::Post => HandlerHttpMethod::Post,
+                            pforge_config::HttpMethod::Put => HandlerHttpMethod::Put,
+                            pforge_config::HttpMethod::Delete => HandlerHttpMethod::Delete,
+                            pforge_config::HttpMethod::Patch => HandlerHttpMethod::Patch,
+                        };
+
+                        let handler_auth = auth.as_ref().map(|a| match a {
+                            pforge_config::AuthConfig::Bearer { token } => HttpAuthConfig::Bearer {
+                                token: token.clone(),
+                            },
+                            pforge_config::AuthConfig::Basic { username, password } => {
+                                HttpAuthConfig::Basic {
+                                    username: username.clone(),
+                                    password: password.clone(),
+                                }
                             }
-                        }
-                        pforge_config::AuthConfig::ApiKey { key, header } => {
-                            HttpAuthConfig::ApiKey {
-                                key: key.clone(),
-                                header: header.clone(),
+                            pforge_config::AuthConfig::ApiKey { key, header } => {
+                                HttpAuthConfig::ApiKey {
+                                    key: key.clone(),
+                                    header: header.clone(),
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    let handler = HttpHandler::new(
-                        endpoint.clone(),
-                        handler_method,
-                        headers.clone(),
-                        handler_auth,
-                        *timeout_ms,
-                    );
-                    registry.register(name, handler);
-                    eprintln!("Registered HTTP handler: {}", name);
+                        let handler = HttpHandler::new(
+                            endpoint.clone(),
+                            handler_method,
+                            headers.clone(),
+                            handler_auth,
+                            *timeout_ms,
+                        );
+                        registry.register(name, handler);
+                        eprintln!("Registered HTTP handler: {}", name);
+                    }
                 }
                 pforge_config::ToolDef::Pipeline { name, steps, .. } => {
                     use crate::handlers::pipeline::PipelineHandlerAdapter;
@@ -240,54 +255,70 @@ impl McpServer {
                     .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
             }
             pforge_config::TransportType::Sse => {
-                // See transport.rs for why this is not migrated to
-                // StreamableHttpTransport: it is a wire-protocol change, not a
-                // rename.
-                #[allow(deprecated)]
-                use pmcp::shared::{OptimizedSseConfig, OptimizedSseTransport};
-                use std::time::Duration;
+                #[cfg(not(feature = "sse"))]
+                return Err(Error::feature_disabled("sse", "transport `sse`"));
 
-                let config = OptimizedSseConfig {
-                    url: "http://localhost:8080/sse".to_string(),
-                    connection_timeout: Duration::from_secs(30),
-                    keepalive_interval: Duration::from_secs(15),
-                    max_reconnects: 5,
-                    reconnect_delay: Duration::from_secs(1),
-                    buffer_size: 100,
-                    flush_interval: Duration::from_millis(100),
-                    enable_pooling: true,
-                    max_connections: 10,
-                    enable_compression: false,
-                };
-                #[allow(deprecated)]
-                // see transport.rs: SSE -> StreamableHttp is a wire-protocol change
-                let transport = OptimizedSseTransport::new(config);
-                server
-                    .run(transport)
-                    .await
-                    .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+                #[cfg(feature = "sse")]
+                {
+                    // See transport.rs for why this is not migrated to
+                    // StreamableHttpTransport: it is a wire-protocol change, not a
+                    // rename.
+                    #[allow(deprecated)]
+                    use pmcp::shared::{OptimizedSseConfig, OptimizedSseTransport};
+                    use std::time::Duration;
+
+                    let config = OptimizedSseConfig {
+                        url: "http://localhost:8080/sse".to_string(),
+                        connection_timeout: Duration::from_secs(30),
+                        keepalive_interval: Duration::from_secs(15),
+                        max_reconnects: 5,
+                        reconnect_delay: Duration::from_secs(1),
+                        buffer_size: 100,
+                        flush_interval: Duration::from_millis(100),
+                        enable_pooling: true,
+                        max_connections: 10,
+                        enable_compression: false,
+                    };
+                    #[allow(deprecated)]
+                    // see transport.rs: SSE -> StreamableHttp is a wire-protocol change
+                    let transport = OptimizedSseTransport::new(config);
+                    server
+                        .run(transport)
+                        .await
+                        .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+                }
             }
             pforge_config::TransportType::WebSocket => {
-                use pmcp::shared::{WebSocketConfig, WebSocketTransport};
-                use std::time::Duration;
+                #[cfg(not(feature = "websocket"))]
+                return Err(Error::feature_disabled(
+                    "websocket",
+                    "transport `websocket`",
+                ));
 
-                let url = "ws://localhost:8080/ws"
-                    .parse()
-                    .map_err(|e| Error::Handler(format!("Invalid WebSocket URL: {}", e)))?;
-                let config = WebSocketConfig {
-                    url,
-                    auto_reconnect: true,
-                    reconnect_delay: Duration::from_secs(1),
-                    max_reconnect_delay: Duration::from_secs(30),
-                    max_reconnect_attempts: Some(5),
-                    ping_interval: Some(Duration::from_secs(30)),
-                    request_timeout: Duration::from_secs(10),
-                };
-                let transport = WebSocketTransport::new(config);
-                server
-                    .run(transport)
-                    .await
-                    .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+                #[cfg(feature = "websocket")]
+                {
+                    #[cfg(feature = "websocket")]
+                    use pmcp::shared::{WebSocketConfig, WebSocketTransport};
+                    use std::time::Duration;
+
+                    let url = "ws://localhost:8080/ws"
+                        .parse()
+                        .map_err(|e| Error::Handler(format!("Invalid WebSocket URL: {}", e)))?;
+                    let config = WebSocketConfig {
+                        url,
+                        auto_reconnect: true,
+                        reconnect_delay: Duration::from_secs(1),
+                        max_reconnect_delay: Duration::from_secs(30),
+                        max_reconnect_attempts: Some(5),
+                        ping_interval: Some(Duration::from_secs(30)),
+                        request_timeout: Duration::from_secs(10),
+                    };
+                    let transport = WebSocketTransport::new(config);
+                    server
+                        .run(transport)
+                        .await
+                        .map_err(|e| Error::Handler(format!("MCP server error: {}", e)))?;
+                }
             }
         }
 
@@ -350,8 +381,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn test_register_handlers_http() {
+    fn config_with_one_http_tool() -> pforge_config::ForgeConfig {
         let mut config = create_test_config();
         config.tools.push(ToolDef::Http {
             name: "test_http".to_string(),
@@ -362,11 +392,41 @@ mod tests {
             auth: None,
             timeout_ms: None,
         });
+        config
+    }
 
-        let server = McpServer::new(config);
+    #[cfg(feature = "http-handlers")]
+    #[tokio::test]
+    async fn test_register_handlers_http() {
+        let server = McpServer::new(config_with_one_http_tool());
         let result = server.register_handlers().await;
 
         assert!(result.is_ok());
+    }
+
+    // The counter-case matters as much as the case above: an http tool in the
+    // config must be REJECTED, loudly, by a binary built without http-handlers.
+    // Registering nothing and returning Ok would leave a server that starts
+    // clean and then answers "tool not found" for a tool the operator can see
+    // in their own forge.yaml.
+    #[cfg(not(feature = "http-handlers"))]
+    #[tokio::test]
+    async fn test_register_http_tool_without_feature_is_a_loud_error() {
+        let server = McpServer::new(config_with_one_http_tool());
+        let msg = server
+            .register_handlers()
+            .await
+            .expect_err("an http tool must not silently vanish")
+            .to_string();
+
+        assert!(
+            msg.contains("test_http"),
+            "the error must name the offending tool, got: {msg}"
+        );
+        assert!(
+            msg.contains("http-handlers") && msg.contains("--features"),
+            "the error must name the feature and how to enable it, got: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -463,6 +523,9 @@ mod tests {
             timeout_ms: None,
         });
 
+        // Only add the http tool where it can actually be served; the point of
+        // this test is that MIXED tool kinds register together, not http itself.
+        #[cfg(feature = "http-handlers")]
         config.tools.push(ToolDef::Http {
             name: "http1".to_string(),
             description: "HTTP 1".to_string(),
@@ -471,6 +534,13 @@ mod tests {
             headers: rustc_hash::FxHashMap::default(),
             auth: None,
             timeout_ms: None,
+        });
+
+        #[cfg(not(feature = "http-handlers"))]
+        config.tools.push(ToolDef::Pipeline {
+            name: "pipeline1".to_string(),
+            description: "Pipeline 1".to_string(),
+            steps: vec![],
         });
 
         let server = McpServer::new(config);

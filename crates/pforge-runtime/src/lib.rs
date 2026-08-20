@@ -81,7 +81,9 @@ pub mod transport;
 
 pub use error::{Error, Result};
 pub use handler::Handler;
-pub use handlers::{CliHandler, HttpHandler, PipelineHandler};
+#[cfg(feature = "http-handlers")]
+pub use handlers::HttpHandler;
+pub use handlers::{CliHandler, PipelineHandler};
 pub use middleware::{LoggingMiddleware, Middleware, MiddlewareChain, ValidationMiddleware};
 pub use prompt::{PromptManager, PromptMetadata};
 pub use recovery::{

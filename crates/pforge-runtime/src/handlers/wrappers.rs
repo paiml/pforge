@@ -1,5 +1,6 @@
 // Handler trait implementations for CLI and HTTP handlers
 use crate::handlers::cli::{CliHandler, CliInput, CliOutput};
+#[cfg(feature = "http-handlers")]
 use crate::handlers::http::{HttpHandler, HttpInput, HttpOutput};
 use crate::{Error, Handler, Result};
 use async_trait::async_trait;
@@ -17,6 +18,7 @@ impl Handler for CliHandler {
 }
 
 // HTTP Handler Wrapper
+#[cfg(feature = "http-handlers")]
 #[async_trait]
 impl Handler for HttpHandler {
     type Input = HttpInput;
