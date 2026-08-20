@@ -27,3 +27,8 @@ coverage.json
 /*_SUMMARY.md
 /*_NOTES.md
 /deep_context.md
+
+# dogfood pre-release protocol artefacts (the protocol creates these)
+.dogfood/
+.pmat/
+.pv/
