@@ -59,11 +59,6 @@ jobs:
     # so a GitHub-hosted cargo job in this repo dies with
     # "failed to create directory `/mnt/zram/targets`: Permission denied".
     runs-on: [self-hosted, clean-room]
-    env:
-      # That same absolute target-dir is SHARED by every job on the machine, and
-      # seven matrix legs writing one target dir race each other. Give each leg
-      # its own under the per-job temp.
-      CARGO_TARGET_DIR: ${{ runner.temp }}/feature-matrix
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +74,17 @@ jobs:
           - "--no-default-features --features persistence"
     steps:
       - uses: actions/checkout@v5
+
+      # That absolute target-dir is SHARED by every job on the machine, and
+      # seven matrix legs writing one target dir race each other. Give each leg
+      # its own under the per-job temp.
+      #
+      # Set here rather than in job-level `env:` because the `runner` context is
+      # not available there — using it silently makes the whole workflow file
+      # invalid, which GitHub reports as a run with zero jobs and no log rather
+      # than as a syntax error.
+      - name: Isolate this leg's target dir
+        run: echo "CARGO_TARGET_DIR=${RUNNER_TEMP}/feature-matrix" >> "$GITHUB_ENV"
 
       # No toolchain action here on purpose: fleet runners share one $HOME, and
       # installing toolchains into a shared ~/.cargo/bin has taken the fleet out
