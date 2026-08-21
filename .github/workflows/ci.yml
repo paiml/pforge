@@ -91,7 +91,29 @@ jobs:
       # invalid, which GitHub reports as a run with zero jobs and no log rather
       # than as a syntax error.
       - name: Isolate this leg's target dir
-        run: echo "CARGO_TARGET_DIR=${RUNNER_TEMP}/feature-matrix" >> "$GITHUB_ENV"
+        # Keyed by RUN and by LEG, not just by runner.
+        #
+        # The first version used ${RUNNER_TEMP}/feature-matrix. RUNNER_TEMP is
+        # per-RUNNER, not per-run, and GitHub wipes it between jobs — so with
+        # cancel-in-progress on this workflow, a superseded run's post-job
+        # cleanup deletes the directory while the NEW run is mid-compile on that
+        # same runner. Observed 2026-08-21 on runner-10:
+        #
+        #   error: could not parse/generate dep info at:
+        #     .../_work/_temp/feature-matrix/debug/deps/futures_io-….d
+        #   Caused by: No such file or directory (os error 2)
+        #
+        # Same shape as aprender#1693, where per-PR target dirs collided under
+        # rapid pushes and had to be deepened to per-run. github.run_id makes it
+        # unique per run; job-index separates the concurrent legs.
+        run: |
+          echo "CARGO_TARGET_DIR=${RUNNER_TEMP}/fm-${{ github.run_id }}-${{ strategy.job-index }}" >> "$GITHUB_ENV"
+
+      # RUNNER_TEMP is cleaned between jobs, but a cancelled run can leave one
+      # behind. Reclaim anything older than a day so this cannot accrete on a
+      # long-lived self-hosted runner.
+      - name: Reap stale feature-matrix target dirs
+        run: find "${RUNNER_TEMP}" -maxdepth 1 -name 'fm-*' -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 
       # No toolchain action here on purpose: fleet runners share one $HOME, and
       # installing toolchains into a shared ~/.cargo/bin has taken the fleet out
