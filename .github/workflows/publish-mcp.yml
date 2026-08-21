@@ -29,17 +29,51 @@ jobs:
 
       - name: Publish to crates.io
         if: startsWith(github.ref, 'refs/tags/mcp-v')
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
         run: |
-          cargo publish --package pforge-config --token ${{ secrets.CARGO_TOKEN }} || true
-          sleep 10
-          cargo publish --package pforge-macro --token ${{ secrets.CARGO_TOKEN }} || true
-          sleep 10
-          cargo publish --package pforge-runtime --token ${{ secrets.CARGO_TOKEN }} || true
-          sleep 10
-          cargo publish --package pforge-codegen --token ${{ secrets.CARGO_TOKEN }} || true
-          sleep 10
-          cargo publish --package pforge-cli --token ${{ secrets.CARGO_TOKEN }} || true
-        continue-on-error: true
+          # NO `|| true`, and no continue-on-error on this step.
+          #
+          # This previously carried BOTH: every publish ended in `|| true` and
+          # the step was continue-on-error, so the job reported success whether
+          # or not anything was published. These five publish in DEPENDENCY
+          # ORDER, so one early failure means the rest cannot resolve it and the
+          # release silently lands nothing — reported as a green tick on the tag
+          # (paiml/pforge#15).
+          #
+          # The legitimate need `|| true` was covering is re-running after a
+          # partial publish: crates.io versions are immutable, so re-publishing
+          # one is a hard error. That is a specific, recognisable condition, and
+          # it is now recognised specifically.
+          set -euo pipefail
+          # crates.io 403s a bare curl; it requires a User-Agent. Without one
+          # every probe fails and "already published" is indistinguishable from
+          # "not published".
+          UA="pforge-ci-publish (paiml)"
+          for pkg in pforge-config pforge-macro pforge-runtime pforge-codegen pforge-cli; do
+            ver=$(cargo metadata --no-deps --format-version 1 \
+                  | jq -r --arg p "$pkg" '.packages[] | select(.name==$p) | .version')
+            [ -n "$ver" ] || { echo "::error::cannot resolve version for $pkg"; exit 1; }
+
+            if curl -sf -A "$UA" "https://crates.io/api/v1/crates/$pkg/$ver" >/dev/null 2>&1; then
+              echo "skip $pkg $ver (already on crates.io)"
+              continue
+            fi
+
+            echo "::group::publish $pkg $ver"
+            cargo publish --package "$pkg" --token "$CARGO_TOKEN"
+            echo "::endgroup::"
+
+            # Wait for the index rather than sleeping a guessed constant: the
+            # next crate in the list depends on this one being resolvable.
+            ok=""
+            for _ in $(seq 1 40); do
+              curl -sf -A "$UA" "https://crates.io/api/v1/crates/$pkg/$ver" >/dev/null 2>&1 && { ok=yes; break; }
+              sleep 5
+            done
+            [ -n "$ok" ] || { echo "::error::$pkg $ver did not appear on crates.io within 200s"; exit 1; }
+            echo "confirmed $pkg $ver"
+          done
 
       - name: Install MCP Publisher
         run: |

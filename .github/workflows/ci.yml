@@ -61,6 +61,13 @@ jobs:
     runs-on: [self-hosted, clean-room]
     strategy:
       fail-fast: false
+      # Seven legs at once each hold a runner slot on a SHARED 16-runner fleet
+      # and each compiles pforge-runtime from scratch. Measured 2026-08-20 while
+      # this matrix ran: intel went to load 123 on 32 cores with 18 runner
+      # workers, and every other repo's jobs queued behind it. fail-fast stays
+      # off — the whole point is knowing WHICH configuration broke — so the cap
+      # bounds the burst instead.
+      max-parallel: 3
       matrix:
         features:
           - "--no-default-features"
